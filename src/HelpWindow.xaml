@@ -1,0 +1,222 @@
+<Window x:Class="VRCAvatarChanger.HelpWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Style="{StaticResource {x:Type Window}}"
+        Title="使い方" Width="640" Height="720" MinWidth="480" MinHeight="400"
+        WindowStartupLocation="CenterOwner" ShowInTaskbar="False">
+    <Window.Resources>
+        <Style x:Key="H1" TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
+            <Setter Property="FontSize" Value="18"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Margin" Value="0,0,0,12"/>
+        </Style>
+        <Style x:Key="H2" TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
+            <Setter Property="FontSize" Value="14"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Margin" Value="0,16,0,6"/>
+        </Style>
+        <Style x:Key="Body" TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
+            <Setter Property="TextWrapping" Value="Wrap"/>
+            <Setter Property="LineHeight" Value="21"/>
+            <Setter Property="Foreground" Value="{DynamicResource MutedTextBrush}"/>
+            <Setter Property="Margin" Value="0,0,0,6"/>
+        </Style>
+        <Style x:Key="Step" TargetType="Border">
+            <Setter Property="Background" Value="{DynamicResource PanelBrush}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="CornerRadius" Value="{StaticResource CardRadius}"/>
+            <Setter Property="Padding" Value="14,12"/>
+            <Setter Property="Margin" Value="0,0,0,8"/>
+        </Style>
+        <Style x:Key="StepNo" TargetType="Border">
+            <Setter Property="Width" Value="24"/>
+            <Setter Property="Height" Value="24"/>
+            <Setter Property="CornerRadius" Value="12"/>
+            <Setter Property="Background" Value="{DynamicResource AccentBrush}"/>
+            <Setter Property="Margin" Value="0,0,12,0"/>
+            <Setter Property="VerticalAlignment" Value="Top"/>
+        </Style>
+        <Style x:Key="StepNoText" TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
+            <Setter Property="Foreground" Value="{DynamicResource OnAccentBrush}"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="HorizontalAlignment" Value="Center"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+        </Style>
+        <Style x:Key="Q" TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="TextWrapping" Value="Wrap"/>
+            <Setter Property="Margin" Value="0,10,0,2"/>
+        </Style>
+    </Window.Resources>
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <!-- 見出しタブ -->
+        <Border Background="{DynamicResource PanelBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,0,0,1" Padding="16,10">
+            <Border Background="{DynamicResource InputBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"
+                    CornerRadius="{StaticResource ControlRadius}" HorizontalAlignment="Left">
+                <StackPanel Orientation="Horizontal">
+                    <RadioButton x:Name="TabHowTo" Content="使い方" IsChecked="True" Style="{StaticResource SegmentButton}" Checked="Tab_Checked"/>
+                    <RadioButton x:Name="TabFaq" Content="よくある質問" Style="{StaticResource SegmentButton}" Checked="Tab_Checked"/>
+                    <RadioButton x:Name="TabAbout" Content="このアプリについて" Style="{StaticResource SegmentButton}" Checked="Tab_Checked"/>
+                </StackPanel>
+            </Border>
+        </Border>
+
+        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" Padding="20,16,20,20">
+            <Grid>
+                <!-- ===== 使い方 ===== -->
+                <StackPanel x:Name="HowToPanel" MaxWidth="620">
+                    <TextBlock Text="VRChat を開かずにアバターを着替えられます" Style="{StaticResource H1}"/>
+                    <TextBlock Style="{StaticResource Body}" Margin="0,0,0,14"
+                               Text="VRChat を起動中なら、すぐにゲーム内のアバターも切り替わります。起動していなければ、次に VRChat を開いたときにそのアバターになります。"/>
+
+                    <Border Style="{StaticResource Step}">
+                        <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                            <Border Style="{StaticResource StepNo}"><TextBlock Text="1" Style="{StaticResource StepNoText}"/></Border>
+                            <StackPanel Grid.Column="1">
+                                <TextBlock Text="VRChat アカウントでログイン" FontWeight="SemiBold"/>
+                                <TextBlock Style="{StaticResource Body}" Margin="0,4,0,0"
+                                           Text="ユーザー名とパスワード、または「Discord / Google などでログイン」からログインします。2 段階認証を設定している場合はコードを入力します。パスワードは保存されません。"/>
+                            </StackPanel>
+                        </Grid>
+                    </Border>
+
+                    <Border Style="{StaticResource Step}">
+                        <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                            <Border Style="{StaticResource StepNo}"><TextBlock Text="2" Style="{StaticResource StepNoText}"/></Border>
+                            <StackPanel Grid.Column="1">
+                                <TextBlock Text="アバターを選ぶ" FontWeight="SemiBold"/>
+                                <TextBlock Style="{StaticResource Body}" Margin="0,4,0,0"
+                                           Text="「自分のアバター」「お気に入り」「パブリック」のタブから探します。右上の検索欄で名前や作者名で絞り込めるほか、一覧の上のフィルタで、お気に入りタブはグループごと、それ以外のタブはタグごとに絞り込めます。"/>
+                            </StackPanel>
+                        </Grid>
+                    </Border>
+
+                    <Border Style="{StaticResource Step}">
+                        <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                            <Border Style="{StaticResource StepNo}"><TextBlock Text="3" Style="{StaticResource StepNoText}"/></Border>
+                            <StackPanel Grid.Column="1">
+                                <TextBlock Text="着替える" FontWeight="SemiBold"/>
+                                <TextBlock Style="{StaticResource Body}" Margin="0,4,0,0"
+                                           Text="右下の「選択したアバターに着替える」を押すか、アバターをダブルクリックします。左上の「現在:」が変われば完了です。"/>
+                            </StackPanel>
+                        </Grid>
+                    </Border>
+
+                    <TextBlock Text="パブリックタブ" Style="{StaticResource H2}"/>
+                    <TextBlock Style="{StaticResource Body}"
+                               Text="気に入ったパブリックアバターを登録しておく、このアプリ独自のリストです。VRChat のお気に入りと違って上限はありません。アバターの ID や URL を上の欄に貼って「追加」するか、他のタブで右クリック →「パブリックに追加」します。"/>
+
+                    <TextBlock Text="タグ" Style="{StaticResource H2}"/>
+                    <TextBlock Style="{StaticResource Body}"
+                               Text="「自分のアバター」と「パブリック」では、アバターを右クリック →「タグを編集...」で好きなタグを付けられます。付けたタグは一覧の上のフィルタに並び、ワンクリックで絞り込めます。グループを右クリック →「全員のタグを編集...」で、中のアバター全員に同じタグをまとめて付けられます。"/>
+
+                    <TextBlock Text="グループ" Style="{StaticResource H2}"/>
+                    <TextBlock Style="{StaticResource Body}"
+                               Text="衣装違いなどを 1 つにまとめられます。アバターを別のアバターにドラッグ&amp;ドロップするか、右クリック →「グループに入れる...」。ツールバーの「グループ化」を ON にするとまとめて表示され、ダブルクリックで中身を開けます。名前の変更や解除はグループを右クリックします。"/>
+
+                    <TextBlock Text="ゲーム内の着替えを反映する (OSC)" Style="{StaticResource H2}"/>
+                    <TextBlock Style="{StaticResource Body}"
+                               Text="VRChat で OSC を有効にすると(アクションメニュー → Options → OSC → Enabled)、ゲーム内で着替えたときも左上の「現在:」が更新されます。つながっていると「OSC 連携中」と表示されます。着替え自体に OSC は不要です。"/>
+                </StackPanel>
+
+                <!-- ===== FAQ ===== -->
+                <StackPanel x:Name="FaqPanel" MaxWidth="620" Visibility="Collapsed">
+                    <TextBlock Text="よくある質問" Style="{StaticResource H1}"/>
+
+                    <TextBlock Text="着替えたのにゲーム内で変わらない" Style="{StaticResource Q}"/>
+                    <TextBlock Style="{StaticResource Body}"
+                               Text="通常は数秒で反映されます。変わらないときは、ゲーム内でメニューを開閉するか、ワールドを移動してみてください。"/>
+
+                    <TextBlock Text="「非公開アバターのため使用できません」と出る" Style="{StaticResource Q}"/>
+                    <TextBlock Style="{StaticResource Body}"
+                               Text="他の人の非公開(Private)アバターには着替えられません(VRChat の仕様)。自分のアバターなら非公開でも使えます。"/>
+
+                    <TextBlock Text="Discord / Google でログインできない" Style="{StaticResource Q}"/>
+                    <TextBlock Style="{StaticResource Body}"
+                               Text="ログイン画面の表示に WebView2 が必要です(Windows 11 には入っています)。無い場合は案内に従ってインストールしてください。Google に拒否される場合は、VRChat でパスワードを設定してユーザー名とパスワードでログインしてください。"/>
+
+                    <TextBlock Text="2 段階認証のコードはどこにある?" Style="{StaticResource Q}"/>
+                    <TextBlock Style="{StaticResource Body}"
+                               Text="認証アプリを設定していればそのアプリに表示される 6 桁のコード、していなければ VRChat に登録したメールアドレスに届くコードです。"/>
+
+                    <TextBlock Text="お気に入りの「追加日」は何の日付?" Style="{StaticResource Q}"/>
+                    <TextBlock Style="{StaticResource Body}"
+                               Text="アバターがアップロードされた日です(VRChat はお気に入りに登録した日時を返さないため)。パブリックタブの「追加日」は、このアプリに追加した日です。"/>
+
+                    <TextBlock Text="何を保存している? 安全?" Style="{StaticResource Q}"/>
+                    <TextBlock Style="{StaticResource Body}"
+                               Text="パスワードは保存しません。保存するのはログイン状態・表示設定・パブリックリスト・グループだけで、すべてこの PC の %AppData%\VRCAvatarChanger にあります。ログイン状態は Windows の機能で暗号化され、通信先は VRChat のサーバーだけです。"/>
+                    <TextBlock Style="{StaticResource Body}"
+                               Text="ログイン状態はアカウント全体を操作できるものなので、共用 PC では使い終わったら「ログアウト」してください。"/>
+
+                    <TextBlock Text="パブリックタブやグループの登録はどこに保存される?" Style="{StaticResource Q}"/>
+                    <TextBlock Style="{StaticResource Body}"
+                               Text="この PC の %AppData%\VRCAvatarChanger フォルダにある public_avatars.json(パブリック)、groups.json(グループ)、tags.json(タグ)です。VRChat 側には保存されません。別の PC に移したいときは、この 3 つのファイルをコピーしてください。フォルダは「このアプリについて」の「保存フォルダを開く」から開けます。"/>
+
+                    <TextBlock Text="ログインしたままにしたくない" Style="{StaticResource Q}"/>
+                    <TextBlock Style="{StaticResource Body}"
+                               Text="右上の「ログアウト」で保存されたログイン状態が消え、次回は再ログインになります。"/>
+
+                    <TextBlock Text="アップデートはどうやるの?" Style="{StaticResource Q}"/>
+                    <TextBlock Style="{StaticResource Body}"
+                               Text="新しいバージョンが公開されると、右上に「vX.X.X に更新」ボタンが出ます。押して「はい」を選ぶと、ダウンロードから差し替え、再起動まで自動で行われます。勝手に更新されることはありません。"/>
+
+                    <TextBlock Text="アンインストールするには" Style="{StaticResource Q}"/>
+                    <TextBlock Style="{StaticResource Body}"
+                               Text="exe(または解凍したフォルダ)を削除するだけです。保存データも消す場合は %AppData%\VRCAvatarChanger フォルダを削除してください。"/>
+                </StackPanel>
+
+                <!-- ===== About ===== -->
+                <StackPanel x:Name="AboutPanel" MaxWidth="620" Visibility="Collapsed">
+                    <TextBlock Text="VRCAvatarChanger" Style="{StaticResource H1}" Margin="0,0,0,2"/>
+                    <TextBlock x:Name="VersionText" Style="{StaticResource Body}"/>
+                    <TextBlock Style="{StaticResource Body}" Margin="0,10,0,0"
+                               Text="VRChat のアバターを外部から着替える Windows 用アプリです。VRChat 公式ではありません。VRChat の仕様変更で動かなくなることがあります。"/>
+                    <TextBlock Text="保存先" Style="{StaticResource H2}"/>
+                    <TextBlock x:Name="DataPathText" Style="{StaticResource Body}" FontFamily="Cascadia Mono, Consolas"/>
+                    <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                        <Button Content="保存フォルダを開く" Style="{StaticResource SecondaryButton}" Click="OpenDataFolder_Click" Height="32"/>
+                    </StackPanel>
+                    <Grid Margin="0,12,0,0">
+                        <Grid.Resources>
+                            <Style TargetType="TextBlock" BasedOn="{StaticResource Body}">
+                                <Setter Property="Margin" Value="0,0,16,6"/>
+                            </Style>
+                        </Grid.Resources>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <Grid.RowDefinitions>
+                            <RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/>
+                        </Grid.RowDefinitions>
+                        <TextBlock Grid.Row="0" Text="public_avatars.json" FontFamily="Cascadia Mono, Consolas"/>
+                        <TextBlock Grid.Row="0" Grid.Column="1" Text="パブリックタブの登録リスト"/>
+                        <TextBlock Grid.Row="1" Text="groups.json / tags.json" FontFamily="Cascadia Mono, Consolas"/>
+                        <TextBlock Grid.Row="1" Grid.Column="1" Text="グループとタグ"/>
+                        <TextBlock Grid.Row="2" Text="settings.json" FontFamily="Cascadia Mono, Consolas"/>
+                        <TextBlock Grid.Row="2" Grid.Column="1" Text="表示形式・並び順・ウィンドウ位置などの設定"/>
+                        <TextBlock Grid.Row="3" Text="session.json" FontFamily="Cascadia Mono, Consolas"/>
+                        <TextBlock Grid.Row="3" Grid.Column="1" Text="VRChat のログイン状態(暗号化済み。他の PC では使えない)"/>
+                        <TextBlock Grid.Row="4" Text="error.log" FontFamily="Cascadia Mono, Consolas"/>
+                        <TextBlock Grid.Row="4" Grid.Column="1" Text="予期しないエラーの記録(起きたときだけ)"/>
+                        <TextBlock Grid.Row="5" Text="WebView2\" FontFamily="Cascadia Mono, Consolas"/>
+                        <TextBlock Grid.Row="5" Grid.Column="1" Text="Discord / Google ログイン用ブラウザの一時データ"/>
+                    </Grid>
+                    <TextBlock Style="{StaticResource Body}" Margin="0,6,0,0"
+                               Text="別の PC に引き継ぐときは public_avatars.json と groups.json をコピーしてください。パスワードはどこにも保存していません。"/>
+                    <TextBlock Text="使用技術" Style="{StaticResource H2}"/>
+                    <TextBlock Style="{StaticResource Body}" Text=".NET / WPF、Microsoft Edge WebView2(連携ログイン用)、VRChat Web API、VRChat OSC"/>
+                </StackPanel>
+            </Grid>
+        </ScrollViewer>
+    </Grid>
+</Window>

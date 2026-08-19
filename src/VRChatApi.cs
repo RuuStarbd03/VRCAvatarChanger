@@ -1,0 +1,406 @@
+using System.IO;
+using System.Net;
+using System.Net.Http;
+using System.Net.Http.Headers;
+using System.Security.Cryptography;
+using System.Text;
+using System.Text.RegularExpressions;
+using System.Text.Json;
+using System.Text.Json.Serialization;
+
+namespace VRCAvatarChanger;
+
+public sealed class VRChatApiException(string message, HttpStatusCode? status = null) : Exception(message)
+{
+    public HttpStatusCode? Status { get; } = status;
+    public bool IsUnauthorized => Status == HttpStatusCode.Unauthorized;
+}
+
+/// <summary>ログインに 2FA が必要なときに投げる。Methods は "totp" / "otp" / "emailOtp" のいずれか。</summary>
+public sealed class TwoFactorRequiredException(IReadOnlyList<string> methods) : Exception("2FA required")
+{
+    public IReadOnlyList<string> Methods { get; } = methods;
+}
+
+/// <summary>例外を利用者向けの日本語メッセージにする。</summary>
+public static class FriendlyError
+{
+    public static string Of(Exception ex) => ex switch
+    {
+        VRChatApiException api => api.Message,
+        System.Net.Http.HttpRequestException => "VRChat に接続できませんでした。インターネット接続を確認してください。",
+        TaskCanceledException or TimeoutException => "VRChat からの応答がありません。しばらくしてからもう一度お試しください。",
+        _ => ex.Message,
+    };
+}
+
+public sealed class VRChatApi : IDisposable
+{
+    private const string BaseUrl = "https://api.vrchat.cloud/api/1";
+
+    // VRChat API は「アプリ名/バージョン (連絡先)」形式の User-Agent を要求する。
+    // 連絡先(配布者への連絡用)は exe 内に平文で置かないよう XOR で符号化して持ち、実行時に復元する。
+    // ※ 強い秘匿ではない(通信は HTTPS 内で平文送信され、逆コンパイルでも判明する)。単純な文字列検索よけ。
+    // 連絡先を変えるときは tools/encode-contact.ps1 でバイト列を作り直して差し替える。
+    private static readonly byte[] ContactKey = [0x5A, 0xC3, 0x2F, 0x91, 0x7E, 0x08, 0xB4, 0x6D];
+    private static readonly byte[] ContactEnc =
+    [
+        0x32, 0xB7, 0x5B, 0xE1, 0x0D, 0x32, 0x9B, 0x42, 0x3D, 0xAA, 0x5B, 0xF9, 0x0B, 0x6A,
+        0x9A, 0x0E, 0x35, 0xAE, 0x00, 0xC3, 0x0B, 0x7D, 0xE7, 0x19, 0x3B, 0xB1, 0x4D, 0xF5,
+        0x4E, 0x3B, 0x9B, 0x3B, 0x08, 0x80, 0x6E, 0xE7, 0x1F, 0x7C, 0xD5, 0x1F, 0x19, 0xAB,
+        0x4E, 0xFF, 0x19, 0x6D, 0xC6,
+    ];
+
+    /// <summary>連絡先(復号済み)。publish.ps1 の既定値チェックにも使う。</summary>
+    public static string Contact
+    {
+        get
+        {
+            var b = new byte[ContactEnc.Length];
+            for (var i = 0; i < b.Length; i++) b[i] = (byte)(ContactEnc[i] ^ ContactKey[i % ContactKey.Length]);
+            return Encoding.UTF8.GetString(b);
+        }
+    }
+
+    private static readonly string UserAgent = BuildUserAgent();
+
+    private static string BuildUserAgent()
+    {
+        var v = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version;
+        var ver = v is null ? "1.0.0" : v.ToString(3);
+        return "VRCAvatarChanger/" + ver + " (" + Contact + ")";
+    }
+
+    private static readonly JsonSerializerOptions JsonOptions = new()
+    {
+        PropertyNameCaseInsensitive = true,
+        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+    };
+
+    private readonly CookieContainer _cookies = new();
+    private readonly HttpClient _http;
+    private readonly string _cookiePath;
+
+    public VRChatApi()
+    {
+        var dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "VRCAvatarChanger");
+        Directory.CreateDirectory(dir);
+        _cookiePath = Path.Combine(dir, "session.json");
+
+        _http = new HttpClient(new HttpClientHandler { CookieContainer = _cookies, UseCookies = true })
+        {
+            Timeout = TimeSpan.FromSeconds(30),
+        };
+        _http.DefaultRequestHeaders.TryAddWithoutValidation("User-Agent", UserAgent);
+        _http.DefaultRequestHeaders.Accept.ParseAdd("application/json");
+
+        LoadCookies();
+    }
+
+    // ---------------- セッション保存 ----------------
+
+    private sealed record SavedSession(string? Auth, string? TwoFactorAuth);
+
+    // DPAPI (CurrentUser) で暗号化して保存する。同じ Windows ユーザーでしか復号できない。
+    private static readonly byte[] DpapiEntropy = Encoding.UTF8.GetBytes("VRCAvatarChanger.session.v1");
+
+    private void LoadCookies()
+    {
+        try
+        {
+            if (!File.Exists(_cookiePath)) return;
+            var encrypted = File.ReadAllBytes(_cookiePath);
+            var plain = ProtectedData.Unprotect(encrypted, DpapiEntropy, DataProtectionScope.CurrentUser);
+            var s = JsonSerializer.Deserialize<SavedSession>(plain);
+            if (s is null) return;
+            var uri = new Uri(BaseUrl);
+            if (!string.IsNullOrEmpty(s.Auth)) _cookies.Add(uri, new Cookie("auth", s.Auth) { Domain = uri.Host, Path = "/" });
+            if (!string.IsNullOrEmpty(s.TwoFactorAuth)) _cookies.Add(uri, new Cookie("twoFactorAuth", s.TwoFactorAuth) { Domain = uri.Host, Path = "/" });
+        }
+        catch { /* 壊れていたら無視して再ログインしてもらう */ }
+    }
+
+    public void SaveCookies()
+    {
+        var c = _cookies.GetCookies(new Uri(BaseUrl));
+        var s = new SavedSession(c["auth"]?.Value, c["twoFactorAuth"]?.Value);
+        var plain = JsonSerializer.SerializeToUtf8Bytes(s);
+        File.WriteAllBytes(_cookiePath, ProtectedData.Protect(plain, DpapiEntropy, DataProtectionScope.CurrentUser));
+    }
+
+    public bool HasSavedSession => _cookies.GetCookies(new Uri(BaseUrl))["auth"] is not null;
+
+    /// <summary>ブラウザログイン(Discord/Google 等)で得たクッキーをセッションとして採用する。</summary>
+    public void SetSessionCookies(string auth, string? twoFactorAuth)
+    {
+        var uri = new Uri(BaseUrl);
+        foreach (Cookie c in _cookies.GetCookies(uri)) c.Expired = true;
+        _cookies.Add(uri, new Cookie("auth", auth) { Domain = uri.Host, Path = "/" });
+        if (!string.IsNullOrEmpty(twoFactorAuth))
+            _cookies.Add(uri, new Cookie("twoFactorAuth", twoFactorAuth) { Domain = uri.Host, Path = "/" });
+        SaveCookies();
+    }
+
+    // ---------------- 認証 ----------------
+
+    /// <summary>保存済みクッキーで現在のユーザーを取得。未ログインなら null。</summary>
+    public async Task<CurrentUser?> TryGetCurrentUserAsync(CancellationToken ct = default)
+    {
+        if (!HasSavedSession) return null;
+        using var res = await _http.GetAsync($"{BaseUrl}/auth/user", ct);
+        if (res.StatusCode == HttpStatusCode.Unauthorized) return null;
+        var body = await res.Content.ReadAsStringAsync(ct);
+        if (!res.IsSuccessStatusCode) throw new VRChatApiException(ExtractError(body, res.StatusCode), res.StatusCode);
+        if (body.Contains("requiresTwoFactorAuth")) return null;
+        return JsonSerializer.Deserialize<CurrentUser>(body, JsonOptions);
+    }
+
+    /// <summary>ユーザー名/パスワードでログイン。2FA が必要なら TwoFactorRequiredException。</summary>
+    public async Task<CurrentUser> LoginAsync(string username, string password, CancellationToken ct = default)
+    {
+        var token = Convert.ToBase64String(Encoding.UTF8.GetBytes(
+            $"{Uri.EscapeDataString(username)}:{Uri.EscapeDataString(password)}"));
+        using var req = new HttpRequestMessage(HttpMethod.Get, $"{BaseUrl}/auth/user");
+        req.Headers.Authorization = new AuthenticationHeaderValue("Basic", token);
+        using var res = await _http.SendAsync(req, ct);
+        var body = await res.Content.ReadAsStringAsync(ct);
+        if (!res.IsSuccessStatusCode) throw new VRChatApiException(ExtractError(body, res.StatusCode), res.StatusCode);
+
+        using var doc = JsonDocument.Parse(body);
+        if (doc.RootElement.TryGetProperty("requiresTwoFactorAuth", out var methods))
+        {
+            SaveCookies();
+            throw new TwoFactorRequiredException(methods.EnumerateArray().Select(m => m.GetString() ?? "").ToList());
+        }
+        SaveCookies();
+        return JsonSerializer.Deserialize<CurrentUser>(body, JsonOptions)!;
+    }
+
+    /// <summary>2FA コードを検証。method は "totp" / "otp" / "emailOtp"。</summary>
+    public async Task<CurrentUser> VerifyTwoFactorAsync(string method, string code, CancellationToken ct = default)
+    {
+        var path = method switch
+        {
+            "totp" => "totp",
+            "otp" => "otp",
+            "emailOtp" => "emailotp",
+            _ => throw new ArgumentOutOfRangeException(nameof(method)),
+        };
+        var payload = JsonSerializer.Serialize(new { code = code.Trim() });
+        using var res = await _http.PostAsync($"{BaseUrl}/auth/twofactorauth/{path}/verify",
+            new StringContent(payload, Encoding.UTF8, "application/json"), ct);
+        var body = await res.Content.ReadAsStringAsync(ct);
+        if (!res.IsSuccessStatusCode) throw new VRChatApiException(ExtractError(body, res.StatusCode), res.StatusCode);
+
+        using var doc = JsonDocument.Parse(body);
+        if (!(doc.RootElement.TryGetProperty("verified", out var v) && v.GetBoolean()))
+            throw new VRChatApiException("認証コードが正しくありません。");
+
+        SaveCookies();
+        return (await TryGetCurrentUserAsync(ct)) ?? throw new VRChatApiException("2FA 後のユーザー取得に失敗しました。");
+    }
+
+    public async Task LogoutAsync()
+    {
+        try { using var _ = await _http.PutAsync($"{BaseUrl}/logout", null); } catch { }
+        foreach (Cookie c in _cookies.GetCookies(new Uri(BaseUrl))) c.Expired = true;
+        if (File.Exists(_cookiePath)) File.Delete(_cookiePath);
+    }
+
+    // ---------------- アバター ----------------
+
+    /// <summary>自分がアップロードしたアバター一覧。</summary>
+    public async Task<List<Avatar>> GetOwnAvatarsAsync(CancellationToken ct = default)
+        => await GetAllPagesAsync("/avatars?user=me&releaseStatus=all&sort=updated&order=descending", ct);
+
+    /// <summary>お気に入り登録したアバター一覧。</summary>
+    public async Task<List<Avatar>> GetFavoriteAvatarsAsync(CancellationToken ct = default)
+    {
+        // /avatars/favorites は tag(グループ名 avatars1, avatars2...)を付けないと最初のグループしか返さない。
+        // グループ一覧を取ってから、グループごとに全ページ取得して結合する。
+        var groups = await GetFavoriteGroupsAsync(ct);
+        if (groups.Count == 0)
+            return await GetAllPagesAsync("/avatars/favorites?sort=updated&order=descending", ct);
+
+        var result = new List<Avatar>();
+        var seen = new HashSet<string>();
+        foreach (var g in groups)
+        {
+            var page = await GetAllPagesAsync($"/avatars/favorites?tag={Uri.EscapeDataString(g.Name)}&sort=updated&order=descending", ct);
+            foreach (var a in page)
+            {
+                if (!seen.Add(a.Id)) continue;
+                a.FavoriteGroup = FriendlyGroupName(g);
+                result.Add(a);
+            }
+        }
+        return result;
+    }
+
+    /// <summary>表示用のグループ名。ユーザーが名前を付けていなければ「お気に入り 1」のように番号で。</summary>
+    private static string FriendlyGroupName(FavoriteGroup g)
+    {
+        var d = g.DisplayName?.Trim() ?? "";
+        if (d.Length > 0 && !string.Equals(d, g.Name, StringComparison.OrdinalIgnoreCase)) return d;
+        var m = Regex.Match(g.Name, @"^avatars(\d+)$", RegexOptions.IgnoreCase);
+        return m.Success ? $"お気に入り {m.Groups[1].Value}" : g.Name;
+    }
+
+    /// <summary>アバターのお気に入りグループ一覧(avatars1 = "Favorite Avatars 1" など)。</summary>
+    public async Task<List<FavoriteGroup>> GetFavoriteGroupsAsync(CancellationToken ct = default)
+    {
+        try
+        {
+            var list = await GetJsonAsync<List<FavoriteGroup>>("/favorite/groups?type=avatar&n=100", ct);
+            return list.Where(g => g.Type == "avatar" && !string.IsNullOrEmpty(g.Name)).OrderBy(g => g.Name, StringComparer.Ordinal).ToList();
+        }
+        catch (VRChatApiException) { return []; }
+    }
+
+    private static readonly Regex AvatarIdPattern = new(
+        @"^avtr_[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+
+    public static bool IsValidAvatarId(string? id) => id is not null && AvatarIdPattern.IsMatch(id);
+
+    // URL パスに埋め込む前に必ず形式を検証し、パス操作を防ぐ
+    private static string RequireAvatarId(string id)
+        => IsValidAvatarId(id) ? id : throw new VRChatApiException("アバター ID の形式が不正です。");
+
+    public async Task<Avatar> GetAvatarAsync(string avatarId, CancellationToken ct = default)
+        => await GetJsonAsync<Avatar>($"/avatars/{RequireAvatarId(avatarId)}", ct);
+
+    /// <summary>アバターを切り替える。VRChat 起動中ならゲーム内にも即反映される。</summary>
+    public async Task<CurrentUser> SelectAvatarAsync(string avatarId, CancellationToken ct = default)
+    {
+        using var res = await _http.PutAsync($"{BaseUrl}/avatars/{RequireAvatarId(avatarId)}/select", null, ct);
+        var body = await res.Content.ReadAsStringAsync(ct);
+        if (!res.IsSuccessStatusCode) throw new VRChatApiException(ExtractError(body, res.StatusCode), res.StatusCode);
+        return JsonSerializer.Deserialize<CurrentUser>(body, JsonOptions)!;
+    }
+
+    // 画像 URL は API 応答由来。VRChat のホスト以外・https 以外には一切リクエストを出さない
+    private static bool IsAllowedImageUrl(string url)
+        => Uri.TryCreate(url, UriKind.Absolute, out var u)
+           && u.Scheme == Uri.UriSchemeHttps
+           && (u.Host == "api.vrchat.cloud" || u.Host == "vrchat.com" || u.Host.EndsWith(".vrchat.cloud", StringComparison.Ordinal));
+
+    public async Task<byte[]?> DownloadImageAsync(string url, CancellationToken ct = default)
+    {
+        if (!IsAllowedImageUrl(url)) return null;
+        try
+        {
+            using var res = await _http.GetAsync(url, ct);
+            if (res.Content.Headers.ContentLength > 10 * 1024 * 1024) return null;
+            if (!res.IsSuccessStatusCode) return null;
+            return await res.Content.ReadAsByteArrayAsync(ct);
+        }
+        catch { return null; }
+    }
+
+    // ---------------- 内部 ----------------
+
+    private async Task<List<Avatar>> GetAllPagesAsync(string pathAndQuery, CancellationToken ct)
+    {
+        const int pageSize = 100;
+        var all = new List<Avatar>();
+        for (var offset = 0; ; offset += pageSize)
+        {
+            var page = await GetJsonAsync<List<Avatar>>($"{pathAndQuery}&n={pageSize}&offset={offset}", ct);
+            all.AddRange(page);
+            if (page.Count < pageSize) break;
+        }
+        return all;
+    }
+
+    private async Task<T> GetJsonAsync<T>(string pathAndQuery, CancellationToken ct)
+    {
+        using var res = await _http.GetAsync(BaseUrl + pathAndQuery, ct);
+        var body = await res.Content.ReadAsStringAsync(ct);
+        if (!res.IsSuccessStatusCode) throw new VRChatApiException(ExtractError(body, res.StatusCode), res.StatusCode);
+        return JsonSerializer.Deserialize<T>(body, JsonOptions)
+               ?? throw new VRChatApiException("API の応答を解釈できませんでした。");
+    }
+
+    /// <summary>VRChat のエラー応答を、利用者向けの日本語メッセージにする。英語の生メッセージはそのまま見せない。</summary>
+    private static string ExtractError(string body, HttpStatusCode status)
+    {
+        string? server = null;
+        try
+        {
+            using var doc = JsonDocument.Parse(body);
+            if (doc.RootElement.TryGetProperty("error", out var err))
+                server = err.ValueKind == JsonValueKind.Object && err.TryGetProperty("message", out var m) ? m.GetString() : err.ToString();
+        }
+        catch { }
+        server = server?.Trim().Trim('"');
+
+        // よく返ってくるメッセージは個別に日本語化
+        if (!string.IsNullOrEmpty(server))
+        {
+            var s = server.ToLowerInvariant();
+            if (s.Contains("user-agent") || s.Contains("identify yourself"))
+                return "VRChat がこのアプリからの通信を受け付けませんでした(アプリの識別情報が未設定)。配布された最新版を使うか、配布者に連絡してください。";
+            if (s.Contains("invalid username") || s.Contains("invalid password") || s.Contains("email or password"))
+                return "ユーザー名(メールアドレス)またはパスワードが違います。";
+            if (s.Contains("two-factor") || s.Contains("2fa") || s.Contains("verification code") || s.Contains("invalid code"))
+                return "認証コードが正しくありません。もう一度入力してください。";
+            if (s.Contains("avatar not found"))
+                return "そのアバターは見つかりませんでした(削除されたか、ID が違う可能性があります)。";
+            if (s.Contains("not public") || s.Contains("private"))
+                return "このアバターは非公開のため使用できません。";
+            if (s.Contains("too many") || s.Contains("rate limit"))
+                return "VRChat へのアクセスが多すぎます。1 分ほど待ってからもう一度お試しください。";
+            if (s.Contains("banned") || s.Contains("suspended"))
+                return "このアカウントは現在 VRChat で制限されています。";
+        }
+
+        var jp = status switch
+        {
+            HttpStatusCode.Unauthorized => "ログイン情報が正しくないか、セッションの期限が切れています。もう一度ログインしてください。",
+            HttpStatusCode.Forbidden => "VRChat に操作を拒否されました(非公開アバター、または権限がない可能性があります)。",
+            HttpStatusCode.NotFound => "見つかりませんでした(削除されたか、ID が違う可能性があります)。",
+            HttpStatusCode.TooManyRequests => "VRChat へのアクセスが多すぎます。1 分ほど待ってからもう一度お試しください。",
+            >= HttpStatusCode.InternalServerError => "VRChat 側で問題が起きているようです。しばらくしてからもう一度お試しください。",
+            _ => "VRChat からエラーが返されました。",
+        };
+        // 問い合わせ対応のため、原文は小さく後ろに添える
+        return string.IsNullOrEmpty(server) ? $"{jp} (HTTP {(int)status})" : $"{jp} (HTTP {(int)status}: {server})";
+    }
+
+    public void Dispose() => _http.Dispose();
+}
+
+// ---------------- モデル ----------------
+
+public sealed class CurrentUser
+{
+    public string Id { get; set; } = "";
+    public string DisplayName { get; set; } = "";
+    public string CurrentAvatar { get; set; } = "";
+    public string? CurrentAvatarThumbnailImageUrl { get; set; }
+}
+
+public sealed class Avatar
+{
+    public string Id { get; set; } = "";
+    public string Name { get; set; } = "";
+    public string AuthorName { get; set; } = "";
+    public string AuthorId { get; set; } = "";
+    public string? Description { get; set; }
+    public string? ThumbnailImageUrl { get; set; }
+    public string? ImageUrl { get; set; }
+    public string ReleaseStatus { get; set; } = "";
+    public string? FavoriteGroup { get; set; }
+    [JsonPropertyName("created_at")] public DateTimeOffset? CreatedAt { get; set; }
+    [JsonPropertyName("updated_at")] public DateTimeOffset? UpdatedAt { get; set; }
+}
+
+public sealed class FavoriteGroup
+{
+    public string Id { get; set; } = "";
+    public string Name { get; set; } = "";
+    public string DisplayName { get; set; } = "";
+    public string Type { get; set; } = "";
+    public string? OwnerId { get; set; }
+}

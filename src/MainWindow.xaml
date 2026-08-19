@@ -1,0 +1,495 @@
+<Window x:Class="VRCAvatarChanger.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:sys="clr-namespace:System;assembly=System.Runtime"
+        xmlns:local="clr-namespace:VRCAvatarChanger"
+        Style="{StaticResource {x:Type Window}}"
+        Title="VRCAvatarChanger" Height="740" Width="1080" MinHeight="520" MinWidth="960"
+        WindowStartupLocation="CenterScreen" PreviewKeyDown="Window_PreviewKeyDown">
+    <Window.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolToVis"/>
+        <!-- 一覧の行 -->
+        <Style x:Key="AvatarRow" TargetType="ListViewItem">
+            <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+            <Setter Property="Foreground" Value="{DynamicResource TextBrush}"/>
+            <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ListViewItem">
+                        <Border x:Name="bd" Background="Transparent" CornerRadius="{StaticResource ControlRadius}" Margin="6,2" Padding="10,8" SnapsToDevicePixels="True">
+                            <Grid>
+                                <Rectangle x:Name="mark" Width="3" RadiusX="1.5" RadiusY="1.5" HorizontalAlignment="Left" Margin="-10,4,0,4"
+                                           Fill="{DynamicResource AccentBrush}" Visibility="Collapsed"/>
+                                <ContentPresenter/>
+                            </Grid>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="bd" Property="Background" Value="{DynamicResource HoverBrush}"/>
+                            </Trigger>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter TargetName="bd" Property="Background" Value="{DynamicResource SelectionBrush}"/>
+                                <Setter TargetName="mark" Property="Visibility" Value="Visible"/>
+                            </Trigger>
+                            <Trigger Property="IsKeyboardFocused" Value="True">
+                                <Setter TargetName="bd" Property="BorderBrush" Value="{DynamicResource AccentBrush}"/>
+                                <Setter TargetName="bd" Property="BorderThickness" Value="1"/>
+                            </Trigger>
+                            <DataTrigger Binding="{Binding IsDropTarget}" Value="True">
+                                <Setter TargetName="bd" Property="Background" Value="{DynamicResource SelectionBrush}"/>
+                                <Setter TargetName="bd" Property="BorderBrush" Value="{DynamicResource AccentBrush}"/>
+                                <Setter TargetName="bd" Property="BorderThickness" Value="1"/>
+                            </DataTrigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <DataTemplate x:Key="AvatarRowTemplate" DataType="{x:Type local:AvatarItem}">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <Grid Margin="0,0,14,0">
+                    <Border Width="84" Height="72" CornerRadius="{StaticResource ControlRadius}" Background="{DynamicResource BorderStrongBrush}" Margin="0,-5,0,5"
+                            Visibility="{Binding IsGroup, Converter={StaticResource BoolToVis}}"/>
+                    <Border Width="96" Height="72" CornerRadius="{StaticResource ControlRadius}" Background="{DynamicResource ThumbBackBrush}" ClipToBounds="True">
+                        <Border.Clip>
+                            <RectangleGeometry Rect="0,0,96,72" RadiusX="6" RadiusY="6"/>
+                        </Border.Clip>
+                        <Grid>
+                            <Image Source="{Binding Thumbnail}" Stretch="UniformToFill"/>
+                            <Border HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="0,0,4,4" CornerRadius="4" Padding="6,1"
+                                    Background="#CC141416" Visibility="{Binding IsGroup, Converter={StaticResource BoolToVis}}">
+                                <TextBlock Text="{Binding Count}" FontSize="11" FontWeight="SemiBold" Foreground="#FFECECEF"/>
+                            </Border>
+                        </Grid>
+                    </Border>
+                </Grid>
+                <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                    <TextBlock Text="{Binding Name}" FontWeight="SemiBold" FontSize="14" TextTrimming="CharacterEllipsis"/>
+                    <TextBlock Text="{Binding AuthorName}" Style="{StaticResource MutedText}" TextTrimming="CharacterEllipsis" Margin="0,2,0,0"/>
+                    <TextBlock Text="{Binding Id}" Style="{StaticResource CaptionText}" Foreground="{DynamicResource FaintTextBrush}"
+                               FontFamily="Cascadia Mono, Consolas" FontSize="11" TextTrimming="CharacterEllipsis" Margin="0,4,0,0"
+                               Visibility="{Binding IsAvatar, Converter={StaticResource BoolToVis}}"/>
+                </StackPanel>
+                <TextBlock Grid.Column="2" Text="{Binding Badge}" Style="{StaticResource CaptionText}" VerticalAlignment="Center" Margin="12,0,4,0"/>
+            </Grid>
+        </DataTemplate>
+
+        <!-- グリッド(ボックス)表示のタイル -->
+        <local:AspectHeightConverter x:Key="Aspect43" Ratio="0.75"/>
+        <ItemsPanelTemplate x:Key="ListPanel">
+            <VirtualizingStackPanel/>
+        </ItemsPanelTemplate>
+        <ItemsPanelTemplate x:Key="GridPanel">
+            <UniformGrid Columns="{Binding GridColumns, RelativeSource={RelativeSource AncestorType=Window}}" VerticalAlignment="Top"/>
+        </ItemsPanelTemplate>
+
+        <Style x:Key="AvatarTile" TargetType="ListViewItem">
+            <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+            <Setter Property="VerticalContentAlignment" Value="Top"/>
+            <Setter Property="Foreground" Value="{DynamicResource TextBrush}"/>
+            <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ListViewItem">
+                        <Grid>
+                            <Border x:Name="bd" Background="Transparent" BorderBrush="Transparent" BorderThickness="2"
+                                    CornerRadius="{StaticResource ControlRadius}" Margin="4" Padding="5" SnapsToDevicePixels="True">
+                                <ContentPresenter/>
+                            </Border>
+                            <!-- 選択中のチェックマーク (サムネイル右上) -->
+                            <Border x:Name="check" Width="24" Height="24" CornerRadius="12" Background="{DynamicResource AccentBrush}"
+                                    HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,12,12,0" Visibility="Collapsed">
+                                <TextBlock Text="&#xE73E;" FontFamily="{StaticResource IconFont}" FontSize="12"
+                                           Foreground="{DynamicResource OnAccentBrush}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            </Border>
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="bd" Property="Background" Value="{DynamicResource HoverBrush}"/>
+                            </Trigger>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter TargetName="bd" Property="Background" Value="{DynamicResource SelectionBrush}"/>
+                                <Setter TargetName="bd" Property="BorderBrush" Value="{DynamicResource AccentBrush}"/>
+                                <Setter TargetName="check" Property="Visibility" Value="Visible"/>
+                            </Trigger>
+                            <Trigger Property="IsKeyboardFocused" Value="True">
+                                <Setter TargetName="bd" Property="BorderBrush" Value="{DynamicResource AccentBrush}"/>
+                            </Trigger>
+                            <DataTrigger Binding="{Binding IsDropTarget}" Value="True">
+                                <Setter TargetName="bd" Property="BorderBrush" Value="{DynamicResource AccentBrush}"/>
+                                <Setter TargetName="bd" Property="Background" Value="{DynamicResource SelectionBrush}"/>
+                            </DataTrigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+
+        <DataTemplate x:Key="AvatarTileTemplate" DataType="{x:Type local:AvatarItem}">
+            <StackPanel>
+                <StackPanel.ToolTip>
+                    <StackPanel>
+                        <TextBlock Text="{Binding Name}" FontWeight="SemiBold"/>
+                        <TextBlock Text="{Binding AuthorName}"/>
+                        <TextBlock Text="{Binding Id}" FontFamily="Cascadia Mono, Consolas" FontSize="11" Style="{StaticResource CaptionText}"
+                                   Visibility="{Binding IsAvatar, Converter={StaticResource BoolToVis}}"/>
+                    </StackPanel>
+                </StackPanel.ToolTip>
+                <Grid>
+                    <!-- グループ: 後ろに重なったカード -->
+                    <Border CornerRadius="{StaticResource ControlRadius}" Background="{DynamicResource BorderStrongBrush}" Margin="10,-6,10,0"
+                            VerticalAlignment="Top" Height="24"
+                            Visibility="{Binding IsGroup, Converter={StaticResource BoolToVis}}"/>
+                    <Border x:Name="thumb" CornerRadius="{StaticResource ControlRadius}" Background="{DynamicResource ThumbBackBrush}"
+                            Height="{Binding ActualWidth, RelativeSource={RelativeSource Self}, Converter={StaticResource Aspect43}}">
+                        <Border.Clip>
+                            <MultiBinding Converter="{StaticResource Aspect43}" ConverterParameter="clip">
+                                <Binding Path="ActualWidth" RelativeSource="{RelativeSource Self}"/>
+                                <Binding Path="ActualHeight" RelativeSource="{RelativeSource Self}"/>
+                            </MultiBinding>
+                        </Border.Clip>
+                        <Grid>
+                            <Image Source="{Binding Thumbnail}" Stretch="UniformToFill"/>
+                            <!-- グループ: 枚数バッジ -->
+                            <Border HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="0,0,6,6" CornerRadius="4" Padding="7,2"
+                                    Background="#CC141416" Visibility="{Binding IsGroup, Converter={StaticResource BoolToVis}}">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="&#xE8B7;" FontFamily="{StaticResource IconFont}" FontSize="11" Foreground="#FFECECEF" VerticalAlignment="Center" Margin="0,0,5,0"/>
+                                    <TextBlock Text="{Binding Count}" FontSize="12" FontWeight="SemiBold" Foreground="#FFECECEF"/>
+                                </StackPanel>
+                            </Border>
+                        </Grid>
+                    </Border>
+                </Grid>
+                <TextBlock Text="{Binding Name}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" Margin="2,8,2,0"/>
+                <TextBlock Text="{Binding AuthorName}" Style="{StaticResource CaptionText}" TextTrimming="CharacterEllipsis" Margin="2,2,2,2"/>
+            </StackPanel>
+        </DataTemplate>
+
+        <!-- 読み込み中のスケルトン行 (最終レイアウトと同じ形) -->
+        <DataTemplate x:Key="SkeletonRowTemplate">
+            <Grid Margin="16,10">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+                <Border Width="96" Height="72" CornerRadius="{StaticResource ControlRadius}" Background="{DynamicResource SkeletonBrush}" Margin="0,0,14,0"/>
+                <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                    <Border Height="14" Width="220" HorizontalAlignment="Left" CornerRadius="4" Background="{DynamicResource SkeletonBrush}"/>
+                    <Border Height="12" Width="140" HorizontalAlignment="Left" CornerRadius="4" Background="{DynamicResource SkeletonBrush}" Margin="0,8,0,0"/>
+                    <Border Height="10" Width="300" HorizontalAlignment="Left" CornerRadius="4" Background="{DynamicResource SkeletonBrush}" Margin="0,8,0,0"/>
+                </StackPanel>
+            </Grid>
+        </DataTemplate>
+    </Window.Resources>
+
+    <Grid>
+        <!-- ================= ログイン ================= -->
+        <Border x:Name="LoginPanel" Style="{StaticResource Card}" Padding="32,28" Width="400"
+                HorizontalAlignment="Center" VerticalAlignment="Center">
+            <StackPanel>
+                <TextBlock Text="VRCAvatarChanger" Style="{StaticResource TitleText}"/>
+                <TextBlock Text="VRChat アカウントでログイン" Style="{StaticResource MutedText}" Margin="0,4,0,22"/>
+
+                <StackPanel x:Name="CredentialsPanel">
+                    <TextBlock Text="ユーザー名 / メールアドレス" Style="{StaticResource FieldLabel}"/>
+                    <TextBox x:Name="UsernameBox" Margin="0,0,0,14" KeyDown="LoginField_KeyDown"/>
+                    <TextBlock Text="パスワード" Style="{StaticResource FieldLabel}"/>
+                    <PasswordBox x:Name="PasswordBox" Margin="0,0,0,20" KeyDown="LoginField_KeyDown"/>
+                    <Button x:Name="LoginButton" Content="ログイン" Click="LoginButton_Click" Height="36"/>
+
+                    <Grid Margin="0,18,0,14">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition/>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition/>
+                        </Grid.ColumnDefinitions>
+                        <Border Height="1" Background="{DynamicResource BorderBrush}" VerticalAlignment="Center"/>
+                        <TextBlock Grid.Column="1" Text="または" Style="{StaticResource CaptionText}" Margin="12,0"/>
+                        <Border Grid.Column="2" Height="1" Background="{DynamicResource BorderBrush}" VerticalAlignment="Center"/>
+                    </Grid>
+                    <Button x:Name="BrowserLoginButton" Style="{StaticResource SecondaryButton}" Click="BrowserLoginButton_Click" Height="36"
+                            Content="Discord / Google などでログイン"
+                            ToolTip="vrchat.com のログイン画面を開きます。Discord / Google / Apple / Steam でログインできます。"/>
+                </StackPanel>
+
+                <StackPanel x:Name="TwoFactorPanel" Visibility="Collapsed">
+                    <TextBlock x:Name="TwoFactorHint" TextWrapping="Wrap" Style="{StaticResource MutedText}" Margin="0,0,0,14"/>
+                    <TextBlock Text="認証コード" Style="{StaticResource FieldLabel}"/>
+                    <TextBox x:Name="TwoFactorCodeBox" Margin="0,0,0,20" FontSize="18" MaxLength="8" KeyDown="TwoFactorField_KeyDown"
+                             FontFamily="Cascadia Mono, Consolas"/>
+                    <Button x:Name="VerifyButton" Content="認証する" Click="VerifyButton_Click" Height="36"/>
+                    <Button Content="戻る" Style="{StaticResource GhostButton}" Click="BackToLogin_Click" Height="32" Margin="0,8,0,0"/>
+                </StackPanel>
+
+                <TextBlock x:Name="LoginStatus" Foreground="{DynamicResource DangerBrush}" TextWrapping="Wrap" Margin="0,14,0,0"/>
+                <TextBlock Style="{StaticResource CaptionText}" TextWrapping="Wrap" Margin="0,18,0,0" Foreground="{DynamicResource FaintTextBrush}"
+                           Text="パスワードは保存しません。ログイン状態だけを暗号化して保存します。"/>
+                <Button Content="使い方とよくある質問を見る" Style="{StaticResource GhostButton}" Click="HelpButton_Click" Height="30" Margin="0,10,0,0" HorizontalAlignment="Center"/>
+            </StackPanel>
+        </Border>
+
+        <!-- ================= メイン ================= -->
+        <Grid x:Name="MainPanel" Visibility="Collapsed">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+            </Grid.RowDefinitions>
+
+            <!-- 上部ツールバー: 左にユーザーと現在のアバター、右にアプリ全体の操作 -->
+            <Border Grid.Row="0" Background="{DynamicResource PanelBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,0,0,1" Padding="16,6">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                        <Border Width="40" Height="30" CornerRadius="4" Background="{DynamicResource ThumbBackBrush}" Margin="0,0,10,0"
+                                ToolTip="現在のアバター">
+                            <Border.Clip>
+                                <RectangleGeometry Rect="0,0,40,30" RadiusX="4" RadiusY="4"/>
+                            </Border.Clip>
+                            <Image x:Name="CurrentAvatarImage" Stretch="UniformToFill"/>
+                        </Border>
+                        <TextBlock x:Name="UserNameText" FontWeight="SemiBold" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" MaxWidth="200"/>
+                        <TextBlock x:Name="CurrentAvatarText" Style="{StaticResource MutedText}" VerticalAlignment="Center" Margin="12,0,0,0"
+                                   TextTrimming="CharacterEllipsis" MaxWidth="360"/>
+                        <TextBlock x:Name="OscStatusText" Style="{StaticResource CaptionText}" Foreground="{DynamicResource FaintTextBrush}"
+                                   VerticalAlignment="Center" Margin="12,0,0,0"
+                                   ToolTip="VRChat で OSC を有効にすると(アクションメニュー → Options → OSC → Enabled)、ゲーム内で着替えたときも「現在:」が更新されます。"/>
+                    </StackPanel>
+                    <StackPanel Grid.Column="1" Orientation="Horizontal">
+                        <Button x:Name="UpdateButton" Style="{StaticResource GhostButton}" Click="UpdateButton_Click" Visibility="Collapsed"
+                                AutomationProperties.Name="更新" Height="30" Padding="10,0" Margin="0,0,4,0"
+                                Foreground="{DynamicResource AccentBrush}" ToolTip="新しいバージョンをダウンロードして更新します">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="&#xE896;" Style="{StaticResource Icon}" Foreground="{DynamicResource AccentBrush}" Margin="0,0,8,0"/>
+                                <TextBlock x:Name="UpdateButtonText" Text="更新があります" Foreground="{DynamicResource AccentBrush}"/>
+                            </StackPanel>
+                        </Button>
+                        <Button x:Name="RefreshButton" Style="{StaticResource GhostButton}" Click="RefreshButton_Click" AutomationProperties.Name="再読み込み" ToolTip="一覧を読み込み直す (F5)" Height="30" Padding="10,0">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="&#xE72C;" Style="{StaticResource Icon}" Margin="0,0,8,0"/>
+                                <TextBlock Text="再読み込み"/>
+                            </StackPanel>
+                        </Button>
+                        <Button Style="{StaticResource GhostButton}" Click="LogoutButton_Click" AutomationProperties.Name="ログアウト" ToolTip="ログイン状態を消してログイン画面に戻る" Height="30" Padding="10,0" Margin="4,0,0,0">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="&#xF3B1;" Style="{StaticResource Icon}" Margin="0,0,8,0"/>
+                                <TextBlock Text="ログアウト"/>
+                            </StackPanel>
+                        </Button>
+                        <Button Style="{StaticResource GhostButton}" Click="HelpButton_Click" ToolTip="使い方・よくある質問 (F1)" AutomationProperties.Name="使い方" Height="30" Padding="10,0" Margin="4,0,0,0">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="&#xE897;" Style="{StaticResource Icon}" Margin="0,0,8,0"/>
+                                <TextBlock Text="使い方"/>
+                            </StackPanel>
+                        </Button>
+                    </StackPanel>
+                </Grid>
+            </Border>
+
+            <Grid Grid.Row="1" Margin="16,12,16,16">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+                <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
+
+            <!-- 絞り込みツールバー -->
+            <Grid Grid.Row="0" Margin="0,0,0,10">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+                <Border Background="{DynamicResource InputBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"
+                        CornerRadius="{StaticResource ControlRadius}" Margin="0,0,10,0" VerticalAlignment="Center">
+                    <StackPanel Orientation="Horizontal">
+                        <RadioButton x:Name="SourceOwn" Content="自分のアバター" IsChecked="True" Style="{StaticResource SegmentButton}" Checked="Source_Checked"/>
+                        <RadioButton x:Name="SourceFavorites" Content="お気に入り" Style="{StaticResource SegmentButton}" Checked="Source_Checked"/>
+                        <RadioButton x:Name="SourcePublic" Content="パブリック" Style="{StaticResource SegmentButton}" Checked="Source_Checked"
+                                     ToolTip="気に入ったパブリックアバターを登録する、このアプリ独自のリスト。上限なし。"/>
+                    </StackPanel>
+                </Border>
+
+                <!-- 表示形式 -->
+                <Border Grid.Column="1" Background="{DynamicResource InputBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"
+                        CornerRadius="{StaticResource ControlRadius}" Margin="0,0,10,0" VerticalAlignment="Center">
+                    <StackPanel Orientation="Horizontal">
+                        <RadioButton x:Name="ViewList" Style="{StaticResource SegmentButton}" Padding="9,0" Checked="ViewMode_Checked" ToolTip="リスト表示" GroupName="ViewMode">
+                            <TextBlock Text="&#xE8FD;" Style="{StaticResource Icon}"/>
+                        </RadioButton>
+                        <RadioButton x:Name="ViewGrid" Style="{StaticResource SegmentButton}" Padding="9,0" Checked="ViewMode_Checked" ToolTip="ボックス表示" GroupName="ViewMode">
+                            <TextBlock Text="&#xF0E2;" Style="{StaticResource Icon}"/>
+                        </RadioButton>
+                    </StackPanel>
+                </Border>
+
+                <!-- 列数 (ボックス表示のみ) + グループ化 -->
+                <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                <ToggleButton x:Name="GroupToggle" Style="{StaticResource SegmentToggle}" Margin="0,0,10,0" IsChecked="True"
+                              Checked="GroupToggle_Changed" Unchecked="GroupToggle_Changed" AutomationProperties.Name="グループ化"
+                              ToolTip="ON: 同じグループのアバターを 1 枚にまとめて表示 / OFF: すべて個別に表示">
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Text="&#xE8B7;" Style="{StaticResource Icon}" Margin="0,0,8,0"/>
+                        <TextBlock Text="グループ化"/>
+                    </StackPanel>
+                </ToggleButton>
+                </StackPanel>
+                <StackPanel Grid.Column="3" x:Name="ColumnsPanel" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,10,0" Visibility="Collapsed">
+                    <Slider x:Name="ColumnsSlider" Width="110" Minimum="3" Maximum="10" TickFrequency="1" IsSnapToTickEnabled="True"
+                            SmallChange="1" LargeChange="1" ValueChanged="ColumnsSlider_ValueChanged" ToolTip="1 行に表示する数"/>
+                    <TextBlock x:Name="ColumnsLabel" Style="{StaticResource CaptionText}" VerticalAlignment="Center" Margin="6,0,0,0" MinWidth="34"/>
+                </StackPanel>
+
+                <StackPanel Grid.Column="4" Orientation="Horizontal" HorizontalAlignment="Right">
+                    <!-- 並び順 -->
+                    <ComboBox x:Name="SortBox" MinWidth="150" Margin="0,0,10,0" SelectionChanged="SortBox_SelectionChanged" ToolTip="並び順">
+                        <ComboBoxItem Tag="created_desc" Content="追加日 (新しい順)"/>
+                        <ComboBoxItem Tag="created_asc"  Content="追加日 (古い順)"/>
+                        <ComboBoxItem Tag="updated_desc" Content="更新日 (新しい順)"/>
+                        <ComboBoxItem Tag="updated_asc"  Content="更新日 (古い順)"/>
+                        <ComboBoxItem Tag="name_asc"     Content="名前 (A → Z)"/>
+                        <ComboBoxItem Tag="name_desc"    Content="名前 (Z → A)"/>
+                    </ComboBox>
+                <Grid Width="230">
+                    <TextBox x:Name="SearchBox" TextChanged="SearchBox_TextChanged" Padding="32,7,10,7"/>
+                    <TextBlock Text="&#xE721;" Style="{StaticResource Icon}" Foreground="{DynamicResource MutedTextBrush}" Margin="11,0,0,0" IsHitTestVisible="False"/>
+                    <TextBlock x:Name="SearchPlaceholder" Text="名前・作者・ID で絞り込み" Style="{StaticResource MutedText}" Margin="33,0,0,0"
+                               VerticalAlignment="Center" IsHitTestVisible="False"/>
+                </Grid>
+                </StackPanel>
+            </Grid>
+
+            <!-- フィルタ (お気に入り: グループ / パブリック: タグ) -->
+            <!-- Grid で幅を制限してチップを折り返す。閉じた状態は 1 行だけ見せ、あふれたら「もっと見る」を出す -->
+            <Grid Grid.Row="1" x:Name="FilterBar" Margin="0,0,0,10" Visibility="Collapsed">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <TextBlock Text="&#xE71C;" Style="{StaticResource Icon}" Foreground="{DynamicResource MutedTextBrush}" Margin="2,0,8,0" VerticalAlignment="Top"
+                           Height="34" ToolTip="絞り込み"><TextBlock.RenderTransform><TranslateTransform Y="10"/></TextBlock.RenderTransform></TextBlock>
+                <Border Grid.Column="1" x:Name="FilterChipsHost" Background="{DynamicResource InputBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"
+                        CornerRadius="{StaticResource ControlRadius}" VerticalAlignment="Top" HorizontalAlignment="Left" ClipToBounds="True">
+                    <WrapPanel x:Name="FilterChips" Orientation="Horizontal" SizeChanged="FilterChips_SizeChanged"/>
+                </Border>
+                <Button Grid.Column="2" x:Name="FilterMoreButton" Style="{StaticResource GhostButton}" Click="FilterMore_Click"
+                        Height="34" Padding="10,0" Margin="8,0,0,0" VerticalAlignment="Top" Visibility="Collapsed">
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock x:Name="FilterMoreText" Text="もっと見る"/>
+                        <TextBlock x:Name="FilterMoreChevron" Text="&#xE70D;" Style="{StaticResource Icon}" FontSize="10" Margin="6,0,0,0"/>
+                    </StackPanel>
+                </Button>
+            </Grid>
+
+            <!-- 一覧 -->
+            <Border Grid.Row="2" Style="{StaticResource Card}" Padding="0,4">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+
+                    <!-- グループを開いているときのバー -->
+                    <Border x:Name="GroupBar" Visibility="Collapsed" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,0,0,1" Padding="10,6" Margin="0,-4,0,4">
+                        <StackPanel Orientation="Horizontal">
+                            <Button Style="{StaticResource GhostButton}" Click="GroupBack_Click" Height="30" Padding="8,0" ToolTip="一覧に戻る (Esc)">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="&#xE72B;" Style="{StaticResource Icon}" Margin="0,0,8,0"/>
+                                    <TextBlock Text="戻る"/>
+                                </StackPanel>
+                            </Button>
+                            <TextBlock Text="&#xE8B7;" Style="{StaticResource Icon}" Foreground="{DynamicResource MutedTextBrush}" Margin="10,0,8,0"/>
+                            <TextBlock x:Name="GroupBarName" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                            <TextBlock x:Name="GroupBarCount" Style="{StaticResource CaptionText}" VerticalAlignment="Center" Margin="8,0,0,0"/>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- パブリック: 追加欄 (パブリックタブのみ) -->
+                    <Border Grid.Row="1" x:Name="PublicAddPanel" Visibility="Collapsed" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,0,0,1" Padding="12,8,12,12" Margin="0,-4,0,4">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <StackPanel>
+                                <TextBlock Text="アバターの ID または URL を貼って追加" Style="{StaticResource FieldLabel}"/>
+                                <TextBox x:Name="PublicIdBox" KeyDown="PublicIdBox_KeyDown" FontFamily="Cascadia Mono, Consolas"/>
+                            </StackPanel>
+                            <Button Grid.Column="1" x:Name="PublicAddButton" Content="追加" Style="{StaticResource SecondaryButton}" Click="PublicAdd_Click"
+                                    Margin="8,0,0,0" VerticalAlignment="Bottom" Height="34" MinWidth="80"/>
+                        </Grid>
+                    </Border>
+
+                    <ListView Grid.Row="2" x:Name="AvatarList" Background="Transparent" BorderThickness="0" SelectionMode="Single"
+                              ItemContainerStyle="{StaticResource AvatarRow}" ItemTemplate="{StaticResource AvatarRowTemplate}" ItemsPanel="{StaticResource ListPanel}"
+                              ScrollViewer.HorizontalScrollBarVisibility="Disabled" MouseDoubleClick="AvatarList_MouseDoubleClick"
+                              SelectionChanged="AvatarList_SelectionChanged" ContextMenuOpening="AvatarList_ContextMenuOpening"
+                              PreviewMouseRightButtonDown="AvatarList_PreviewMouseRightButtonDown"
+                              AllowDrop="True" PreviewMouseLeftButtonDown="AvatarList_PreviewMouseLeftButtonDown" PreviewMouseMove="AvatarList_PreviewMouseMove"
+                              DragOver="AvatarList_DragOver" DragLeave="AvatarList_DragLeave" Drop="AvatarList_Drop"
+                              VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.VirtualizationMode="Recycling">
+                        <ListView.ContextMenu>
+                            <ContextMenu>
+                                <MenuItem x:Name="MenuChange" Header="このアバターに着替える" Click="MenuChange_Click"/>
+                                <MenuItem x:Name="MenuOpenGroup" Header="グループを開く" Click="MenuOpenGroup_Click"/>
+                                <Separator/>
+                                <MenuItem x:Name="MenuAssignGroup" Header="グループに入れる..." Click="MenuAssignGroup_Click"/>
+                                <MenuItem x:Name="MenuUnassignGroup" Header="グループから外す" Click="MenuUnassignGroup_Click"/>
+                                <MenuItem x:Name="MenuRenameGroup" Header="グループ名を変更..." Click="MenuRenameGroup_Click"/>
+                                <MenuItem x:Name="MenuDissolveGroup" Header="グループを解除" Click="MenuDissolveGroup_Click"/>
+                                <Separator/>
+                                <MenuItem x:Name="MenuAddPublic" Header="パブリックに追加" Click="MenuAddPublic_Click"/>
+                                <MenuItem x:Name="MenuRemovePublic" Header="パブリックから削除" Click="MenuRemovePublic_Click"/>
+                                <MenuItem x:Name="MenuEditTags" Header="タグを編集..." Click="MenuEditTags_Click"/>
+                                <Separator/>
+                                <MenuItem x:Name="MenuCopyId" Header="アバター ID をコピー" Click="MenuCopyId_Click"/>
+                            </ContextMenu>
+                        </ListView.ContextMenu>
+                    </ListView>
+
+                    <ItemsControl Grid.Row="2" x:Name="SkeletonPanel" ItemTemplate="{StaticResource SkeletonRowTemplate}" Visibility="Collapsed" IsHitTestVisible="False">
+                        <ItemsControl.ItemsSource>
+                            <x:Array Type="sys:Int32"><sys:Int32>1</sys:Int32><sys:Int32>2</sys:Int32><sys:Int32>3</sys:Int32><sys:Int32>4</sys:Int32><sys:Int32>5</sys:Int32><sys:Int32>6</sys:Int32></x:Array>
+                        </ItemsControl.ItemsSource>
+                    </ItemsControl>
+
+                    <StackPanel Grid.Row="2" x:Name="EmptyPanel" Visibility="Collapsed" VerticalAlignment="Center" HorizontalAlignment="Center" MaxWidth="380">
+                        <TextBlock x:Name="EmptyTitle" Text="アバターがありません" FontWeight="SemiBold" FontSize="15" HorizontalAlignment="Center"/>
+                        <TextBlock x:Name="EmptyHint" Style="{StaticResource MutedText}" TextWrapping="Wrap" TextAlignment="Center" Margin="0,6,0,0"/>
+                    </StackPanel>
+                </Grid>
+            </Border>
+
+            <!-- 操作 + ステータス -->
+            <Grid Grid.Row="3" Margin="0,12,0,0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="2,0,12,0">
+                    <TextBlock x:Name="StatusIcon" Style="{StaticResource Icon}" FontSize="12" Margin="0,0,6,0" Visibility="Collapsed"/>
+                    <TextBlock x:Name="StatusText" Style="{StaticResource CaptionText}" TextTrimming="CharacterEllipsis"/>
+                </StackPanel>
+                <Button Grid.Column="1" x:Name="ChangeButton" Content="選択したアバターに着替える" Click="ChangeSelected_Click"
+                        Height="34" MinWidth="220" IsEnabled="False"
+                        ToolTip="一覧のダブルクリックでも着替えられます"/>
+            </Grid>
+            </Grid>
+        </Grid>
+    </Grid>
+</Window>
