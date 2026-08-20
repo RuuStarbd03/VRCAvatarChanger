@@ -512,7 +512,8 @@
                               PreviewMouseRightButtonDown="AvatarList_PreviewMouseRightButtonDown"
                               AllowDrop="True" PreviewMouseLeftButtonDown="AvatarList_PreviewMouseLeftButtonDown" PreviewMouseMove="AvatarList_PreviewMouseMove"
                               DragOver="AvatarList_DragOver" DragLeave="AvatarList_DragLeave" Drop="AvatarList_Drop"
-                              VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.VirtualizationMode="Recycling">
+                              VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.VirtualizationMode="Recycling"
+                              VirtualizingPanel.ScrollUnit="Pixel" local:SmoothScroll.IsEnabled="True">
                         <ListView.ContextMenu>
                             <ContextMenu>
                                 <MenuItem x:Name="MenuChange" Header="このアバターに着替える" Click="MenuChange_Click"/>
