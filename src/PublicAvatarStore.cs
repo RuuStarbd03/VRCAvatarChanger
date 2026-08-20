@@ -29,8 +29,7 @@ public sealed class PublicAvatarStore
 
     public IReadOnlyList<PublicAvatarEntry> Entries => _entries;
 
-    private static string PathOf() => Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "VRCAvatarChanger", "public_avatars.json");
+    private static string PathOf() => AppPaths.In("public_avatars.json");
 
     public static PublicAvatarStore Load()
     {
@@ -55,7 +54,7 @@ public sealed class PublicAvatarStore
         {
             var p = PathOf();
             Directory.CreateDirectory(Path.GetDirectoryName(p)!);
-            File.WriteAllText(p, JsonSerializer.Serialize(_entries, JsonOptions));
+            AtomicFile.WriteAllText(p, JsonSerializer.Serialize(_entries, JsonOptions));
         }
         catch { /* 保存失敗は致命的ではない */ }
     }
@@ -83,29 +82,5 @@ public sealed class PublicAvatarStore
     {
         var existing = _entries.FirstOrDefault(e => e.Avatar.Id == avatar.Id);
         if (existing is not null) existing.Avatar = avatar;
-    }
-
-    // ---------------- タグ ----------------
-
-    /// <summary>使われているすべてのタグ(名前順)。</summary>
-    public List<string> AllTags()
-        => _entries.SelectMany(e => e.Tags)
-            .Distinct(StringComparer.CurrentCultureIgnoreCase)
-            .OrderBy(t => t, StringComparer.CurrentCultureIgnoreCase)
-            .ToList();
-
-    public IReadOnlyList<string> TagsOf(string avatarId)
-        => _entries.FirstOrDefault(e => e.Avatar.Id == avatarId)?.Tags ?? [];
-
-    public void SetTags(string avatarId, IEnumerable<string> tags)
-    {
-        var entry = _entries.FirstOrDefault(e => e.Avatar.Id == avatarId);
-        if (entry is null) return;
-        entry.Tags = tags
-            .Select(t => t.Trim())
-            .Where(t => t.Length > 0)
-            .Distinct(StringComparer.CurrentCultureIgnoreCase)
-            .ToList();
-        Save();
     }
 }

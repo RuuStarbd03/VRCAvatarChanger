@@ -83,9 +83,8 @@ public sealed class VRChatApi : IDisposable
 
     public VRChatApi()
     {
-        var dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "VRCAvatarChanger");
-        Directory.CreateDirectory(dir);
-        _cookiePath = Path.Combine(dir, "session.json");
+        Directory.CreateDirectory(AppPaths.DataDir);
+        _cookiePath = AppPaths.In("session.json");
 
         _http = new HttpClient(new HttpClientHandler { CookieContainer = _cookies, UseCookies = true })
         {
@@ -125,7 +124,7 @@ public sealed class VRChatApi : IDisposable
         var c = _cookies.GetCookies(new Uri(BaseUrl));
         var s = new SavedSession(c["auth"]?.Value, c["twoFactorAuth"]?.Value);
         var plain = JsonSerializer.SerializeToUtf8Bytes(s);
-        File.WriteAllBytes(_cookiePath, ProtectedData.Protect(plain, DpapiEntropy, DataProtectionScope.CurrentUser));
+        AtomicFile.WriteAllBytes(_cookiePath, ProtectedData.Protect(plain, DpapiEntropy, DataProtectionScope.CurrentUser));
     }
 
     public bool HasSavedSession => _cookies.GetCookies(new Uri(BaseUrl))["auth"] is not null;
@@ -285,15 +284,28 @@ public sealed class VRChatApi : IDisposable
            && u.Scheme == Uri.UriSchemeHttps
            && (u.Host == "api.vrchat.cloud" || u.Host == "vrchat.com" || u.Host.EndsWith(".vrchat.cloud", StringComparison.Ordinal));
 
+    private const int MaxImageBytes = 10 * 1024 * 1024;
+
     public async Task<byte[]?> DownloadImageAsync(string url, CancellationToken ct = default)
     {
         if (!IsAllowedImageUrl(url)) return null;
         try
         {
-            using var res = await _http.GetAsync(url, ct);
-            if (res.Content.Headers.ContentLength > 10 * 1024 * 1024) return null;
+            // ヘッダだけ先に読み、本文はサイズ上限を確かめながら受信する
+            // (Content-Length を返さない応答でも 10MB で打ち切る)
+            using var res = await _http.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, ct);
             if (!res.IsSuccessStatusCode) return null;
-            return await res.Content.ReadAsByteArrayAsync(ct);
+            if (res.Content.Headers.ContentLength > MaxImageBytes) return null;
+            await using var stream = await res.Content.ReadAsStreamAsync(ct);
+            using var ms = new MemoryStream();
+            var buf = new byte[64 * 1024];
+            int read;
+            while ((read = await stream.ReadAsync(buf, ct)) > 0)
+            {
+                if (ms.Length + read > MaxImageBytes) return null;
+                ms.Write(buf, 0, read);
+            }
+            return ms.ToArray();
         }
         catch { return null; }
     }

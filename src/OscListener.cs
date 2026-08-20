@@ -38,6 +38,7 @@ public sealed class OscListener : IDisposable
     public void Stop()
     {
         _cts?.Cancel();
+        _cts?.Dispose();
         _cts = null;
         _udp?.Dispose();
         _udp = null;

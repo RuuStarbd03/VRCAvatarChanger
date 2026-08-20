@@ -3,7 +3,7 @@ using System.Text.Json;
 
 namespace VRCAvatarChanger;
 
-/// <summary>è¡¨ç¤ºè¨­å®ãªã©ãæ©å¯ã§ã¯ãªãè¨­å®ã%AppData%\VRCAvatarChanger\settings.json ã«å¹³æã§ä¿å­ããã</summary>
+/// <summary>表示設定など、機密ではない設定。%AppData%\VRCAvatarChanger\settings.json に平文で保存する。</summary>
 public sealed class Settings
 {
     public const int MinGridColumns = 3;
@@ -18,15 +18,16 @@ public sealed class Settings
     public bool StripeColors { get; set; }
     public List<string> StripeExcluded { get; set; } = []; // カウントから除外する ID (アバター ID / group:グループ ID)
 
-    // ã¦ã£ã³ãã¦ã®ä½ç½®ã¨ãµã¤ãº(ååçµäºæ)
+    // ウィンドウの位置とサイズ(前回終了時)
     public double? WindowLeft { get; set; }
     public double? WindowTop { get; set; }
     public double? WindowWidth { get; set; }
     public double? WindowHeight { get; set; }
     public bool WindowMaximized { get; set; }
 
-    private static string PathOf() => Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "VRCAvatarChanger", "settings.json");
+    private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
+
+    private static string PathOf() => AppPaths.In("settings.json");
 
     public static Settings Load()
     {
@@ -44,7 +45,7 @@ public sealed class Settings
                 }
             }
         }
-        catch { /* å£ãã¦ãããæ¢å®å¤ */ }
+        catch { /* 壊れていたら既定値 */ }
         return new Settings();
     }
 
@@ -54,8 +55,8 @@ public sealed class Settings
         {
             var p = PathOf();
             Directory.CreateDirectory(Path.GetDirectoryName(p)!);
-            File.WriteAllText(p, JsonSerializer.Serialize(this, new JsonSerializerOptions { WriteIndented = true }));
+            AtomicFile.WriteAllText(p, JsonSerializer.Serialize(this, JsonOptions));
         }
-        catch { /* ä¿å­ã§ããªãã¦ãåä½ã«ã¯å½±é¿ããªã */ }
+        catch { /* 保存できなくても動作には影響がない */ }
     }
 }

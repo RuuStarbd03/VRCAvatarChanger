@@ -40,6 +40,9 @@ public sealed class AvatarItem : INotifyPropertyChanged
 
     public AvatarItem(Avatar avatar) { Avatar = avatar; }
 
+    // 弱イベントの購読を保持する(タイル自身が生きている間だけ通知を受け、破棄されたら購読ごと回収される)
+    private readonly EventHandler<PropertyChangedEventArgs>? _repThumbnailHandler;
+
     public AvatarItem(AvatarGroup group, IReadOnlyList<AvatarItem> members)
     {
         Group = group;
@@ -52,8 +55,11 @@ public sealed class AvatarItem : INotifyPropertyChanged
         Representative = rep;
         Avatar = rep.Avatar;
         AddedAt = rep.AddedAt;
-        // 代表のサムネが後から届いたら自分の表示も更新する
-        rep.PropertyChanged += (_, e) => { if (e.PropertyName == nameof(Thumbnail)) OnPropertyChanged(nameof(Thumbnail)); };
+        // 代表のサムネが後から届いたら自分の表示も更新する。
+        // グループタイルは絞り込みのたびに作り直されるため、通常の += だと古いタイルへの
+        // 購読が代表メンバー側に溜まり続ける。弱イベントで購読して自然に回収させる
+        _repThumbnailHandler = (_, e) => { if (e.PropertyName == nameof(Thumbnail)) OnPropertyChanged(nameof(Thumbnail)); };
+        PropertyChangedEventManager.AddHandler(rep, _repThumbnailHandler, nameof(Thumbnail));
     }
 
     public string Id => Avatar.Id;
@@ -177,7 +183,7 @@ public partial class MainWindow : Window
         Loaded += async (_, _) => await TryRestoreSessionAsync();
         Loaded += async (_, _) => await CheckForUpdateAsync();
         Closing += (_, _) => SaveWindowBounds();
-        Closed += (_, _) => { _oscRetry?.Stop(); _osc.Dispose(); _api.Dispose(); };
+        Closed += (_, _) => { _settingsSaveTimer?.Stop(); _searchTimer?.Stop(); _oscRetry?.Stop(); _thumbCts?.Cancel(); _osc.Dispose(); _api.Dispose(); };
 #if DEBUG
         // UI 確認用: 環境変数 VRCAC_UI_PREVIEW=1 で API を叩かずにダミーデータでメイン画面を表示する (Debug ビルドのみ)
         if (Environment.GetEnvironmentVariable("VRCAC_UI_PREVIEW") == "1")
@@ -196,11 +202,13 @@ public partial class MainWindow : Window
         MainPanel.Visibility = Visibility.Visible;
         _allItems.Clear();
         string[] names = ["Kikyo", "Selestia", "Manuka", "Shinano", "Rurune", "Moe", "Lime", "Mizuki"];
-        for (var i = 0; i < names.Length; i++)
+        // VRCAC_UI_PREVIEW_COUNT=500 のように件数を増やして、仮想化やスクロールの負荷を確認できる
+        var count = int.TryParse(Environment.GetEnvironmentVariable("VRCAC_UI_PREVIEW_COUNT"), out var c) ? c : names.Length;
+        for (var i = 0; i < count; i++)
             _allItems.Add(new AvatarItem(new Avatar
             {
                 Id = $"avtr_00000000-0000-4000-8000-{i + 1:D12}",
-                Name = names[i] + (i % 3 == 0 ? " (改変)" : ""),
+                Name = names[i % names.Length] + (i >= names.Length ? $" {i + 1}" : "") + (i % 3 == 0 ? " (改変)" : ""),
                 AuthorName = "preview_author",
                 ReleaseStatus = i % 2 == 0 ? "private" : "public",
                 CreatedAt = DateTimeOffset.Now.AddDays(-i * 3),
@@ -229,6 +237,91 @@ public partial class MainWindow : Window
         UpdateUserHeader();
         OscStatusText.Text = "OSC 連携中";
         SetStatus(StatusKind.Success, "Kikyo に着替えました");
+        // 仮想化の自己診断: スクロールしながら実体化済みコンテナ数を VRCAC_UI_PREVIEW_REPORT のファイルに書いて終了する
+        if (Environment.GetEnvironmentVariable("VRCAC_UI_PREVIEW_SCROLLTEST") == "1") _ = RunScrollTestAsync();
+    }
+
+    private async Task RunScrollTestAsync()
+    {
+        Left = -4000; Top = 0; // 検証用: 画面外に出して作業の邪魔をしない
+        var reportPath = Environment.GetEnvironmentVariable("VRCAC_UI_PREVIEW_REPORT");
+        if (!string.IsNullOrEmpty(reportPath)) File.WriteAllText(reportPath, "started\r\n");
+        var report = new System.Text.StringBuilder();
+        try
+        {
+            await Task.Delay(1200);
+            var sv = FindDescendant<ScrollViewer>(AvatarList);
+            void Snapshot(string label)
+            {
+                var realized = CountDescendants<ListViewItem>(AvatarList);
+                report.AppendLine($"{label}: items={AvatarList.Items.Count} realized={realized} " +
+                    $"offset={sv?.VerticalOffset:F0} extent={sv?.ExtentHeight:F0} viewport={sv?.ViewportHeight:F0}");
+            }
+            Snapshot("top");
+            foreach (var (label, ratio) in new[] { ("middle", 0.5), ("bottom", 1.0), ("back-to-top", 0.0) })
+            {
+                sv?.ScrollToVerticalOffset((sv.ExtentHeight - sv.ViewportHeight) * ratio);
+                await Task.Delay(400);
+                Snapshot(label);
+            }
+            // VR スティック風のホイール連続入力 (1 ノッチを 200ms 間隔で 6 回)。50ms ごとの移動量で等速性を見る
+            void RaiseWheel() => AvatarList.RaiseEvent(new MouseWheelEventArgs(Mouse.PrimaryDevice, Environment.TickCount, -120)
+            { RoutedEvent = Mouse.PreviewMouseWheelEvent, Source = AvatarList });
+            var samples = new List<double>();
+            for (var i = 0; i < 6; i++)
+            {
+                RaiseWheel();
+                for (var j = 0; j < 4; j++) { await Task.Delay(50); samples.Add(sv?.VerticalOffset ?? -1); }
+            }
+            await Task.Delay(800);
+            samples.Add(sv?.VerticalOffset ?? -1);
+            var deltas = samples.Zip(samples.Skip(1), (a, b) => b - a).Select(d => d.ToString("F0"));
+            report.AppendLine("wheel offsets: " + string.Join(", ", samples.Select(o => o.ToString("F0"))));
+            report.AppendLine("wheel deltas/50ms: " + string.Join(", ", deltas));
+
+            // リサイクル後のコンテナ整合性: Content が今の項目を指しているか / 重複が無いか
+            var containers = new List<ListViewItem>();
+            CollectDescendants(AvatarList, containers);
+            var bad = containers.Count(c => c.Content is not AvatarItem || !ReferenceEquals(c.Content, c.DataContext));
+            var dup = containers.Count - containers.Select(c => c.Content).Distinct().Count();
+            report.AppendLine($"container integrity: total={containers.Count} bad={bad} duplicates={dup}");
+        }
+        catch (Exception ex) { report.AppendLine("EXCEPTION: " + ex); }
+        if (!string.IsNullOrEmpty(reportPath)) File.WriteAllText(reportPath, report.ToString());
+        Application.Current.Shutdown();
+    }
+
+    private static T? FindDescendant<T>(DependencyObject root) where T : DependencyObject
+    {
+        for (var i = 0; i < VisualTreeHelper.GetChildrenCount(root); i++)
+        {
+            var child = VisualTreeHelper.GetChild(root, i);
+            if (child is T t) return t;
+            if (FindDescendant<T>(child) is { } found) return found;
+        }
+        return null;
+    }
+
+    private static int CountDescendants<T>(DependencyObject root) where T : DependencyObject
+    {
+        var n = 0;
+        for (var i = 0; i < VisualTreeHelper.GetChildrenCount(root); i++)
+        {
+            var child = VisualTreeHelper.GetChild(root, i);
+            if (child is T) n++;
+            n += CountDescendants<T>(child);
+        }
+        return n;
+    }
+
+    private static void CollectDescendants<T>(DependencyObject root, List<T> into) where T : DependencyObject
+    {
+        for (var i = 0; i < VisualTreeHelper.GetChildrenCount(root); i++)
+        {
+            var child = VisualTreeHelper.GetChild(root, i);
+            if (child is T t) into.Add(t);
+            CollectDescendants(child, into);
+        }
     }
 #endif
 
@@ -252,6 +345,21 @@ public partial class MainWindow : Window
     private void ApplyPanels()
         => AvatarList.ItemsPanel = (ItemsPanelTemplate)FindResource(IsGridView ? "GridPanel" : "ListPanel");
 
+    private System.Windows.Threading.DispatcherTimer? _settingsSaveTimer;
+
+    /// <summary>スライダーのドラッグ中など、連続で変わる値の保存をまとめる(500ms 静止後に 1 回だけ書く)。</summary>
+    private void SaveSettingsDebounced()
+    {
+        if (_preview) return;
+        if (_settingsSaveTimer is null)
+        {
+            _settingsSaveTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(500) };
+            _settingsSaveTimer.Tick += (_, _) => { _settingsSaveTimer!.Stop(); _settings.Save(); };
+        }
+        _settingsSaveTimer.Stop();
+        _settingsSaveTimer.Start();
+    }
+
     private void ColumnsSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
     {
         if (!_ready) return;
@@ -259,7 +367,7 @@ public partial class MainWindow : Window
         GridColumns = n;
         ColumnsLabel.Text = $"{n} 列";
         _settings.GridColumns = n;
-        if (!_preview) _settings.Save();
+        SaveSettingsDebounced();
     }
 
     // ---------------- 並び順 ----------------
@@ -845,23 +953,14 @@ public partial class MainWindow : Window
         }
     }
 
-    private async void OnOscAvatarChanged(string avatarId)
+    private void OnOscAvatarChanged(string avatarId)
     {
         if (_user is null || _user.CurrentAvatar == avatarId) return;
         _user.CurrentAvatar = avatarId;
         _user.CurrentAvatarThumbnailImageUrl = null; // 旧アバターのサムネなので破棄
+        // 一覧に無いアバターの名前・サムネは UpdateUserHeader 内 (ResolveCurrentAvatarAsync) が API から引く
         UpdateUserHeader();
         OscStatusText.Text = $"OSC 連携中 ({DateTime.Now:HH:mm} にゲーム内の着替えを検知)";
-
-        // 一覧に無いアバターなら API から名前を引く
-        if (_allItems.Any(a => a.Id == avatarId) || _avatarInfoCache.ContainsKey(avatarId)) { UpdateUserHeader(); return; }
-        try
-        {
-            var av = await _api.GetAvatarAsync(avatarId);
-            _avatarInfoCache[avatarId] = av;
-            if (_user?.CurrentAvatar == avatarId) UpdateUserHeader();
-        }
-        catch { /* 非公開アバター等で取れないこともある。ID 表示のまま */ }
     }
 
     // ---------------- 認証 ----------------
@@ -1209,6 +1308,7 @@ public partial class MainWindow : Window
             ApplyFilter();
             UpdateUserHeader();
             SetStatus(StatusKind.Info, $"{_allItems.Count} 件");
+            PruneImageCache();
             _ = LoadThumbnailsAsync(_allItems.ToList(), ct);
         }
         catch (OperationCanceledException) { }
@@ -1235,33 +1335,72 @@ public partial class MainWindow : Window
         try { await Task.WhenAll(tasks); } catch (OperationCanceledException) { }
     }
 
-    private async Task<BitmapImage?> GetImageAsync(string url, CancellationToken ct)
+    /// <summary>
+    /// 今の一覧から参照されなくなった画像をキャッシュから外す(再読み込みで URL が変わった古いサムネなど)。
+    /// 長時間の使用でメモリが増え続けないようにするための整理で、タブ切り替え程度では消えない量を上限にしている。
+    /// </summary>
+    private void PruneImageCache()
     {
-        if (_imageCache.TryGetValue(url, out var cached)) return cached;
-        var bytes = await _api.DownloadImageAsync(url, ct);
-        if (bytes is null) return null;
+        const int maxEntries = 600; // 320px デコードで 1 枚 ~300KB。600 枚 ≒ 180MB を上限の目安に
+        if (_imageCache.Count <= maxEntries) return;
+        var keep = new HashSet<string>(_allItems.Select(i => i.ThumbnailUrl).OfType<string>());
+        if (_user?.CurrentAvatarThumbnailImageUrl is { } header) keep.Add(header);
+        foreach (var url in _imageCache.Keys.Where(u => !keep.Contains(u)).ToList())
+            _imageCache.Remove(url);
+    }
+
+    // ダウンロード中の URL。同じサムネをヘッダと一覧が同時に要求したときに二重ダウンロードしないための台帳
+    private readonly Dictionary<string, Task<BitmapImage?>> _imageLoads = [];
+
+    private Task<BitmapImage?> GetImageAsync(string url, CancellationToken ct)
+    {
+        if (_imageCache.TryGetValue(url, out var cached)) return Task.FromResult<BitmapImage?>(cached);
+        if (_imageLoads.TryGetValue(url, out var inFlight)) return inFlight;
+        var task = DownloadAndDecodeAsync(url, ct);
+        _imageLoads[url] = task;
+        return task;
+    }
+
+    private async Task<BitmapImage?> DownloadAndDecodeAsync(string url, CancellationToken ct)
+    {
         try
         {
-            var img = new BitmapImage();
-            using (var ms = new MemoryStream(bytes))
+            var bytes = await _api.DownloadImageAsync(url, ct); // 失敗・キャンセル時は null (例外は投げない)
+            if (bytes is null) return null;
+            try
             {
-                img.BeginInit();
-                img.CacheOption = BitmapCacheOption.OnLoad;
-                img.DecodePixelWidth = 320; // ボックス表示 3 列でも粗くならない幅
-                img.StreamSource = ms;
-                img.EndInit();
+                var img = new BitmapImage();
+                using (var ms = new MemoryStream(bytes))
+                {
+                    img.BeginInit();
+                    img.CacheOption = BitmapCacheOption.OnLoad;
+                    img.DecodePixelWidth = 320; // ボックス表示 3 列でも粗くならない幅
+                    img.StreamSource = ms;
+                    img.EndInit();
+                }
+                img.Freeze();
+                _imageCache[url] = img;
+                return img;
             }
-            img.Freeze();
-            _imageCache[url] = img;
-            return img;
+            catch { return null; }
         }
-        catch { return null; }
+        finally { _imageLoads.Remove(url); } // 失敗・キャンセル分を台帳に残さない(次の要求で再試行できる)
     }
+
+    private System.Windows.Threading.DispatcherTimer? _searchTimer;
 
     private void SearchBox_TextChanged(object sender, TextChangedEventArgs e)
     {
         SearchPlaceholder.Visibility = SearchBox.Text.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
-        if (MainPanel.Visibility == Visibility.Visible) ApplyFilter();
+        if (MainPanel.Visibility != Visibility.Visible) return;
+        // 1 打鍵(IME の変換中含む)ごとに全件を並べ直すと重いので、入力が 200ms 止まってから 1 回だけ絞り込む
+        if (_searchTimer is null)
+        {
+            _searchTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(200) };
+            _searchTimer.Tick += (_, _) => { _searchTimer!.Stop(); ApplyFilter(); };
+        }
+        _searchTimer.Stop();
+        _searchTimer.Start();
     }
 
     private void ApplyFilter()
@@ -1281,7 +1420,8 @@ public partial class MainWindow : Window
         if (_openGroup is not null)
         {
             // グループを開いている: そのメンバーだけ
-            list = sorted.Where(a => _openGroup.AvatarIds.Contains(a.Id)).ToList();
+            var memberIds = _openGroup.AvatarIds.ToHashSet(StringComparer.Ordinal);
+            list = sorted.Where(a => memberIds.Contains(a.Id)).ToList();
             GroupBarName.Text = _openGroup.Name;
             GroupBarCount.Text = $"{list.Count} 体";
         }
@@ -1293,12 +1433,12 @@ public partial class MainWindow : Window
         else
         {
             // グループに属するアバターは 1 枚のグループタイルにまとめる(代表 = 並び順で先頭のメンバー)
+            var membership = _groups.BuildMembershipIndex();
             var byGroup = new Dictionary<AvatarGroup, List<AvatarItem>>();
             list = [];
             foreach (var a in sorted)
             {
-                var g = _groups.GroupOf(a.Id);
-                if (g is null) { list.Add(a); continue; }
+                if (!membership.TryGetValue(a.Id, out var g)) { list.Add(a); continue; }
                 if (!byGroup.TryGetValue(g, out var members)) byGroup[g] = members = [];
                 members.Add(a);
             }
@@ -1403,6 +1543,6 @@ public partial class MainWindow : Window
             SetStatus(StatusKind.Success, $"{name} に着替えました");
         }
         catch (Exception ex) { if (!HandleSessionExpired(ex)) SetStatus(StatusKind.Error, "着替えられませんでした: " + FriendlyError.Of(ex)); }
-        finally { ChangeButton.IsEnabled = AvatarList.SelectedItem is AvatarItem; }
+        finally { ChangeButton.IsEnabled = AvatarList.SelectedItem is AvatarItem { IsAvatar: true }; }
     }
 }

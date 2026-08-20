@@ -125,7 +125,8 @@
             <VirtualizingStackPanel/>
         </ItemsPanelTemplate>
         <ItemsPanelTemplate x:Key="GridPanel">
-            <UniformGrid Columns="{Binding GridColumns, RelativeSource={RelativeSource AncestorType=Window}}" VerticalAlignment="Top"/>
+            <!-- UniformGrid は仮想化されず全件分の UI を作るため、行単位で仮想化する自作パネルを使う -->
+            <local:VirtualizingUniformGrid Columns="{Binding GridColumns, RelativeSource={RelativeSource AncestorType=Window}}"/>
         </ItemsPanelTemplate>
 
         <Style x:Key="AvatarTile" TargetType="ListViewItem">

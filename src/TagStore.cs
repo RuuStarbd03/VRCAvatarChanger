@@ -12,8 +12,7 @@ public sealed class TagStore
     private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
     private readonly Dictionary<string, List<string>> _tags = new(StringComparer.Ordinal);
 
-    private static string PathOf() => Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "VRCAvatarChanger", "tags.json");
+    private static string PathOf() => AppPaths.In("tags.json");
 
     public static TagStore Load()
     {
@@ -39,7 +38,7 @@ public sealed class TagStore
         {
             var p = PathOf();
             Directory.CreateDirectory(Path.GetDirectoryName(p)!);
-            File.WriteAllText(p, JsonSerializer.Serialize(_tags.Where(kv => kv.Value.Count > 0).ToDictionary(kv => kv.Key, kv => kv.Value), JsonOptions));
+            AtomicFile.WriteAllText(p, JsonSerializer.Serialize(_tags.Where(kv => kv.Value.Count > 0).ToDictionary(kv => kv.Key, kv => kv.Value), JsonOptions));
         }
         catch { /* 保存失敗は致命的ではない */ }
     }

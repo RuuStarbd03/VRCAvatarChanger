@@ -21,8 +21,7 @@ public sealed class GroupStore
 
     public IReadOnlyList<AvatarGroup> Groups => _groups;
 
-    private static string PathOf() => Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "VRCAvatarChanger", "groups.json");
+    private static string PathOf() => AppPaths.In("groups.json");
 
     public static GroupStore Load()
     {
@@ -47,14 +46,21 @@ public sealed class GroupStore
         {
             var p = PathOf();
             Directory.CreateDirectory(Path.GetDirectoryName(p)!);
-            File.WriteAllText(p, JsonSerializer.Serialize(_groups, JsonOptions));
+            AtomicFile.WriteAllText(p, JsonSerializer.Serialize(_groups, JsonOptions));
         }
         catch { /* 保存失敗は致命的ではない */ }
     }
 
     public AvatarGroup? GroupOf(string avatarId) => _groups.FirstOrDefault(g => g.AvatarIds.Contains(avatarId));
 
-    public AvatarGroup? FindById(string groupId) => _groups.FirstOrDefault(g => g.Id == groupId);
+    /// <summary>アバター ID → 所属グループの逆引き辞書。一覧の再構築時に 1 件ずつ GroupOf で走査しないための索引。</summary>
+    public Dictionary<string, AvatarGroup> BuildMembershipIndex()
+    {
+        var map = new Dictionary<string, AvatarGroup>(StringComparer.Ordinal);
+        foreach (var g in _groups)
+            foreach (var id in g.AvatarIds) map.TryAdd(id, g);
+        return map;
+    }
 
     public AvatarGroup? FindByName(string name)
         => _groups.FirstOrDefault(g => string.Equals(g.Name, name.Trim(), StringComparison.CurrentCultureIgnoreCase));

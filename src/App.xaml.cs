@@ -52,8 +52,7 @@ public partial class App : Application
 
     private static bool _showingError;
 
-    public static readonly string ErrorLogPath = System.IO.Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "VRCAvatarChanger", "error.log");
+    public static readonly string ErrorLogPath = AppPaths.In("error.log");
 
     /// <summary>予期しない例外を %AppData%\VRCAvatarChanger\error.log に追記する(問い合わせ対応用。個人情報は含めない)。</summary>
     public static void LogError(Exception? ex)

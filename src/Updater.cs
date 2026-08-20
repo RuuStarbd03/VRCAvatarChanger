@@ -95,14 +95,19 @@ public static class Updater
     {
         if (info.ZipUrl is null) throw new InvalidOperationException("このリリースには自動更新用のファイルが添付されていません。");
         var exe = Environment.ProcessPath ?? throw new InvalidOperationException("実行ファイルの場所が分かりません。");
-        var workDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "VRCAvatarChanger", "update");
+        var workDir = AppPaths.In("update");
         Directory.CreateDirectory(workDir);
         var zipPath = Path.Combine(workDir, "update.zip");
 
         using (var http = NewHttp())
         {
-            var bytes = await http.GetByteArrayAsync(info.ZipUrl);
-            await File.WriteAllBytesAsync(zipPath, bytes);
+            // zip はサイズが大きいので、メモリに全量を載せずファイルへ直接ストリーミングする
+            using (var res = await http.GetAsync(info.ZipUrl, HttpCompletionOption.ResponseHeadersRead))
+            {
+                res.EnsureSuccessStatusCode();
+                await using var fs = File.Create(zipPath);
+                await res.Content.CopyToAsync(fs);
+            }
 
             // SHA256SUMS.txt があれば照合する(HTTPS に加えた整合性チェック)
             if (info.ShaUrl is not null)
@@ -116,7 +121,8 @@ public static class Updater
                     .FirstOrDefault();
                 if (expected is not null)
                 {
-                    var actual = Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant();
+                    await using var fs = File.OpenRead(zipPath);
+                    var actual = Convert.ToHexString(await SHA256.HashDataAsync(fs)).ToLowerInvariant();
                     if (actual != expected)
                         throw new InvalidOperationException("ダウンロードしたファイルの検証に失敗しました。更新を中止します。");
                 }

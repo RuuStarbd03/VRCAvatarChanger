@@ -36,8 +36,7 @@ public partial class BrowserLoginWindow : Window
     {
         try
         {
-            var dataDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "VRCAvatarChanger", "WebView2");
-            var env = await CoreWebView2Environment.CreateAsync(userDataFolder: dataDir);
+            var env = await CoreWebView2Environment.CreateAsync(userDataFolder: AppPaths.In("WebView2"));
             await Web.EnsureCoreWebView2Async(env);
             var core = Web.CoreWebView2;
 
@@ -139,7 +138,7 @@ public partial class BrowserLoginWindow : Window
     {
         try
         {
-            var dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "VRCAvatarChanger", "WebView2");
+            var dir = AppPaths.In("WebView2");
             if (Directory.Exists(dir)) Directory.Delete(dir, recursive: true);
         }
         catch { /* 使用中などで消せない場合は次回に */ }
