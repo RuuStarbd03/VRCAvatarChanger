@@ -123,6 +123,12 @@ Debug ビルド限定の環境変数 `VRCAC_UPDATE_REPO` / `VRCAC_UPDATE_API` �
   コード署名証明書があれば `signtool` で exe に署名すると警告が出なくなる。
 - Debug ビルド限定の環境変数: `VRCAC_UI_PREVIEW=1`(ダミーデータ表示)、`VRCAC_ALLOW_MULTI=1`(二重起動許可)。Release には含まれない / 効かない。
 
+## 隠し機能
+
+- **10 体ごとの色分け**: メイン画面で `Ctrl+Shift+C`。表示順に 10 体ごとにアバターの背景色が変わる(6 色ループ)。
+  グループタイルは 1 とカウント。有効中は右クリックに「カウントから除外」が出て、除外したものは数に入らず色も付かない。
+  状態と除外リストは `settings.json` に保存(`StripeColors` / `StripeExcluded`)。
+
 ## 保存されるデータ
 
 - `%AppData%\VRCAvatarChanger\session.json` — VRChat のセッションクッキー(`auth` / `twoFactorAuth`)。

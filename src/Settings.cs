@@ -14,6 +14,10 @@ public sealed class Settings
     public string SortKey { get; set; } = "created_desc"; // created/updated/name + _asc/_desc
     public bool GroupView { get; set; } = true; // 既定はグループ化して表示
 
+    // 隠し機能 (Ctrl+Shift+C): 一覧を 10 体ごとに色分けする
+    public bool StripeColors { get; set; }
+    public List<string> StripeExcluded { get; set; } = []; // カウントから除外する ID (アバター ID / group:グループ ID)
+
     // ã¦ã£ã³ãã¦ã®ä½ç½®ã¨ãµã¤ãº(ååçµäºæ)
     public double? WindowLeft { get; set; }
     public double? WindowTop { get; set; }

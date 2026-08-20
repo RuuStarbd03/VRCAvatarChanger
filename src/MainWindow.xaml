@@ -16,7 +16,7 @@
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="ListViewItem">
-                        <Border x:Name="bd" Background="Transparent" CornerRadius="{StaticResource ControlRadius}" Margin="6,2" Padding="10,8" SnapsToDevicePixels="True"
+                        <Border x:Name="bd" Background="{Binding StripeBrush, TargetNullValue=Transparent}" CornerRadius="{StaticResource ControlRadius}" Margin="6,2" Padding="10,8" SnapsToDevicePixels="True"
                                 RenderTransformOrigin="0.5,0.5">
                             <Border.RenderTransform>
                                 <ScaleTransform x:Name="sc"/>
@@ -140,7 +140,7 @@
                             <Grid.RenderTransform>
                                 <ScaleTransform x:Name="sc"/>
                             </Grid.RenderTransform>
-                            <Border x:Name="bd" Background="Transparent" BorderBrush="Transparent" BorderThickness="2"
+                            <Border x:Name="bd" Background="{Binding StripeBrush, TargetNullValue=Transparent}" BorderBrush="Transparent" BorderThickness="2"
                                     CornerRadius="{StaticResource ControlRadius}" Margin="4" Padding="5" SnapsToDevicePixels="True">
                                 <ContentPresenter/>
                             </Border>
@@ -529,6 +529,7 @@
                                 <MenuItem x:Name="MenuEditTags" Header="タグを編集..." Click="MenuEditTags_Click"/>
                                 <Separator/>
                                 <MenuItem x:Name="MenuCopyId" Header="アバター ID をコピー" Click="MenuCopyId_Click"/>
+                                <MenuItem x:Name="MenuStripeExclude" Header="カウントから除外" Click="MenuStripeExclude_Click" Visibility="Collapsed"/>
                             </ContextMenu>
                         </ListView.ContextMenu>
                     </ListView>

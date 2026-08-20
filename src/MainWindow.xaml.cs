@@ -71,6 +71,14 @@ public sealed class AvatarItem : INotifyPropertyChanged
         set { _thumbnail = value; OnPropertyChanged(); }
     }
 
+    private Brush? _stripeBrush;
+    /// <summary>10 刻み色分け(隠し機能)の背景色。無効時や除外時は null。</summary>
+    public Brush? StripeBrush
+    {
+        get => _stripeBrush;
+        set { if (!ReferenceEquals(_stripeBrush, value)) { _stripeBrush = value; OnPropertyChanged(); } }
+    }
+
     private bool _isCurrent;
     /// <summary>現在着ているアバター(グループの場合は中に現在のアバターがいる)。チェックバッジの表示に使う。</summary>
     public bool IsCurrent
@@ -384,6 +392,10 @@ public partial class MainWindow : Window
         MenuEditTags.Visibility = pub || SourceOwn.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
         MenuEditTags.Header = isGroup ? "全員のタグを編集..." : "タグを編集...";
         MenuCopyId.Visibility = isGroup ? Visibility.Collapsed : Visibility.Visible;
+
+        // 隠し機能が有効なときだけ出す
+        MenuStripeExclude.Visibility = _settings.StripeColors ? Visibility.Visible : Visibility.Collapsed;
+        MenuStripeExclude.Header = IsStripeExcluded(item) ? "カウントに戻す" : "カウントから除外";
     }
 
     // ---------------- フィルタ (お気に入りグループ / タグ) ----------------
@@ -1142,6 +1154,12 @@ public partial class MainWindow : Window
             CloseGroup();
             return;
         }
+        if (e.Key == Key.C && Keyboard.Modifiers == (ModifierKeys.Control | ModifierKeys.Shift) && MainPanel.Visibility == Visibility.Visible)
+        {
+            e.Handled = true;
+            ToggleStripeColors();
+            return;
+        }
         if (e.Key == Key.F5 && MainPanel.Visibility == Visibility.Visible && RefreshButton.IsEnabled)
         {
             e.Handled = true;
@@ -1287,11 +1305,58 @@ public partial class MainWindow : Window
             list.AddRange(byGroup.Select(kv => new AvatarItem(kv.Key, kv.Value)));
             list = ApplySort(list, SortKey).ToList();
         }
+        ApplyStripes(list);
         AvatarList.ItemsSource = list;
         var reselect = list.FirstOrDefault(a => a.Id == selectedId && a.IsGroup == selectedWasGroup);
         if (reselect is not null) AvatarList.SelectedItem = reselect;
         RefreshCurrentMarks();
         if (SkeletonPanel.Visibility != Visibility.Visible) UpdateEmptyState(list.Count);
+    }
+
+    // ---------------- 隠し機能: 10 刻みの色分け (Ctrl+Shift+C) ----------------
+
+    // 6 色ループ。両テーマで薄く乗る程度のアルファ
+    private static readonly Brush[] StripePalette =
+        new[] { "#303E8FD0", "#304CAF7D", "#309C6ADE", "#30E09B4C", "#30D66A9C", "#304CB8C4" }
+        .Select(c => { var b = new SolidColorBrush((Color)ColorConverter.ConvertFromString(c)); b.Freeze(); return (Brush)b; })
+        .ToArray();
+
+    private string StripeKeyOf(AvatarItem item) => item.IsGroup ? "group:" + item.Group!.Id : item.Id;
+
+    private bool IsStripeExcluded(AvatarItem item) => _settings.StripeExcluded.Contains(StripeKeyOf(item));
+
+    /// <summary>表示順に 10 体ごとの色を付ける。グループタイルは 1 とカウント。除外したものは数えず色も付けない。</summary>
+    private void ApplyStripes(List<AvatarItem> list)
+    {
+        if (!_settings.StripeColors)
+        {
+            foreach (var item in list) item.StripeBrush = null;
+            return;
+        }
+        var count = 0;
+        foreach (var item in list)
+        {
+            if (IsStripeExcluded(item)) { item.StripeBrush = null; continue; }
+            item.StripeBrush = StripePalette[count / 10 % StripePalette.Length];
+            count++;
+        }
+    }
+
+    private void ToggleStripeColors()
+    {
+        _settings.StripeColors = !_settings.StripeColors;
+        if (!_preview) _settings.Save();
+        ApplyFilter();
+        SetStatus(StatusKind.Info, _settings.StripeColors ? "10 体ごとの色分け: オン" : "10 体ごとの色分け: オフ");
+    }
+
+    private void MenuStripeExclude_Click(object sender, RoutedEventArgs e)
+    {
+        if (AvatarList.SelectedItem is not AvatarItem item) return;
+        var key = StripeKeyOf(item);
+        if (!_settings.StripeExcluded.Remove(key)) _settings.StripeExcluded.Add(key);
+        if (!_preview) _settings.Save();
+        ApplyFilter();
     }
 
     /// <summary>「現在着ているアバター」のチェックバッジを付け直す。</summary>
