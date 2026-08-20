@@ -64,8 +64,11 @@ public static class Updater
             using var doc = JsonDocument.Parse(json);
             var root = doc.RootElement;
 
+            // バージョンはタグ名 (v1.2.3) から取る。タグが別名のリリースでも動くよう、リリース名でも試す
             var tag = root.GetProperty("tag_name").GetString() ?? "";
-            if (!Version.TryParse(tag.TrimStart('v', 'V'), out var version)) return null;
+            var relName = root.TryGetProperty("name", out var n) ? n.GetString() ?? "" : "";
+            if (!Version.TryParse(tag.TrimStart('v', 'V'), out var version) &&
+                !Version.TryParse(relName.TrimStart('v', 'V'), out version)) return null;
             if (version <= CurrentVersion) return null;
 
             string? zipUrl = null, shaUrl = null;
