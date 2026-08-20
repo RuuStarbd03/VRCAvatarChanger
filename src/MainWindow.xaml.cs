@@ -264,14 +264,18 @@ public partial class MainWindow : Window
                 await Task.Delay(400);
                 Snapshot(label);
             }
-            // VR スティック風のホイール連続入力 (1 ノッチを 200ms 間隔で 6 回)。50ms ごとの移動量で等速性を見る
+            // VR スティック風のホイール連続入力。SteamVR の実挙動に合わせて間隔を揺らし、約 50ms ごとの移動量で等速性を見る
             void RaiseWheel() => AvatarList.RaiseEvent(new MouseWheelEventArgs(Mouse.PrimaryDevice, Environment.TickCount, -120)
             { RoutedEvent = Mouse.PreviewMouseWheelEvent, Source = AvatarList });
             var samples = new List<double>();
-            for (var i = 0; i < 6; i++)
+            foreach (var gap in new[] { 200, 90, 260, 120, 230, 80, 250, 150 })
             {
                 RaiseWheel();
-                for (var j = 0; j < 4; j++) { await Task.Delay(50); samples.Add(sv?.VerticalOffset ?? -1); }
+                for (var elapsed = 0; elapsed < gap; elapsed += 50)
+                {
+                    await Task.Delay(Math.Min(50, gap - elapsed));
+                    samples.Add(sv?.VerticalOffset ?? -1);
+                }
             }
             await Task.Delay(800);
             samples.Add(sv?.VerticalOffset ?? -1);

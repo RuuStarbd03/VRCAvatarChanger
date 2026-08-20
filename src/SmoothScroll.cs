@@ -9,10 +9,12 @@ namespace VRCAvatarChanger;
 /// マウスホイールのスクロールをなめらかにする添付ビヘイビア。
 /// 使い方: 対象(ListView や ScrollViewer)に local:SmoothScroll.IsEnabled="True" を付ける。
 ///
-/// VR コントローラーのスティックなどは「一定間隔の離散ホイールイベント」として届くため、
-/// 単純な指数追従(1 次)では次のイベントが来るまでに速度が減衰し、脈打ってかくつく。
-/// ここでは速度を状態に持つ臨界減衰バネ(2 次)で目標へ追従させ、さらに入力イベントの間隔を
-/// 推定して追従時間を自動調整する(間隔が広い入力ほど長めにならして等速に近づける)。
+/// VR コントローラーのスティックなどは「離散的なホイールイベントの列」として届き、
+/// しかも間隔が一定とは限らない(揺らぐ)。そこで、
+/// - 速度を状態に持つ臨界減衰バネ(2 次)で目標へ追従し(イベントが来ても速度が跳ねない)、
+/// - 入力速度は「直近 600ms の移動量の合計 ÷ 経過時間」で推定して(間隔の揺らぎに頑健)、
+///   押している間はその速度で等速走行させる(フィードフォワード)。
+/// 環境変数 VRCAC_WHEEL_LOG にファイルパスを入れると、入力イベントと毎フレームの位置を記録する(診断用)。
 /// </summary>
 public static class SmoothScroll
 {
@@ -24,22 +26,23 @@ public static class SmoothScroll
 
     // ホイール 1 ノッチ (Delta=120) あたりのスクロール量 (px)
     private const double PixelsPerNotch = 120;
-    // 追従(整定)時間 = 入力間隔 × この係数。大きいほどなめらか、小さいほど機敏
-    private const double SettleFactor = 3.0;
-    private const double MinSettleSec = 0.12; // マウスの単発ノッチはこの機敏さで
-    private const double MaxSettleSec = 0.60; // 間隔の広い入力でもこれ以上はもたつかせない
-    private const double MaxFeedVel = 5000;   // フィードフォワード速度の上限 (px/s)
+    // 入力速度の推定に使う窓 (ms)。この間の移動量から「押している速さ」を求める
+    private const double WindowMs = 600;
+    // 追従(整定)時間。単発ノッチは機敏に、連続入力(速度が乗っている)ほどなめらかに
+    private const double MinSettleSec = 0.12;
+    private const double MaxSettleSec = 0.40;
+    private const double MaxFeedVel = 5000; // フィードフォワード速度の上限 (px/s)
 
     private sealed class State
     {
-        public double Pos;            // 追従中の現在位置 (ScrollViewer のオフセットと同期)
-        public double Vel;            // 現在速度 (px/s)
+        public double Pos;     // 追従中の現在位置 (ScrollViewer のオフセットと同期)
+        public double Vel;     // 現在速度 (px/s)
         public double Target;
-        public double FeedVel;        // 入力から推定した速度 (px/s)。押している間の等速走行に使う
+        public double FeedVel; // 入力から推定した速度 (px/s、平滑化済み)
         public bool Running;
         public TimeSpan LastRenderTime;
         public long LastWheelMs;
-        public double IntervalMs = 50; // 入力イベント間隔の推定値 (EMA)
+        public readonly Queue<(long Ms, double Move)> Recent = new(); // 窓内の入力イベント
         public EventHandler? OnFrame;
     }
 
@@ -65,25 +68,12 @@ public static class SmoothScroll
             sv.SetValue(StateProperty, st);
         }
 
-        // 入力間隔を推定する。500ms 以上あいたら別のスクロール操作の始まりとみなして機敏側に戻す
         var now = Environment.TickCount64;
-        var gap = now - st.LastWheelMs;
-        st.LastWheelMs = now;
         var move = -e.Delta / 120.0 * PixelsPerNotch;
-        if (gap is > 0 and < 500)
-        {
-            st.IntervalMs = st.IntervalMs * 0.6 + gap * 0.4;
-            // 入力の平均速度 (px/s)。スティック押しっぱなしの間、この速度で等速走行させる
-            var instVel = Math.Clamp(move / (gap / 1000.0), -MaxFeedVel, MaxFeedVel);
-            st.FeedVel = Math.Sign(instVel) == Math.Sign(st.FeedVel)
-                ? st.FeedVel * 0.5 + instVel * 0.5
-                : instVel * 0.5; // 向きが変わったら引きずらない
-        }
-        else
-        {
-            st.IntervalMs = 50;
-            st.FeedVel = 0;
-        }
+        st.Recent.Enqueue((now, move));
+        TrimWindow(st.Recent, now);
+        st.LastWheelMs = now;
+        Log('w', e.Delta);
 
         // 停止中は現在位置から始め、追従中は目標に加算して勢いを保つ
         if (!st.Running)
@@ -94,6 +84,11 @@ public static class SmoothScroll
         }
         st.Target = Math.Clamp(st.Target + move, 0, sv.ScrollableHeight);
         StartFollowing(sv, st);
+    }
+
+    private static void TrimWindow(Queue<(long Ms, double Move)> q, long now)
+    {
+        while (q.Count > 0 && now - q.Peek().Ms > WindowMs) q.Dequeue();
     }
 
     private static void StartFollowing(ScrollViewer sv, State st)
@@ -115,52 +110,69 @@ public static class SmoothScroll
             // スクロールバー操作などで外からオフセットが動いたら、そこから追従し直す
             if (Math.Abs(sv.VerticalOffset - st.Pos) > 2) { st.Pos = sv.VerticalOffset; st.Vel = 0; }
 
-            var target = Math.Clamp(st.Target, 0, sv.ScrollableHeight);
-            var settle = Math.Clamp(st.IntervalMs / 1000.0 * SettleFactor, MinSettleSec, MaxSettleSec);
-            var w = 4.0 / settle; // 臨界減衰バネの固有角速度 (整定時間 ≒ 4/ω)
+            // 入力速度の推定: 窓内の移動量 ÷ 経過時間。イベントが 3 つ未満なら単発扱いで等速走行はしない
+            var nowMs = Environment.TickCount64;
+            TrimWindow(st.Recent, nowMs);
+            double ffTarget = 0;
+            if (st.Recent.Count >= 3)
+            {
+                var span = (nowMs - st.Recent.Peek().Ms) / 1000.0;
+                if (span > 0.05) ffTarget = Math.Clamp(st.Recent.Sum(r => r.Move) / span, -MaxFeedVel, MaxFeedVel);
+            }
+            st.FeedVel += (ffTarget - st.FeedVel) * (1 - Math.Exp(-dt / 0.10));
 
-            // 入力が続いている間はフィードフォワード速度をフルに効かせ、途切れたらなめらかに抜く
-            var sinceInput = (Environment.TickCount64 - st.LastWheelMs) / 1000.0;
-            var inputActive = sinceInput < st.IntervalMs / 1000.0 * 1.2 + 0.03;
-            if (!inputActive) st.FeedVel *= Math.Exp(-dt / 0.08);
+            var target = Math.Clamp(st.Target, 0, sv.ScrollableHeight);
+            // 速度が乗っているほど長くならす (バネの補正でかくつかないように)
+            var activity = Math.Min(1, Math.Abs(st.FeedVel) / 200);
+            var settle = MinSettleSec + (MaxSettleSec - MinSettleSec) * activity;
+            var w = 4.0 / settle; // 臨界減衰バネの固有角速度 (整定時間 ≒ 4/ω)
+            var inputActive = nowMs - st.LastWheelMs < 350;
 
             // 半陰的オイラー。ω·h が大きいと不安定になるのでサブステップで刻む
             var steps = Math.Max(1, (int)Math.Ceiling(w * dt / 0.5));
             var h = dt / steps;
             for (var i = 0; i < steps; i++)
             {
-                // 入力中はフル速度で先読みし、入力が止まったら「残距離でちょうど止まれる速度」
-                // (= 平衡状態の速度) までに制限して目標へ滑らかに減速する。
-                // 制限が無いと入力終了後に目標を通り過ぎてから引き戻される(ゴム跳ね)
+                // 入力中はフィードフォワードを制限しない: 目標はノッチ単位で階段状にしか進まないため、
+                // 追い越しを禁じると次のイベントまでの間に追いついて完全に止まる (= かくつき)。
+                // 追い越してもバネの引き戻しと釣り合って自然に頭打ちになる (先行量 ≒ 2·ff/ω ≈ 1 ノッチ)。
+                // 入力が止まったら、目標に向かう成分だけ残し「残距離でちょうど止まれる速度」まで絞って減速する
                 var toTarget = target - st.Pos;
                 var ff = st.FeedVel;
-                if (Math.Sign(ff) != Math.Sign(toTarget)) ff = 0;
-                else if (!inputActive)
+                if (!inputActive)
                 {
-                    var ffLimit = w * Math.Abs(toTarget) / 2;
-                    ff = Math.Clamp(ff, -ffLimit, ffLimit);
+                    if (Math.Sign(ff) != Math.Sign(toTarget)) ff = 0;
+                    else
+                    {
+                        var ffLimit = w * Math.Abs(toTarget) / 2;
+                        ff = Math.Clamp(ff, -ffLimit, ffLimit);
+                    }
                 }
                 var a = w * w * toTarget - 2 * w * (st.Vel - ff);
                 st.Vel += a * h;
                 st.Pos += st.Vel * h;
             }
-            // 入力が止まった後にわずかに目標を通り過ぎたら、引き戻さずその場を目標にして止める
-            // (数十 px の逆走はスクロールでは行き過ぎ分より目立つ)
-            if (!inputActive && st.Vel != 0 &&
-                Math.Sign(target - st.Pos) == -Math.Sign(st.Vel) && Math.Abs(target - st.Pos) < PixelsPerNotch)
+            // 入力が止まったとき目標を通り過ぎていたら、引き戻さずその場を目標にして止める
+            // (逆走はスクロールでは行き過ぎ分より目立つ)。先行して速度が落ちきっていることがあるので、
+            // 向きの判定は瞬間速度ではなくスクロール方向 (FeedVel) を優先する
+            var dir = Math.Abs(st.FeedVel) > 15 ? Math.Sign(st.FeedVel) : Math.Sign(st.Vel);
+            if (!inputActive && dir != 0 &&
+                Math.Sign(target - st.Pos) == -dir &&
+                Math.Abs(target - st.Pos) < Math.Max(2 * PixelsPerNotch, Math.Abs(st.FeedVel) * 0.4))
             {
                 st.Target = Math.Clamp(st.Pos, 0, sv.ScrollableHeight);
                 target = st.Target;
             }
             st.Pos = Math.Clamp(st.Pos, 0, sv.ScrollableHeight);
 
-            if (Math.Abs(target - st.Pos) < 0.5 && Math.Abs(st.Vel) < 15)
+            if (Math.Abs(target - st.Pos) < 0.5 && Math.Abs(st.Vel) < 15 && Math.Abs(st.FeedVel) < 15)
             {
                 st.Pos = target;
                 st.Vel = 0;
                 StopFollowing(st);
             }
             sv.ScrollToVerticalOffset(st.Pos);
+            Log('f', st.Pos);
         };
         CompositionTarget.Rendering += st.OnFrame;
     }
@@ -170,6 +182,26 @@ public static class SmoothScroll
         if (st.OnFrame is not null) CompositionTarget.Rendering -= st.OnFrame;
         st.OnFrame = null;
         st.Running = false;
+        _wheelLog?.Flush();
+    }
+
+    // ---------------- 診断ログ (VRCAC_WHEEL_LOG=ファイルパス) ----------------
+
+    private static readonly string? WheelLogPath = Environment.GetEnvironmentVariable("VRCAC_WHEEL_LOG");
+    private static System.IO.StreamWriter? _wheelLog;
+    private static int _logLines;
+
+    /// <summary>w = ホイールイベント (値は Delta) / f = 毎フレームの位置。1 列目は起動からの ms。</summary>
+    private static void Log(char kind, double value)
+    {
+        if (WheelLogPath is null) return;
+        try
+        {
+            _wheelLog ??= new System.IO.StreamWriter(WheelLogPath, append: false) { AutoFlush = false };
+            _wheelLog.WriteLine($"{Environment.TickCount64}\t{kind}\t{value:F1}");
+            if (++_logLines % 50 == 0) _wheelLog.Flush();
+        }
+        catch { }
     }
 
     private static ScrollViewer? FindScrollViewer(DependencyObject root)
