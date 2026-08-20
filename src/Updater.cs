@@ -71,12 +71,15 @@ public static class Updater
                 !Version.TryParse(relName.TrimStart('v', 'V'), out version)) return null;
             if (version <= CurrentVersion) return null;
 
+            // zip はリリースのバージョンと名前が一致するものだけを使う。
+            // 別バージョンの zip が誤って添付されていても、それを「更新」としてインストールしない
+            var expectedZip = $"VRCAvatarChanger-v{version.ToString(3)}-win-x64.zip";
             string? zipUrl = null, shaUrl = null;
             foreach (var asset in root.GetProperty("assets").EnumerateArray())
             {
                 var name = asset.GetProperty("name").GetString() ?? "";
                 var url = asset.GetProperty("browser_download_url").GetString() ?? "";
-                if (name.EndsWith("win-x64.zip", StringComparison.OrdinalIgnoreCase)) zipUrl = url;
+                if (name.Equals(expectedZip, StringComparison.OrdinalIgnoreCase)) zipUrl = url;
                 else if (name.Equals("SHA256SUMS.txt", StringComparison.OrdinalIgnoreCase)) shaUrl = url;
             }
 
@@ -118,10 +121,12 @@ public static class Updater
                     .Select(l => l.Trim())
                     .Where(l => l.EndsWith(fileName, StringComparison.OrdinalIgnoreCase))
                     .Select(l => l.Split(' ', '\t')[0].Trim().ToLowerInvariant())
-                    .FirstOrDefault();
-                if (expected is not null)
+                    .FirstOrDefault()
+                    // SHA256SUMS.txt があるのに対象 zip のエントリが無いのは、添付物がちぐはぐな証拠。
+                    // 黙ってスキップせず中止する
+                    ?? throw new InvalidOperationException("更新ファイルの検証情報が見つかりません(リリースの添付物が不完全な可能性)。更新を中止します。");
+                await using (var fs = File.OpenRead(zipPath))
                 {
-                    await using var fs = File.OpenRead(zipPath);
                     var actual = Convert.ToHexString(await SHA256.HashDataAsync(fs)).ToLowerInvariant();
                     if (actual != expected)
                         throw new InvalidOperationException("ダウンロードしたファイルの検証に失敗しました。更新を中止します。");
