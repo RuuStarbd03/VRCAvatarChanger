@@ -1317,7 +1317,7 @@ public partial class MainWindow : Window
 
     // 6 色ループ。両テーマで薄く乗る程度のアルファ
     private static readonly Brush[] StripePalette =
-        new[] { "#303E8FD0", "#304CAF7D", "#309C6ADE", "#30E09B4C", "#30D66A9C", "#304CB8C4" }
+        new[] { "#4E3E8FD0", "#4E4CAF7D", "#4E9C6ADE", "#4EE09B4C", "#4ED66A9C", "#4E4CB8C4" }
         .Select(c => { var b = new SolidColorBrush((Color)ColorConverter.ConvertFromString(c)); b.Freeze(); return (Brush)b; })
         .ToArray();
 
