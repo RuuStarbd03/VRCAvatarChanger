@@ -16,7 +16,11 @@
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="ListViewItem">
-                        <Border x:Name="bd" Background="Transparent" CornerRadius="{StaticResource ControlRadius}" Margin="6,2" Padding="10,8" SnapsToDevicePixels="True">
+                        <Border x:Name="bd" Background="Transparent" CornerRadius="{StaticResource ControlRadius}" Margin="6,2" Padding="10,8" SnapsToDevicePixels="True"
+                                RenderTransformOrigin="0.5,0.5">
+                            <Border.RenderTransform>
+                                <ScaleTransform x:Name="sc"/>
+                            </Border.RenderTransform>
                             <Grid>
                                 <Rectangle x:Name="mark" Width="3" RadiusX="1.5" RadiusY="1.5" HorizontalAlignment="Left" Margin="-10,4,0,4"
                                            Fill="{DynamicResource AccentBrush}" Visibility="Collapsed"/>
@@ -24,6 +28,34 @@
                             </Grid>
                         </Border>
                         <ControlTemplate.Triggers>
+                            <EventTrigger RoutedEvent="UIElement.PreviewMouseLeftButtonDown">
+                                <BeginStoryboard>
+                                    <Storyboard>
+                                        <DoubleAnimation Storyboard.TargetName="sc" Storyboard.TargetProperty="ScaleX" To="0.985" Duration="0:0:0.05"/>
+                                        <DoubleAnimation Storyboard.TargetName="sc" Storyboard.TargetProperty="ScaleY" To="0.985" Duration="0:0:0.05"/>
+                                    </Storyboard>
+                                </BeginStoryboard>
+                            </EventTrigger>
+                            <EventTrigger RoutedEvent="UIElement.PreviewMouseLeftButtonUp">
+                                <BeginStoryboard>
+                                    <Storyboard>
+                                        <DoubleAnimation Storyboard.TargetName="sc" Storyboard.TargetProperty="ScaleX" To="1" Duration="0:0:0.25">
+                                            <DoubleAnimation.EasingFunction><BackEase EasingMode="EaseOut" Amplitude="0.7"/></DoubleAnimation.EasingFunction>
+                                        </DoubleAnimation>
+                                        <DoubleAnimation Storyboard.TargetName="sc" Storyboard.TargetProperty="ScaleY" To="1" Duration="0:0:0.25">
+                                            <DoubleAnimation.EasingFunction><BackEase EasingMode="EaseOut" Amplitude="0.7"/></DoubleAnimation.EasingFunction>
+                                        </DoubleAnimation>
+                                    </Storyboard>
+                                </BeginStoryboard>
+                            </EventTrigger>
+                            <EventTrigger RoutedEvent="Mouse.MouseLeave">
+                                <BeginStoryboard>
+                                    <Storyboard>
+                                        <DoubleAnimation Storyboard.TargetName="sc" Storyboard.TargetProperty="ScaleX" To="1" Duration="0:0:0.12"/>
+                                        <DoubleAnimation Storyboard.TargetName="sc" Storyboard.TargetProperty="ScaleY" To="1" Duration="0:0:0.12"/>
+                                    </Storyboard>
+                                </BeginStoryboard>
+                            </EventTrigger>
                             <Trigger Property="IsMouseOver" Value="True">
                                 <Setter TargetName="bd" Property="Background" Value="{DynamicResource HoverBrush}"/>
                             </Trigger>
@@ -66,6 +98,13 @@
                                     Background="#CC141416" Visibility="{Binding IsGroup, Converter={StaticResource BoolToVis}}">
                                 <TextBlock Text="{Binding Count}" FontSize="11" FontWeight="SemiBold" Foreground="#FFECECEF"/>
                             </Border>
+                            <!-- 現在着ているアバター -->
+                            <Border Width="20" Height="20" CornerRadius="10" Background="{DynamicResource AccentBrush}" ToolTip="現在のアバター"
+                                    HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,4,4,0"
+                                    Visibility="{Binding IsCurrent, Converter={StaticResource BoolToVis}}">
+                                <TextBlock Text="&#xE73E;" FontFamily="{StaticResource IconFont}" FontSize="10"
+                                           Foreground="{DynamicResource OnAccentBrush}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            </Border>
                         </Grid>
                     </Border>
                 </Grid>
@@ -97,26 +136,57 @@
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="ListViewItem">
-                        <Grid>
+                        <Grid x:Name="root" RenderTransformOrigin="0.5,0.5">
+                            <Grid.RenderTransform>
+                                <ScaleTransform x:Name="sc"/>
+                            </Grid.RenderTransform>
                             <Border x:Name="bd" Background="Transparent" BorderBrush="Transparent" BorderThickness="2"
                                     CornerRadius="{StaticResource ControlRadius}" Margin="4" Padding="5" SnapsToDevicePixels="True">
                                 <ContentPresenter/>
                             </Border>
-                            <!-- 選択中のチェックマーク (サムネイル右上) -->
+                            <!-- 現在着ているアバターのチェックマーク (サムネイル右上) -->
                             <Border x:Name="check" Width="24" Height="24" CornerRadius="12" Background="{DynamicResource AccentBrush}"
-                                    HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,12,12,0" Visibility="Collapsed">
+                                    HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,12,12,0" ToolTip="現在のアバター"
+                                    Visibility="{Binding IsCurrent, Converter={StaticResource BoolToVis}}">
                                 <TextBlock Text="&#xE73E;" FontFamily="{StaticResource IconFont}" FontSize="12"
                                            Foreground="{DynamicResource OnAccentBrush}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
                             </Border>
                         </Grid>
                         <ControlTemplate.Triggers>
+                            <EventTrigger RoutedEvent="UIElement.PreviewMouseLeftButtonDown">
+                                <BeginStoryboard>
+                                    <Storyboard>
+                                        <DoubleAnimation Storyboard.TargetName="sc" Storyboard.TargetProperty="ScaleX" To="0.97" Duration="0:0:0.05"/>
+                                        <DoubleAnimation Storyboard.TargetName="sc" Storyboard.TargetProperty="ScaleY" To="0.97" Duration="0:0:0.05"/>
+                                    </Storyboard>
+                                </BeginStoryboard>
+                            </EventTrigger>
+                            <EventTrigger RoutedEvent="UIElement.PreviewMouseLeftButtonUp">
+                                <BeginStoryboard>
+                                    <Storyboard>
+                                        <DoubleAnimation Storyboard.TargetName="sc" Storyboard.TargetProperty="ScaleX" To="1" Duration="0:0:0.25">
+                                            <DoubleAnimation.EasingFunction><BackEase EasingMode="EaseOut" Amplitude="0.7"/></DoubleAnimation.EasingFunction>
+                                        </DoubleAnimation>
+                                        <DoubleAnimation Storyboard.TargetName="sc" Storyboard.TargetProperty="ScaleY" To="1" Duration="0:0:0.25">
+                                            <DoubleAnimation.EasingFunction><BackEase EasingMode="EaseOut" Amplitude="0.7"/></DoubleAnimation.EasingFunction>
+                                        </DoubleAnimation>
+                                    </Storyboard>
+                                </BeginStoryboard>
+                            </EventTrigger>
+                            <EventTrigger RoutedEvent="Mouse.MouseLeave">
+                                <BeginStoryboard>
+                                    <Storyboard>
+                                        <DoubleAnimation Storyboard.TargetName="sc" Storyboard.TargetProperty="ScaleX" To="1" Duration="0:0:0.12"/>
+                                        <DoubleAnimation Storyboard.TargetName="sc" Storyboard.TargetProperty="ScaleY" To="1" Duration="0:0:0.12"/>
+                                    </Storyboard>
+                                </BeginStoryboard>
+                            </EventTrigger>
                             <Trigger Property="IsMouseOver" Value="True">
                                 <Setter TargetName="bd" Property="Background" Value="{DynamicResource HoverBrush}"/>
                             </Trigger>
                             <Trigger Property="IsSelected" Value="True">
                                 <Setter TargetName="bd" Property="Background" Value="{DynamicResource SelectionBrush}"/>
                                 <Setter TargetName="bd" Property="BorderBrush" Value="{DynamicResource AccentBrush}"/>
-                                <Setter TargetName="check" Property="Visibility" Value="Visible"/>
                             </Trigger>
                             <Trigger Property="IsKeyboardFocused" Value="True">
                                 <Setter TargetName="bd" Property="BorderBrush" Value="{DynamicResource AccentBrush}"/>

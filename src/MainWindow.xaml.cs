@@ -71,6 +71,14 @@ public sealed class AvatarItem : INotifyPropertyChanged
         set { _thumbnail = value; OnPropertyChanged(); }
     }
 
+    private bool _isCurrent;
+    /// <summary>現在着ているアバター(グループの場合は中に現在のアバターがいる)。チェックバッジの表示に使う。</summary>
+    public bool IsCurrent
+    {
+        get => _isCurrent;
+        set { if (_isCurrent != value) { _isCurrent = value; OnPropertyChanged(); } }
+    }
+
     /// <summary>ドラッグ中に重ねられているとき true(見た目のハイライト用)。</summary>
     public bool IsDropTarget
     {
@@ -1001,6 +1009,7 @@ public partial class MainWindow : Window
 
     private void UpdateUserHeader()
     {
+        RefreshCurrentMarks();
         if (_user is null) return;
         UserNameText.Text = _user.DisplayName;
         var current = _allItems.FirstOrDefault(a => a.Id == _user.CurrentAvatar)?.Avatar;
@@ -1275,7 +1284,17 @@ public partial class MainWindow : Window
         AvatarList.ItemsSource = list;
         var reselect = list.FirstOrDefault(a => a.Id == selectedId && a.IsGroup == selectedWasGroup);
         if (reselect is not null) AvatarList.SelectedItem = reselect;
+        RefreshCurrentMarks();
         if (SkeletonPanel.Visibility != Visibility.Visible) UpdateEmptyState(list.Count);
+    }
+
+    /// <summary>「現在着ているアバター」のチェックバッジを付け直す。</summary>
+    private void RefreshCurrentMarks()
+    {
+        var cur = _user?.CurrentAvatar;
+        if (AvatarList.ItemsSource is not IEnumerable<AvatarItem> items) return;
+        foreach (var item in items)
+            item.IsCurrent = item.IsGroup ? item.Members.Any(m => m.Id == cur) : item.Id == cur;
     }
 
     private void AvatarList_SelectionChanged(object sender, SelectionChangedEventArgs e)
