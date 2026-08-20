@@ -1093,6 +1093,12 @@ public partial class MainWindow : Window
     private async void UpdateButton_Click(object sender, RoutedEventArgs e)
     {
         if (_update is null) return;
+        // リリースに自動更新用の zip が添付されていない場合は、通知だけして何もしない
+        if (_update.ZipUrl is null)
+        {
+            SetStatus(StatusKind.Info, $"v{_update.Version.ToString(3)} が公開されていますが、自動更新用のファイルがまだ添付されていません");
+            return;
+        }
         var notes = string.IsNullOrWhiteSpace(_update.Notes) ? "" : "\n\n" + _update.Notes.Trim();
         if (notes.Length > 400) notes = notes[..400] + "…";
         var ok = MessageBox.Show(this,

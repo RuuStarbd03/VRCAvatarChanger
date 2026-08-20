@@ -6,7 +6,7 @@ using System.Text.Json;
 
 namespace VRCAvatarChanger;
 
-public sealed record UpdateInfo(Version Version, string ZipUrl, string? ShaUrl, string Notes, string HtmlUrl);
+public sealed record UpdateInfo(Version Version, string? ZipUrl, string? ShaUrl, string Notes, string HtmlUrl);
 
 /// <summary>
 /// GitHub Releases を使った半自動アップデート。
@@ -76,7 +76,6 @@ public static class Updater
                 if (name.EndsWith("win-x64.zip", StringComparison.OrdinalIgnoreCase)) zipUrl = url;
                 else if (name.Equals("SHA256SUMS.txt", StringComparison.OrdinalIgnoreCase)) shaUrl = url;
             }
-            if (zipUrl is null) return null;
 
             var notes = root.TryGetProperty("body", out var b) ? b.GetString() ?? "" : "";
             var htmlUrl = root.TryGetProperty("html_url", out var h) ? h.GetString() ?? "" : "";
@@ -91,6 +90,7 @@ public static class Updater
     /// </summary>
     public static async Task DownloadAndApplyAsync(UpdateInfo info)
     {
+        if (info.ZipUrl is null) throw new InvalidOperationException("このリリースには自動更新用のファイルが添付されていません。");
         var exe = Environment.ProcessPath ?? throw new InvalidOperationException("実行ファイルの場所が分かりません。");
         var workDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "VRCAvatarChanger", "update");
         Directory.CreateDirectory(workDir);
