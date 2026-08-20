@@ -1325,7 +1325,11 @@ public partial class MainWindow : Window
 
     private bool IsStripeExcluded(AvatarItem item) => _settings.StripeExcluded.Contains(StripeKeyOf(item));
 
-    /// <summary>表示順に 10 個ごとの色を付ける。グループタイルは 1 とカウント。除外したものは数えず色も付けない。</summary>
+    /// <summary>
+    /// 一覧の下から上に向かって 10 個ごとの色を付ける(末尾が 1 個目)。グループタイルは 1 とカウント。
+    /// 除外したものは数えず色も付けない。下から数えるので、新しい順の表示では
+    /// アバターが増えても既存のブロックの色が変わらない。
+    /// </summary>
     private void ApplyStripes(List<AvatarItem> list)
     {
         if (!_settings.StripeColors)
@@ -1334,8 +1338,9 @@ public partial class MainWindow : Window
             return;
         }
         var count = 0;
-        foreach (var item in list)
+        for (var i = list.Count - 1; i >= 0; i--)
         {
+            var item = list[i];
             if (IsStripeExcluded(item)) { item.StripeBrush = null; continue; }
             item.StripeBrush = StripePalette[count / 10 % StripePalette.Length];
             count++;
