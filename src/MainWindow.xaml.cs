@@ -547,8 +547,13 @@ public partial class MainWindow : Window
         SetStatus(StatusKind.Info, $"{name} に着替えています");
         try
         {
-            _user = await _api.SelectAvatarAsync(avatarId);
-            UpdateUserHeader();
+            // VRChat が OSC で繋がっていればローカルで即切替 (ヘッダーはエコー受信側が更新する)。
+            // ダメなら従来どおり API で切り替える (ゲーム未起動時は次回起動時のアバターとして予約される)
+            if (!await TryOscChangeAsync(avatarId))
+            {
+                _user = await _api.SelectAvatarAsync(avatarId);
+                UpdateUserHeader();
+            }
             SetStatus(StatusKind.Success, $"{name} に着替えました");
         }
         catch (Exception ex) { if (!HandleSessionExpired(ex)) SetStatus(StatusKind.Error, "着替えられませんでした: " + FriendlyError.Of(ex)); }

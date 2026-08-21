@@ -6,21 +6,33 @@ using System.Text;
 namespace VRCAvatarChanger;
 
 /// <summary>
-/// VRChat が送信する OSC (既定 127.0.0.1:9001) を受信し、/avatar/change を通知する。
+/// VRChat との OSC 連携 (すべて 127.0.0.1 のローカル通信のみ)。
+/// 受信 (既定 9001): VRChat からの /avatar/change を検知して通知する。
+/// 送信 (既定 9000): /avatar/change を VRChat に送り、ローカルでアバターを切り替えさせる。
 /// 依存ライブラリなしの最小限 OSC パーサー(メッセージ / バンドル対応)。
 /// </summary>
 public sealed class OscListener : IDisposable
 {
     public const int DefaultPort = 9001;
+    /// <summary>VRChat の OSC 入力ポート(アプリ → ゲーム方向)。</summary>
+    public const int GameInPort = 9000;
 
     private UdpClient? _udp;
     private CancellationTokenSource? _cts;
+    private long _lastReceiveTicks; // 受信スレッドが書き、UI スレッドが読む (UTC ticks)
 
     /// <summary>/avatar/change を受信したとき。引数はアバター ID (avtr_...)。UI スレッド外から呼ばれる。</summary>
     public event Action<string>? AvatarChanged;
 
     public int Port { get; private set; }
     public bool IsListening => _udp is not null;
+
+    /// <summary>
+    /// VRChat が OSC を送ってきているか(直近 10 秒以内に何か受信したか)。
+    /// アプリ → ゲームの送信が届く見込みがあるかの判定に使う。
+    /// </summary>
+    public bool IsGameConnected => IsListening &&
+        DateTime.UtcNow.Ticks - Interlocked.Read(ref _lastReceiveTicks) < TimeSpan.FromSeconds(10).Ticks;
 
     /// <summary>待ち受け開始。ポートが使用中などで失敗したら例外。</summary>
     public void Start(int port = DefaultPort)
@@ -51,6 +63,7 @@ public sealed class OscListener : IDisposable
             while (!ct.IsCancellationRequested)
             {
                 var result = await udp.ReceiveAsync(ct);
+                Interlocked.Exchange(ref _lastReceiveTicks, DateTime.UtcNow.Ticks);
                 try { HandlePacket(result.Buffer); } catch { /* 壊れたパケットは無視 */ }
             }
         }
@@ -84,6 +97,32 @@ public sealed class OscListener : IDisposable
         if (typeTag.Length < 2 || typeTag[1] != 's') return;
         var avatarId = ReadOscString(data, ref p);
         if (avatarId.StartsWith("avtr_", StringComparison.Ordinal)) AvatarChanged?.Invoke(avatarId);
+    }
+
+    /// <summary>/avatar/change を VRChat (127.0.0.1:9000) に送る。宛先はローカルのみ。失敗したら false。</summary>
+    public bool SendAvatarChange(string avatarId)
+    {
+        try
+        {
+            var msg = BuildMessage("/avatar/change", avatarId);
+            using var udp = new UdpClient();
+            udp.Send(msg, msg.Length, new IPEndPoint(IPAddress.Loopback, GameInPort));
+            return true;
+        }
+        catch { return false; }
+    }
+
+    private static byte[] BuildMessage(string address, string stringArg)
+    {
+        // OSC 文字列: UTF-8 + NUL 終端 + 4 バイト境界までパディング (ReadOscString と対になる形式)
+        static byte[] OscString(string s)
+        {
+            var b = Encoding.UTF8.GetBytes(s);
+            var r = new byte[(b.Length + 4) & ~3];
+            b.CopyTo(r, 0);
+            return r;
+        }
+        return [.. OscString(address), .. OscString(",s"), .. OscString(stringArg)];
     }
 
     private static string ReadOscString(ReadOnlySpan<byte> data, ref int pos)

@@ -32,11 +32,50 @@ public partial class MainWindow
 
     private void OnOscAvatarChanged(string avatarId)
     {
+        // アプリ発の OSC 着替えに対するゲームからのエコーなら、待っている側に成功を伝える
+        var isEcho = avatarId == _oscChangeAckId;
+        if (isEcho) _oscChangeAck?.TrySetResult(true);
+
         if (_user is null || _user.CurrentAvatar == avatarId) return;
         _user.CurrentAvatar = avatarId;
         _user.CurrentAvatarThumbnailImageUrl = null; // 旧アバターのサムネなので破棄
         // 一覧に無いアバターの名前・サムネは UpdateUserHeader 内 (ResolveCurrentAvatarAsync) が API から引く
         UpdateUserHeader();
-        OscStatusText.Text = $"OSC 連携中 ({DateTime.Now:HH:mm} にゲーム内の着替えを検知)";
+        // アプリ発のエコーは「ゲーム内で着替えた」わけではないので、検知メッセージは出さない
+        if (!isEcho) OscStatusText.Text = $"OSC 連携中 ({DateTime.Now:HH:mm} にゲーム内の着替えを検知)";
+    }
+
+    // ---------------- OSC でのローカル着替え ----------------
+
+    private TaskCompletionSource<bool>? _oscChangeAck;
+    private string? _oscChangeAckId;
+
+    /// <summary>
+    /// VRChat が OSC で繋がっていれば、サーバーを経由せずローカルの /avatar/change で着替える。
+    /// (API 方式はサーバー → WebSocket → ゲームの経路でイベントが取りこぼされると反映されないことがある)
+    /// ゲームは切り替え時に /avatar/change を送り返してくるので、それをもって成功とみなす。
+    /// 確認が取れない場合は false を返し、呼び出し側が API 方式にフォールバックする。
+    /// </summary>
+    private async Task<bool> TryOscChangeAsync(string avatarId)
+    {
+        // 同じ ID への変更命令はクライアントに無視されるため、OSC では成否を確認できない (API に任せる)
+        if (!_osc.IsGameConnected || _user?.CurrentAvatar == avatarId) return false;
+        var ack = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        _oscChangeAckId = avatarId;
+        _oscChangeAck = ack;
+        try
+        {
+            if (!_osc.SendAvatarChange(avatarId)) return false;
+            return await Task.WhenAny(ack.Task, Task.Delay(2000)) == ack.Task;
+        }
+        finally
+        {
+            // ダブルクリック連打などで着替えが重なった場合、後発の待ちを消さないよう自分の分だけ片付ける
+            if (ReferenceEquals(_oscChangeAck, ack))
+            {
+                _oscChangeAckId = null;
+                _oscChangeAck = null;
+            }
+        }
     }
 }

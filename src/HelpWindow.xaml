@@ -125,7 +125,7 @@
 
                     <TextBlock Text="ゲーム内の着替えを反映する (OSC)" Style="{StaticResource H2}"/>
                     <TextBlock Style="{StaticResource Body}"
-                               Text="VRChat で OSC を有効にすると(アクションメニュー → Options → OSC → Enabled)、ゲーム内で着替えたときも左上の「現在:」が更新されます。つながっていると「OSC 連携中」と表示されます。着替え自体に OSC は不要です。"/>
+                               Text="VRChat で OSC を有効にすると(アクションメニュー → Options → OSC → Enabled)、ゲーム内で着替えたときも左上の「現在:」が更新されます。つながっていると「OSC 連携中」と表示され、アプリからの着替えもローカル通信で即座に反映されます。OSC が無い場合も着替えは可能です(サーバー経由のため反映に少し時間がかかることがあります)。"/>
                 </StackPanel>
 
                 <!-- ===== FAQ ===== -->

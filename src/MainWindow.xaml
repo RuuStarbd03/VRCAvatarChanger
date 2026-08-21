@@ -334,7 +334,7 @@
                                    TextTrimming="CharacterEllipsis" MaxWidth="360"/>
                         <TextBlock x:Name="OscStatusText" Style="{StaticResource CaptionText}" Foreground="{DynamicResource FaintTextBrush}"
                                    VerticalAlignment="Center" Margin="12,0,0,0"
-                                   ToolTip="VRChat で OSC を有効にすると(アクションメニュー → Options → OSC → Enabled)、ゲーム内で着替えたときも「現在:」が更新されます。"/>
+                                   ToolTip="VRChat で OSC を有効にすると(アクションメニュー → Options → OSC → Enabled)、着替えがローカル通信で即座に反映され、ゲーム内で着替えたときも「現在:」が更新されます。"/>
                     </StackPanel>
                     <StackPanel Grid.Column="1" Orientation="Horizontal">
                         <Button x:Name="UpdateButton" Style="{StaticResource GhostButton}" Click="UpdateButton_Click" Visibility="Collapsed"
