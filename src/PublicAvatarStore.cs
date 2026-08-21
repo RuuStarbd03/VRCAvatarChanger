@@ -34,30 +34,13 @@ public sealed class PublicAvatarStore
     public static PublicAvatarStore Load()
     {
         var store = new PublicAvatarStore();
-        try
-        {
-            var p = PathOf();
-            if (File.Exists(p))
-            {
-                var list = JsonSerializer.Deserialize<List<PublicAvatarEntry>>(File.ReadAllText(p), JsonOptions);
-                if (list is not null)
-                    store._entries.AddRange(list.Where(e => VRChatApi.IsValidAvatarId(e.Avatar.Id)));
-            }
-        }
-        catch { /* 壊れていたら空から */ }
+        var list = JsonFile.Load<List<PublicAvatarEntry>>(PathOf(), JsonOptions);
+        if (list is not null)
+            store._entries.AddRange(list.Where(e => VRChatApi.IsValidAvatarId(e.Avatar.Id)));
         return store;
     }
 
-    public void Save()
-    {
-        try
-        {
-            var p = PathOf();
-            Directory.CreateDirectory(Path.GetDirectoryName(p)!);
-            AtomicFile.WriteAllText(p, JsonSerializer.Serialize(_entries, JsonOptions));
-        }
-        catch { /* 保存失敗は致命的ではない */ }
-    }
+    public void Save() => JsonFile.Save(PathOf(), _entries, JsonOptions);
 
     public bool Contains(string avatarId) => _entries.Any(e => e.Avatar.Id == avatarId);
 

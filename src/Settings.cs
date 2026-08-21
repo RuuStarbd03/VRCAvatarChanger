@@ -31,32 +31,12 @@ public sealed class Settings
 
     public static Settings Load()
     {
-        try
-        {
-            var p = PathOf();
-            if (File.Exists(p))
-            {
-                var s = JsonSerializer.Deserialize<Settings>(File.ReadAllText(p));
-                if (s is not null)
-                {
-                    s.GridColumns = Math.Clamp(s.GridColumns, MinGridColumns, MaxGridColumns);
-                    if (s.ViewMode is not ("list" or "grid")) s.ViewMode = "list";
-                    return s;
-                }
-            }
-        }
-        catch { /* 壊れていたら既定値 */ }
-        return new Settings();
+        var s = JsonFile.Load<Settings>(PathOf());
+        if (s is null) return new Settings();
+        s.GridColumns = Math.Clamp(s.GridColumns, MinGridColumns, MaxGridColumns);
+        if (s.ViewMode is not ("list" or "grid")) s.ViewMode = "list";
+        return s;
     }
 
-    public void Save()
-    {
-        try
-        {
-            var p = PathOf();
-            Directory.CreateDirectory(Path.GetDirectoryName(p)!);
-            AtomicFile.WriteAllText(p, JsonSerializer.Serialize(this, JsonOptions));
-        }
-        catch { /* 保存できなくても動作には影響がない */ }
-    }
+    public void Save() => JsonFile.Save(PathOf(), this, JsonOptions);
 }

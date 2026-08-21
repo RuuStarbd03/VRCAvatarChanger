@@ -26,30 +26,13 @@ public sealed class GroupStore
     public static GroupStore Load()
     {
         var store = new GroupStore();
-        try
-        {
-            var p = PathOf();
-            if (File.Exists(p))
-            {
-                var list = JsonSerializer.Deserialize<List<AvatarGroup>>(File.ReadAllText(p), JsonOptions);
-                if (list is not null)
-                    store._groups.AddRange(list.Where(g => !string.IsNullOrWhiteSpace(g.Name)));
-            }
-        }
-        catch { /* 壊れていたら空から */ }
+        var list = JsonFile.Load<List<AvatarGroup>>(PathOf(), JsonOptions);
+        if (list is not null)
+            store._groups.AddRange(list.Where(g => !string.IsNullOrWhiteSpace(g.Name)));
         return store;
     }
 
-    public void Save()
-    {
-        try
-        {
-            var p = PathOf();
-            Directory.CreateDirectory(Path.GetDirectoryName(p)!);
-            AtomicFile.WriteAllText(p, JsonSerializer.Serialize(_groups, JsonOptions));
-        }
-        catch { /* 保存失敗は致命的ではない */ }
-    }
+    public void Save() => JsonFile.Save(PathOf(), _groups, JsonOptions);
 
     public AvatarGroup? GroupOf(string avatarId) => _groups.FirstOrDefault(g => g.AvatarIds.Contains(avatarId));
 

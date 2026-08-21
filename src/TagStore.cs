@@ -17,31 +17,14 @@ public sealed class TagStore
     public static TagStore Load()
     {
         var store = new TagStore();
-        try
-        {
-            var p = PathOf();
-            if (File.Exists(p))
-            {
-                var map = JsonSerializer.Deserialize<Dictionary<string, List<string>>>(File.ReadAllText(p), JsonOptions);
-                if (map is not null)
-                    foreach (var (id, tags) in map.Where(kv => VRChatApi.IsValidAvatarId(kv.Key)))
-                        store._tags[id] = Normalize(tags);
-            }
-        }
-        catch { /* 壊れていたら空から */ }
+        var map = JsonFile.Load<Dictionary<string, List<string>>>(PathOf(), JsonOptions);
+        if (map is not null)
+            foreach (var (id, tags) in map.Where(kv => VRChatApi.IsValidAvatarId(kv.Key)))
+                store._tags[id] = Normalize(tags);
         return store;
     }
 
-    public void Save()
-    {
-        try
-        {
-            var p = PathOf();
-            Directory.CreateDirectory(Path.GetDirectoryName(p)!);
-            AtomicFile.WriteAllText(p, JsonSerializer.Serialize(_tags.Where(kv => kv.Value.Count > 0).ToDictionary(kv => kv.Key, kv => kv.Value), JsonOptions));
-        }
-        catch { /* 保存失敗は致命的ではない */ }
-    }
+    public void Save() => JsonFile.Save(PathOf(), _tags.Where(kv => kv.Value.Count > 0).ToDictionary(kv => kv.Key, kv => kv.Value), JsonOptions);
 
     private static List<string> Normalize(IEnumerable<string> tags)
         => tags.Select(t => t.Trim()).Where(t => t.Length > 0)
