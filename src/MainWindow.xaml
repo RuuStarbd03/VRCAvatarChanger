@@ -345,6 +345,14 @@
                                 <TextBlock x:Name="UpdateButtonText" Text="更新があります" Foreground="{DynamicResource AccentBrush}"/>
                             </StackPanel>
                         </Button>
+                        <ToggleButton x:Name="WatchToggle" Style="{StaticResource SegmentToggle}" MinHeight="30" Height="30" Padding="10,0" Margin="0,0,8,0"
+                                      Checked="WatchToggle_Changed" Unchecked="WatchToggle_Changed" AutomationProperties.Name="VRChat 連動"
+                                      ToolTip="ON: Windows 起動時にタスクトレイで待機し、VRChat の起動を検知したら自動でこのウィンドウを開きます。ON の間はウィンドウを閉じてもトレイに残ります(トレイ右クリック → 終了で完全終了)。">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="&#xE768;" Style="{StaticResource Icon}" Margin="0,0,8,0"/>
+                                <TextBlock Text="VRChat 連動"/>
+                            </StackPanel>
+                        </ToggleButton>
                         <Button x:Name="RefreshButton" Style="{StaticResource GhostButton}" Click="RefreshButton_Click" AutomationProperties.Name="再読み込み" ToolTip="一覧を読み込み直す (F5)" Height="30" Padding="10,0">
                             <StackPanel Orientation="Horizontal">
                                 <TextBlock Text="&#xE72C;" Style="{StaticResource Icon}" Margin="0,0,8,0"/>

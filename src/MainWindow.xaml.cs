@@ -60,6 +60,7 @@ public partial class MainWindow : Window
         var savedSort = _settings.SortKey;
         InitializeComponent();
         SortBox.SelectedItem = SortBox.Items.OfType<ComboBoxItem>().FirstOrDefault(i => (string?)i.Tag == savedSort) ?? SortBox.Items[0];
+        InitWatchVRChat(); // _ready 前に呼ぶ (トグルの初期化でイベントを発火させない)
         _ready = true;
         GridColumns = savedColumns;
         ColumnsSlider.Value = savedColumns;

@@ -48,6 +48,11 @@ public partial class App : Application
         };
         TaskScheduler.UnobservedTaskException += (_, args) => { args.SetObserved(); LogError(args.Exception); };
         AppDomain.CurrentDomain.UnhandledException += (_, args) => LogError(args.ExceptionObject as Exception);
+
+        var window = new MainWindow();
+        MainWindow = window;
+        // スタートアップ登録 (--tray) からの起動で VRChat 連動が ON なら、表示せずトレイ待機から始める
+        if (!(e.Args.Contains("--tray") && window.WatchVRChatEnabled)) window.Show();
     }
 
     private static bool _showingError;

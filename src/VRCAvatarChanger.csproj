@@ -6,6 +6,9 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms> <!-- タスクトレイ (NotifyIcon) 用 -->
+    <!-- WFO0003: WinForms アナライザーが app.manifest の DPI 設定に反応するが、DPI は WPF が扱う (WinForms はトレイのみ) -->
+    <NoWarn>$(NoWarn);WFO0003</NoWarn>
     <AssemblyName>VRCAvatarChanger</AssemblyName>
     <RootNamespace>VRCAvatarChanger</RootNamespace>
     <ApplicationManifest>app.manifest</ApplicationManifest>
@@ -27,6 +30,13 @@
 
   <ItemGroup>
     <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4129.50" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- UseWindowsForms が足す暗黙 using は WPF の型 (Brush / Size / KeyEventArgs 等) と衝突するので外す。
+         WinForms はトレイ (MainWindow.Tray.cs) だけがエイリアス経由で使う -->
+    <Using Remove="System.Windows.Forms" />
+    <Using Remove="System.Drawing" />
   </ItemGroup>
 
 </Project>

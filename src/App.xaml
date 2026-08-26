@@ -1,7 +1,7 @@
+<!-- StartupUri は使わない: トレイ起動 (VRChat 連動) のとき表示せずに作るため、App.xaml.cs で生成する -->
 <Application x:Class="VRCAvatarChanger.App"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             StartupUri="MainWindow.xaml">
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
     <Application.Resources>
         <ResourceDictionary>
             <ResourceDictionary.MergedDictionaries>

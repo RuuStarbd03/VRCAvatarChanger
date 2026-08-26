@@ -10,6 +10,8 @@ public sealed class Settings
     public const int MaxGridColumns = 10;
 
     public string ViewMode { get; set; } = "list";   // "list" | "grid"
+    /// <summary>VRChat 連動: Windows 起動時にトレイで待機し、VRChat の起動を検知したらウィンドウを開く。</summary>
+    public bool WatchVRChat { get; set; }
     public int GridColumns { get; set; } = 5;
     public string SortKey { get; set; } = "created_desc"; // created/updated/name + _asc/_desc
     public bool GroupView { get; set; } = true; // 既定はグループ化して表示
