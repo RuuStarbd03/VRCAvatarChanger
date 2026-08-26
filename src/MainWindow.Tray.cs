@@ -23,7 +23,6 @@ public partial class MainWindow
     /// <summary>ctor から一度だけ呼ぶ。設定が ON なら常駐一式 (トレイ・監視・スタートアップ登録) を整える。</summary>
     private void InitWatchVRChat()
     {
-        WatchToggle.IsChecked = _settings.WatchVRChat;
         if (_settings.WatchVRChat) EnableWatch();
         Closing += (_, e) =>
         {
@@ -38,12 +37,13 @@ public partial class MainWindow
         Closed += (_, _) => { _watchTimer?.Stop(); _trayIcon?.Dispose(); };
     }
 
-    private void WatchToggle_Changed(object sender, RoutedEventArgs e)
+    /// <summary>設定ウィンドウからの切り替えを適用する (保存・スタートアップ登録・常駐の開始/終了)。</summary>
+    internal void SetWatchVRChat(bool enabled)
     {
-        if (!_ready) return;
-        _settings.WatchVRChat = WatchToggle.IsChecked == true;
+        if (_settings.WatchVRChat == enabled) return;
+        _settings.WatchVRChat = enabled;
         if (!_preview) _settings.Save();
-        if (_settings.WatchVRChat)
+        if (enabled)
         {
             EnableWatch();
             SetStatus(StatusKind.Info, "VRChat 連動: オン。Windows 起動時にトレイで待機し、VRChat が起動したら自動で開きます");

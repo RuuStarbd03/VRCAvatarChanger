@@ -354,6 +354,9 @@ public partial class MainWindow : Window
 
     // ---------------- ヘルプ / キー操作 ----------------
 
+    private void SettingsButton_Click(object sender, RoutedEventArgs e)
+        => new SettingsWindow(_settings, SetWatchVRChat) { Owner = this }.ShowDialog();
+
     private HelpWindow? _help;
 
     private void HelpButton_Click(object sender, RoutedEventArgs e) => ShowHelp();

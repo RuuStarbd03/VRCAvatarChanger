@@ -55,6 +55,42 @@ public partial class MainWindow
         SetStatus(StatusKind.Success, "Kikyo に着替えました");
         // 仮想化の自己診断: スクロールしながら実体化済みコンテナ数を VRCAC_UI_PREVIEW_REPORT のファイルに書いて終了する
         if (Environment.GetEnvironmentVariable("VRCAC_UI_PREVIEW_SCROLLTEST") == "1") _ = RunScrollTestAsync();
+
+        // 見た目確認: VRCAC_UI_PREVIEW_SHOT=path でウィンドウを画面外に置いたまま PNG に描画して終了する
+        // (実画面をキャプチャしないので、ゲーム中でも邪魔にならない)。SETTINGS=1 なら設定ウィンドウを撮る
+        var shotPath = Environment.GetEnvironmentVariable("VRCAC_UI_PREVIEW_SHOT");
+        if (Environment.GetEnvironmentVariable("VRCAC_UI_PREVIEW_SETTINGS") == "1")
+        {
+            if (!string.IsNullOrEmpty(shotPath))
+            {
+                Left = -4000; Top = 0;
+                var win = new SettingsWindow(_settings, SetWatchVRChat)
+                { Owner = this, WindowStartupLocation = WindowStartupLocation.Manual, Left = -4000, Top = 0 };
+                win.Show();
+                _ = CaptureWindowAsync(win, shotPath);
+            }
+            else
+            {
+                Dispatcher.BeginInvoke(() => SettingsButton_Click(this, new RoutedEventArgs()));
+            }
+        }
+        else if (!string.IsNullOrEmpty(shotPath))
+        {
+            Left = -4000; Top = 0;
+            _ = CaptureWindowAsync(this, shotPath);
+        }
+    }
+
+    private static async Task CaptureWindowAsync(Window w, string path)
+    {
+        await Task.Delay(1000); // レイアウトとテーマ適用を待つ
+        var rtb = new System.Windows.Media.Imaging.RenderTargetBitmap(
+            (int)Math.Ceiling(w.ActualWidth), (int)Math.Ceiling(w.ActualHeight), 96, 96, PixelFormats.Pbgra32);
+        rtb.Render(w);
+        var enc = new System.Windows.Media.Imaging.PngBitmapEncoder();
+        enc.Frames.Add(System.Windows.Media.Imaging.BitmapFrame.Create(rtb));
+        using (var fs = File.Create(path)) enc.Save(fs);
+        Application.Current.Shutdown();
     }
 
     private async Task RunScrollTestAsync()
