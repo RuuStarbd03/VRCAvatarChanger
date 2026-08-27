@@ -39,6 +39,7 @@ public partial class MainWindow
         if (_user is null || _user.CurrentAvatar == avatarId) return;
         _user.CurrentAvatar = avatarId;
         _user.CurrentAvatarThumbnailImageUrl = null; // 旧アバターのサムネなので破棄
+        TouchRecentAvatar(avatarId); // ゲーム内での着替えも「最近使用」に数える
         // 一覧に無いアバターの名前・サムネは UpdateUserHeader 内 (ResolveCurrentAvatarAsync) が API から引く
         UpdateUserHeader();
         // アプリ発のエコーは「ゲーム内で着替えた」わけではないので、検知メッセージは出さない

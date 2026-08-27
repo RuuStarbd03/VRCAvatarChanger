@@ -57,22 +57,17 @@ public partial class MainWindow
         if (Environment.GetEnvironmentVariable("VRCAC_UI_PREVIEW_SCROLLTEST") == "1") _ = RunScrollTestAsync();
 
         // 見た目確認: VRCAC_UI_PREVIEW_SHOT=path でウィンドウを画面外に置いたまま PNG に描画して終了する
-        // (実画面をキャプチャしないので、ゲーム中でも邪魔にならない)。SETTINGS=1 なら設定ウィンドウを撮る
+        // (実画面をキャプチャしないので、ゲーム中でも邪魔にならない)。SETTINGS=1 なら設定オーバーレイを開いた状態で撮る
         var shotPath = Environment.GetEnvironmentVariable("VRCAC_UI_PREVIEW_SHOT");
-        if (Environment.GetEnvironmentVariable("VRCAC_UI_PREVIEW_SETTINGS") == "1")
+        if (Environment.GetEnvironmentVariable("VRCAC_UI_PREVIEW_SETTINGS") == "1") OpenSettings();
+        if (Environment.GetEnvironmentVariable("VRCAC_UI_PREVIEW_QUICK") == "1")
         {
-            if (!string.IsNullOrEmpty(shotPath))
-            {
-                Left = -4000; Top = 0;
-                var win = new SettingsWindow(_settings, SetWatchVRChat)
-                { Owner = this, WindowStartupLocation = WindowStartupLocation.Manual, Left = -4000, Top = 0 };
-                win.Show();
-                _ = CaptureWindowAsync(win, shotPath);
-            }
-            else
-            {
-                Dispatcher.BeginInvoke(() => SettingsButton_Click(this, new RoutedEventArgs()));
-            }
+            // クイック着替えオーバーレイを画面外に開いて撮る
+            Left = -4000; Top = 0;
+            _quick = new QuickPickWindow(QuickChangeAsync, () => { }, SaveQuickSortKey);
+            _quick.OpenAt(new Win32.NativeRect { Left = -4400, Top = 0, Right = -4000, Bottom = 760 }, 1.0,
+                FlatAvatarItems(), _settings.RecentAvatars, _settings.QuickSortKey);
+            if (!string.IsNullOrEmpty(shotPath)) _ = CaptureWindowAsync(_quick, shotPath);
         }
         else if (!string.IsNullOrEmpty(shotPath))
         {

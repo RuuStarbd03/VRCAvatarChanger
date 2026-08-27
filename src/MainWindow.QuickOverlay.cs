@@ -1,0 +1,252 @@
+using System.Diagnostics;
+using System.Runtime.InteropServices;
+using System.Windows;
+using System.Windows.Media;
+
+namespace VRCAvatarChanger;
+
+// クイック着替え: VRChat がフォアグラウンドのとき Shift+1 で画面右にアバター選択オーバーレイを出す。
+// キーボードフックは「Shift+1 が押されたか」の判定だけに使い、それ以外のキーは素通しする。
+// 入力内容の記録・送信は一切しない。反応するのは VRChat (またはこのオーバーレイ) が手前のときだけ。
+public partial class MainWindow
+{
+    private const int VkShift = 0x10;
+    private const int Vk1 = 0x31;
+
+    private nint _kbHook;
+    private Win32.LowLevelKeyboardProc? _kbProc; // GC に回収されないよう保持する
+    private QuickPickWindow? _quick;
+    private nint _vrchatHwnd;
+
+    /// <summary>ctor から一度だけ呼ぶ。設定が ON ならフックを張る (プレビューでは張らない)。</summary>
+    private void InitQuickOverlay()
+    {
+        if (_settings.QuickOverlay && !_preview) InstallKeyHook();
+        Closed += (_, _) => { UninstallKeyHook(); _quick?.Close(); };
+    }
+
+    /// <summary>設定からの切り替えを適用する (保存・フックの張り替え)。</summary>
+    internal void SetQuickOverlay(bool enabled)
+    {
+        if (_settings.QuickOverlay == enabled) return;
+        _settings.QuickOverlay = enabled;
+        if (!_preview) _settings.Save();
+        if (enabled)
+        {
+            InstallKeyHook();
+            SetStatus(StatusKind.Info, "クイック着替え: オン。VRChat のプレイ中に Shift+1 で開きます");
+        }
+        else
+        {
+            UninstallKeyHook();
+            _quick?.CloseOverlay(refocus: false);
+            SetStatus(StatusKind.Info, "クイック着替え: オフ");
+        }
+    }
+
+    private void InstallKeyHook()
+    {
+        if (_kbHook != 0) return;
+        _kbProc = KeyHookProc;
+        _kbHook = Win32.SetWindowsHookExW(Win32.WhKeyboardLl, _kbProc, Win32.GetModuleHandleW(null), 0);
+        if (_kbHook == 0) _kbProc = null; // 張れない環境ではメイン画面から使ってもらう
+    }
+
+    private void UninstallKeyHook()
+    {
+        if (_kbHook == 0) return;
+        Win32.UnhookWindowsHookEx(_kbHook);
+        _kbHook = 0;
+        _kbProc = null;
+    }
+
+    private nint KeyHookProc(int nCode, nint wParam, nint lParam)
+    {
+        if (nCode >= 0 && wParam == Win32.WmKeydown
+            && Marshal.ReadInt32(lParam) == Vk1
+            && (Win32.GetKeyState(VkShift) & 0x8000) != 0
+            && ShouldHandleQuickKey())
+        {
+            Dispatcher.BeginInvoke(ToggleQuickOverlay);
+            return 1; // VRChat 側に「!」を入力させない
+        }
+        return Win32.CallNextHookEx(_kbHook, nCode, wParam, lParam);
+    }
+
+    /// <summary>VRChat かこのオーバーレイが手前のときだけ Shift+1 に反応する。</summary>
+    private bool ShouldHandleQuickKey()
+    {
+        var fg = Win32.GetForegroundWindow();
+        if (fg == 0) return false;
+        if (_quick is not null && _quick.IsVisible && fg == _quick.Hwnd) return true;
+        _ = Win32.GetWindowThreadProcessId(fg, out var pid);
+        if (pid == 0) return false;
+        try
+        {
+            using var p = Process.GetProcessById((int)pid);
+            if (!p.ProcessName.Equals(QuickTargetProcess, StringComparison.OrdinalIgnoreCase)) return false;
+        }
+        catch { return false; }
+        _vrchatHwnd = fg; // 表示位置の基準と、閉じたときにフォーカスを返す先
+        return true;
+    }
+
+    // Debug ビルドでは環境変数 VRCAC_QUICK_PROCESS で対象プロセス名を差し替えられる (notepad 等で動作確認するため)
+    private static readonly string QuickTargetProcess =
+#if DEBUG
+        Environment.GetEnvironmentVariable("VRCAC_QUICK_PROCESS") ??
+#endif
+        "VRChat";
+
+    private void ToggleQuickOverlay()
+    {
+        _quick ??= new QuickPickWindow(QuickChangeAsync, RefocusVRChat, SaveQuickSortKey);
+        if (_quick.IsVisible) { _quick.CloseOverlay(refocus: true); return; }
+        // PerMonitorV2 では WPF の DIP 変換の倍率が「どのモニターにいるか」で変わり、
+        // メインウィンドウと VRChat が別モニターだと座標がずれる。
+        // そのため位置は物理ピクセルのまま渡し、倍率は VRChat のいるモニターの DPI から取る
+        _quick.OpenAt(QuickOverlayAreaPx(), Win32.ScaleOf(_vrchatHwnd), FlatAvatarItems(),
+            _settings.RecentAvatars, _settings.QuickSortKey);
+    }
+
+    private void SaveQuickSortKey(string key)
+    {
+        _settings.QuickSortKey = key;
+        if (!_preview) _settings.Save();
+    }
+
+    private void RefocusVRChat()
+    {
+        if (_vrchatHwnd != 0) Win32.SetForegroundWindow(_vrchatHwnd);
+    }
+
+    /// <summary>
+    /// オーバーレイを出す領域 (物理ピクセル)。VRChat のウィンドウ (クライアント領域) が取れればその中の右端、
+    /// 取れないか小さすぎる場合はモニターの作業領域にフォールバックする。
+    /// </summary>
+    private Win32.NativeRect QuickOverlayAreaPx()
+    {
+        if (_vrchatHwnd != 0 && Win32.ClientAreaPx(_vrchatHwnd) is { } c
+            && c.Right - c.Left >= 480 && c.Bottom - c.Top >= 320)
+            return c;
+        return Win32.WorkAreaPx(_vrchatHwnd);
+    }
+
+    /// <summary>今の一覧をグループ展開してフラットにしたアバターだけの列。</summary>
+    private List<AvatarItem> FlatAvatarItems()
+    {
+        var flat = new List<AvatarItem>();
+        foreach (var item in _allItems)
+        {
+            if (item.IsGroup) flat.AddRange(item.Members);
+            else flat.Add(item);
+        }
+        // グループの中身はメイン画面の現在マーク更新の対象外なので、ここで付け直す
+        var cur = _user?.CurrentAvatar;
+        foreach (var i in flat) i.IsCurrent = i.Id == cur;
+        // サムネ未取得のもの (グループの中身など) を裏で読み込む
+        _ = LoadThumbnailsAsync(flat.Where(i => i.Thumbnail is null).ToList(), CancellationToken.None);
+        return flat;
+    }
+
+    private async Task<bool> QuickChangeAsync(AvatarItem item) => await ChangeAvatarAsync(item.Id, item.Name);
+}
+
+/// <summary>クイック着替えで使う Win32 API。</summary>
+internal static class Win32
+{
+    public const int WhKeyboardLl = 13;
+    public const nint WmKeydown = 0x0100;
+
+    public delegate nint LowLevelKeyboardProc(int nCode, nint wParam, nint lParam);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    public static extern nint SetWindowsHookExW(int idHook, LowLevelKeyboardProc lpfn, nint hMod, uint dwThreadId);
+    [DllImport("user32.dll")] public static extern bool UnhookWindowsHookEx(nint hhk);
+    [DllImport("user32.dll")] public static extern nint CallNextHookEx(nint hhk, int nCode, nint wParam, nint lParam);
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode)] public static extern nint GetModuleHandleW(string? name);
+    [DllImport("user32.dll")] public static extern short GetKeyState(int vk);
+    [DllImport("user32.dll")] public static extern nint GetForegroundWindow();
+    [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(nint hWnd, out uint pid);
+    [DllImport("user32.dll")] public static extern bool SetForegroundWindow(nint hWnd);
+    [DllImport("user32.dll")] public static extern bool AttachThreadInput(uint idAttach, uint idAttachTo, bool fAttach);
+    [DllImport("kernel32.dll")] public static extern uint GetCurrentThreadId();
+    [DllImport("user32.dll")] private static extern nint MonitorFromWindow(nint hwnd, uint flags);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern bool GetMonitorInfoW(nint hMonitor, ref MonitorInfo mi);
+    [DllImport("user32.dll")] private static extern bool GetClientRect(nint hWnd, out NativeRect r);
+    [DllImport("user32.dll")] private static extern bool ClientToScreen(nint hWnd, ref NativePoint p);
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct NativeRect { public int Left, Top, Right, Bottom; }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct NativePoint { public int X, Y; }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct MonitorInfo { public int Size; public NativeRect Monitor, Work; public uint Flags; }
+
+    /// <summary>ウィンドウのクライアント領域 (画面座標の物理ピクセル)。取れなければ null。</summary>
+    public static NativeRect? ClientAreaPx(nint hwnd)
+    {
+        if (!GetClientRect(hwnd, out var r)) return null;
+        var origin = new NativePoint { X = 0, Y = 0 };
+        if (!ClientToScreen(hwnd, ref origin)) return null;
+        return new NativeRect
+        {
+            Left = origin.X,
+            Top = origin.Y,
+            Right = origin.X + (r.Right - r.Left),
+            Bottom = origin.Y + (r.Bottom - r.Top),
+        };
+    }
+
+    /// <summary>ウィンドウのあるモニター (取れなければプライマリ)。</summary>
+    private static nint MonitorOf(nint hwnd)
+    {
+        var mon = MonitorFromWindow(hwnd, 2 /* MONITOR_DEFAULTTONEAREST */);
+        return mon != 0 ? mon : MonitorFromWindow(0, 1 /* MONITOR_DEFAULTTOPRIMARY */);
+    }
+
+    /// <summary>ウィンドウのあるモニターの作業領域 (物理ピクセル)。</summary>
+    public static NativeRect WorkAreaPx(nint hwnd)
+    {
+        var mi = new MonitorInfo { Size = Marshal.SizeOf<MonitorInfo>() };
+        if (GetMonitorInfoW(MonitorOf(hwnd), ref mi)) return mi.Work;
+        return new NativeRect { Left = 0, Top = 0, Right = 1920, Bottom = 1080 }; // ここまで来ることは実質ない
+    }
+
+    [DllImport("shcore.dll")] private static extern int GetDpiForMonitor(nint hMonitor, int type, out uint dpiX, out uint dpiY);
+
+    /// <summary>ウィンドウのあるモニターの DPI スケール (100% = 1.0)。</summary>
+    public static double ScaleOf(nint hwnd)
+    {
+        try
+        {
+            if (GetDpiForMonitor(MonitorOf(hwnd), 0 /* MDT_EFFECTIVE_DPI */, out var dx, out _) == 0 && dx > 0)
+                return dx / 96.0;
+        }
+        catch { }
+        return 1.0;
+    }
+
+    [DllImport("user32.dll")] private static extern bool SetWindowPos(nint hWnd, nint after, int x, int y, int w, int h, uint flags);
+
+    /// <summary>物理ピクセル指定でウィンドウを移動・リサイズする (Z オーダー・表示状態は変えない)。</summary>
+    public static void SetWindowPosPx(nint hwnd, int x, int y, int w, int h)
+        => SetWindowPos(hwnd, 0, x, y, w, h, 0x0004 | 0x0010); // SWP_NOZORDER | SWP_NOACTIVATE
+
+    /// <summary>
+    /// ゲームなど他プロセスが手前でも自分のウィンドウを前面化する。
+    /// (通常の SetForegroundWindow はフォアグラウンド権限がないと無視されるため、
+    /// 手前スレッドに入力状態を一時的に共有してから前面化する)
+    /// </summary>
+    public static void FocusWindow(nint hwnd)
+    {
+        var fg = GetForegroundWindow();
+        var fgThread = fg != 0 ? GetWindowThreadProcessId(fg, out _) : 0;
+        var cur = GetCurrentThreadId();
+        var attached = fgThread != 0 && fgThread != cur && AttachThreadInput(cur, fgThread, true);
+        SetForegroundWindow(hwnd);
+        if (attached) AttachThreadInput(cur, fgThread, false);
+    }
+}

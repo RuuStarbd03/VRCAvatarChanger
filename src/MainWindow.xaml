@@ -346,7 +346,7 @@
                             </StackPanel>
                         </Button>
                         <Button Style="{StaticResource GhostButton}" Click="SettingsButton_Click" AutomationProperties.Name="設定"
-                                ToolTip="設定 (VRChat 連動など)" Height="30" Padding="10,0" Margin="0,0,4,0">
+                                ToolTip="設定 (VRChat 連動・ログアウトなど)" Height="30" Padding="10,0" Margin="0,0,4,0">
                             <StackPanel Orientation="Horizontal">
                                 <TextBlock Text="&#xE713;" Style="{StaticResource Icon}" Margin="0,0,8,0"/>
                                 <TextBlock Text="設定"/>
@@ -356,12 +356,6 @@
                             <StackPanel Orientation="Horizontal">
                                 <TextBlock Text="&#xE72C;" Style="{StaticResource Icon}" Margin="0,0,8,0"/>
                                 <TextBlock Text="再読み込み"/>
-                            </StackPanel>
-                        </Button>
-                        <Button Style="{StaticResource GhostButton}" Click="LogoutButton_Click" AutomationProperties.Name="ログアウト" ToolTip="ログイン状態を消してログイン画面に戻る" Height="30" Padding="10,0" Margin="4,0,0,0">
-                            <StackPanel Orientation="Horizontal">
-                                <TextBlock Text="&#xF3B1;" Style="{StaticResource Icon}" Margin="0,0,8,0"/>
-                                <TextBlock Text="ログアウト"/>
                             </StackPanel>
                         </Button>
                         <Button Style="{StaticResource GhostButton}" Click="HelpButton_Click" ToolTip="使い方・よくある質問 (F1)" AutomationProperties.Name="使い方" Height="30" Padding="10,0" Margin="4,0,0,0">
@@ -570,6 +564,129 @@
                         ToolTip="一覧のダブルクリックでも着替えられます"/>
             </Grid>
             </Grid>
+        </Grid>
+
+        <!-- ================= 設定 (アプリ内オーバーレイ) ================= -->
+        <Grid x:Name="SettingsOverlay" Visibility="Collapsed">
+            <Grid.Resources>
+                <!-- オン/オフの状態が読めるトグル -->
+                <Style x:Key="OnOffToggle" TargetType="ToggleButton" BasedOn="{StaticResource SegmentToggle}">
+                    <Setter Property="MinWidth" Value="72"/>
+                    <Setter Property="Content" Value="オフ"/>
+                    <Style.Triggers>
+                        <Trigger Property="IsChecked" Value="True">
+                            <Setter Property="Content" Value="オン"/>
+                        </Trigger>
+                    </Style.Triggers>
+                </Style>
+                <Style x:Key="SettingTitle" TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
+                    <Setter Property="FontWeight" Value="SemiBold"/>
+                </Style>
+                <Style x:Key="SettingDesc" TargetType="TextBlock" BasedOn="{StaticResource MutedText}">
+                    <Setter Property="TextWrapping" Value="Wrap"/>
+                    <Setter Property="FontSize" Value="12"/>
+                    <Setter Property="LineHeight" Value="18"/>
+                    <Setter Property="Margin" Value="0,4,0,0"/>
+                </Style>
+                <Style x:Key="SettingRow" TargetType="Border">
+                    <Setter Property="Background" Value="{DynamicResource WindowBrush}"/>
+                    <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}"/>
+                    <Setter Property="BorderThickness" Value="1"/>
+                    <Setter Property="CornerRadius" Value="{StaticResource ControlRadius}"/>
+                    <Setter Property="Padding" Value="16,12"/>
+                    <Setter Property="Margin" Value="0,0,0,10"/>
+                </Style>
+            </Grid.Resources>
+
+            <!-- 背景クリックで閉じる -->
+            <Border Background="{DynamicResource ScrimBrush}" MouseLeftButtonDown="SettingsBackdrop_MouseLeftButtonDown"/>
+
+            <Border x:Name="SettingsCard" Style="{StaticResource Card}" Width="480" VerticalAlignment="Center" HorizontalAlignment="Center" Padding="20"
+                    RenderTransformOrigin="0.5,0.5">
+                <Border.RenderTransform>
+                    <ScaleTransform x:Name="SettingsCardScale"/>
+                </Border.RenderTransform>
+                <Border.Effect>
+                    <DropShadowEffect BlurRadius="28" ShadowDepth="4" Opacity="0.35" Color="#000000"/>
+                </Border.Effect>
+                <StackPanel>
+                    <Grid Margin="0,0,0,14">
+                        <TextBlock Text="設定" FontWeight="SemiBold" FontSize="16" VerticalAlignment="Center"/>
+                        <Button Style="{StaticResource GhostButton}" Click="SettingsClose_Click" AutomationProperties.Name="設定を閉じる"
+                                ToolTip="閉じる (Esc)" HorizontalAlignment="Right" Width="30" Height="30" Padding="0">
+                            <TextBlock Text="&#xE711;" Style="{StaticResource Icon}"/>
+                        </Button>
+                    </Grid>
+
+                    <Border Style="{StaticResource SettingRow}">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <StackPanel>
+                                <TextBlock Text="VRChat 連動" Style="{StaticResource SettingTitle}"/>
+                                <TextBlock Style="{StaticResource SettingDesc}"
+                                           Text="Windows 起動時にタスクトレイで待機し、VRChat の起動を検知したら自動でウィンドウを開きます。オンの間はウィンドウを閉じてもトレイに残ります(完全に終了するにはトレイアイコンを右クリック →「終了」)。"/>
+                            </StackPanel>
+                            <ToggleButton Grid.Column="1" x:Name="WatchToggle" Style="{StaticResource OnOffToggle}"
+                                          Checked="WatchToggle_Changed" Unchecked="WatchToggle_Changed"
+                                          VerticalAlignment="Top" Margin="14,0,0,0" AutomationProperties.Name="VRChat 連動"/>
+                        </Grid>
+                    </Border>
+
+                    <Border Style="{StaticResource SettingRow}">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <StackPanel>
+                                <TextBlock Text="クイック着替え (Shift+1)" Style="{StaticResource SettingTitle}"/>
+                                <TextBlock Style="{StaticResource SettingDesc}"
+                                           Text="VRChat をデスクトップモードでプレイ中に Shift+1 を押すと、画面の右にアバター選択を重ねて表示します。VRChat (またはこのオーバーレイ) が手前にあるときだけ反応します。"/>
+                            </StackPanel>
+                            <ToggleButton Grid.Column="1" x:Name="QuickToggle" Style="{StaticResource OnOffToggle}"
+                                          Checked="QuickToggle_Changed" Unchecked="QuickToggle_Changed"
+                                          VerticalAlignment="Top" Margin="14,0,0,0" AutomationProperties.Name="クイック着替え"/>
+                        </Grid>
+                    </Border>
+
+                    <Border Style="{StaticResource SettingRow}">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <StackPanel>
+                                <TextBlock Text="データの保存先" Style="{StaticResource SettingTitle}"/>
+                                <TextBlock Style="{StaticResource SettingDesc}"
+                                           Text="設定・グループ・タグ・パブリックリストの保存先フォルダ (%AppData%\VRCAvatarChanger) を開きます。"/>
+                            </StackPanel>
+                            <Button Grid.Column="1" Content="開く" Style="{StaticResource SecondaryButton}" Click="OpenDataFolder_Click"
+                                    MinWidth="80" Height="32" VerticalAlignment="Top" Margin="14,0,0,0"/>
+                        </Grid>
+                    </Border>
+
+                    <Border Style="{StaticResource SettingRow}">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <StackPanel>
+                                <TextBlock Text="アカウント" Style="{StaticResource SettingTitle}"/>
+                                <TextBlock x:Name="AccountDesc" Style="{StaticResource SettingDesc}"/>
+                            </StackPanel>
+                            <Button Grid.Column="1" Content="ログアウト" Style="{StaticResource SecondaryButton}" Click="SettingsLogout_Click"
+                                    ToolTip="保存したログイン状態を消してログイン画面に戻る"
+                                    MinWidth="80" Height="32" VerticalAlignment="Top" Margin="14,0,0,0"/>
+                        </Grid>
+                    </Border>
+
+                    <Button Content="閉じる" Click="SettingsClose_Click" MinWidth="100" Height="34" HorizontalAlignment="Right" Margin="0,4,0,0"/>
+                </StackPanel>
+            </Border>
         </Grid>
     </Grid>
 </Window>

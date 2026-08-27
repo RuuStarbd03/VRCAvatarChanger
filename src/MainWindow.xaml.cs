@@ -2,6 +2,7 @@
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Media.Animation;
 using System.Windows.Media.Imaging;
 
 namespace VRCAvatarChanger;
@@ -45,6 +46,15 @@ public partial class MainWindow : Window
 
     public MainWindow()
     {
+#if DEBUG
+        // UI 確認用: 環境変数 VRCAC_UI_PREVIEW=1 で API を叩かずにダミーデータでメイン画面を表示する (Debug ビルドのみ)。
+        // スタートアップ登録やキーボードフックなど実環境に触る初期化より先に判定する
+        if (Environment.GetEnvironmentVariable("VRCAC_UI_PREVIEW") == "1")
+        {
+            _preview = true;
+            Loaded += (_, _) => ShowUiPreview();
+        }
+#endif
         // 旧バージョンではタグを public_avatars.json 内に保存していた。tags.json へ一度だけ移行する
         var migrated = false;
         foreach (var entry in _public.Entries.Where(en => en.Tags.Count > 0))
@@ -61,6 +71,7 @@ public partial class MainWindow : Window
         InitializeComponent();
         SortBox.SelectedItem = SortBox.Items.OfType<ComboBoxItem>().FirstOrDefault(i => (string?)i.Tag == savedSort) ?? SortBox.Items[0];
         InitWatchVRChat(); // _ready 前に呼ぶ (トグルの初期化でイベントを発火させない)
+        InitQuickOverlay();
         _ready = true;
         GridColumns = savedColumns;
         ColumnsSlider.Value = savedColumns;
@@ -71,18 +82,10 @@ public partial class MainWindow : Window
         _osc.AvatarChanged += id => Dispatcher.BeginInvoke(() => OnOscAvatarChanged(id));
         RestoreWindowBounds();
         SourceInitialized += (_, _) => App.ApplyTitleBarTheme(this);
-        Loaded += async (_, _) => await TryRestoreSessionAsync();
-        Loaded += async (_, _) => await CheckForUpdateAsync();
+        Loaded += async (_, _) => { if (!_preview) await TryRestoreSessionAsync(); };
+        Loaded += async (_, _) => { if (!_preview) await CheckForUpdateAsync(); };
         Closing += (_, _) => SaveWindowBounds();
         Closed += (_, _) => { _settingsSaveTimer?.Stop(); _searchTimer?.Stop(); _oscRetry?.Stop(); _thumbCts?.Cancel(); _osc.Dispose(); _api.Dispose(); };
-#if DEBUG
-        // UI 確認用: 環境変数 VRCAC_UI_PREVIEW=1 で API を叩かずにダミーデータでメイン画面を表示する (Debug ビルドのみ)
-        if (Environment.GetEnvironmentVariable("VRCAC_UI_PREVIEW") == "1")
-        {
-            _preview = true;
-            Loaded += (_, _) => ShowUiPreview();
-        }
-#endif
     }
 
     // ---------------- 表示形式 ----------------
@@ -142,7 +145,19 @@ public partial class MainWindow : Window
         ApplyFilter();
     }
 
-    private static IEnumerable<AvatarItem> ApplySort(IEnumerable<AvatarItem> items, string key)
+    /// <summary>最近使用に記録する (先頭 = 最新)。クイック着替えの「最近使用した順」に使う。</summary>
+    private void TouchRecentAvatar(string avatarId)
+    {
+        if (!VRChatApi.IsValidAvatarId(avatarId)) return;
+        var list = _settings.RecentAvatars;
+        if (list.FirstOrDefault() == avatarId) return;
+        list.Remove(avatarId);
+        list.Insert(0, avatarId);
+        if (list.Count > 200) list.RemoveRange(200, list.Count - 200);
+        if (!_preview) _settings.Save();
+    }
+
+    internal static IEnumerable<AvatarItem> ApplySort(IEnumerable<AvatarItem> items, string key)
     {
         var desc = key.EndsWith("_desc", StringComparison.Ordinal);
         var cmp = StringComparer.CurrentCultureIgnoreCase;
@@ -352,10 +367,85 @@ public partial class MainWindow : Window
         _settings.Save();
     }
 
-    // ---------------- ヘルプ / キー操作 ----------------
+    // ---------------- 設定 (アプリ内オーバーレイ) ----------------
 
-    private void SettingsButton_Click(object sender, RoutedEventArgs e)
-        => new SettingsWindow(_settings, SetWatchVRChat) { Owner = this }.ShowDialog();
+    private void SettingsButton_Click(object sender, RoutedEventArgs e) => OpenSettings();
+
+    private bool _settingsOpen;
+
+    private void QuickToggle_Changed(object sender, RoutedEventArgs e)
+    {
+        if (!_ready) return;
+        SetQuickOverlay(QuickToggle.IsChecked == true);
+    }
+
+    private void OpenSettings()
+    {
+        WatchToggle.IsChecked = _settings.WatchVRChat;
+        QuickToggle.IsChecked = _settings.QuickOverlay;
+        AccountDesc.Text = (string.IsNullOrEmpty(_user?.DisplayName) ? "" : $"{_user.DisplayName} としてログイン中。")
+            + "保存したログイン状態を消してログイン画面に戻ります。";
+        if (SettingsOverlay.Visibility != Visibility.Visible)
+        {
+            SettingsOverlay.Opacity = 0;
+            SettingsCardScale.ScaleX = SettingsCardScale.ScaleY = 0.96;
+            SettingsOverlay.Visibility = Visibility.Visible;
+        }
+        AnimateSettings(open: true);
+    }
+
+    private void CloseSettings()
+    {
+        if (SettingsOverlay.Visibility != Visibility.Visible) return;
+        AnimateSettings(open: false);
+    }
+
+    /// <summary>設定オーバーレイのフェード + カードの拡縮。閉じ切ったら Collapsed にする。</summary>
+    private void AnimateSettings(bool open)
+    {
+        _settingsOpen = open;
+        var dur = TimeSpan.FromMilliseconds(open ? 180 : 130);
+        var fade = new DoubleAnimation(open ? 1 : 0, dur) { EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut } };
+        if (!open) fade.Completed += (_, _) => { if (!_settingsOpen) SettingsOverlay.Visibility = Visibility.Collapsed; };
+        SettingsOverlay.BeginAnimation(OpacityProperty, fade);
+
+        var scale = new DoubleAnimation(open ? 1 : 0.96, dur)
+        {
+            EasingFunction = open
+                ? new BackEase { EasingMode = EasingMode.EaseOut, Amplitude = 0.4 }
+                : new CubicEase { EasingMode = EasingMode.EaseIn }
+        };
+        SettingsCardScale.BeginAnimation(ScaleTransform.ScaleXProperty, scale);
+        SettingsCardScale.BeginAnimation(ScaleTransform.ScaleYProperty, scale);
+    }
+
+    private void SettingsClose_Click(object sender, RoutedEventArgs e) => CloseSettings();
+
+    private void SettingsBackdrop_MouseLeftButtonDown(object sender, MouseButtonEventArgs e) => CloseSettings();
+
+    private void WatchToggle_Changed(object sender, RoutedEventArgs e)
+    {
+        if (!_ready) return;
+        SetWatchVRChat(WatchToggle.IsChecked == true);
+    }
+
+    private void OpenDataFolder_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            System.IO.Directory.CreateDirectory(AppPaths.DataDir);
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(AppPaths.DataDir) { UseShellExecute = true });
+        }
+        catch { }
+    }
+
+    private void SettingsLogout_Click(object sender, RoutedEventArgs e)
+    {
+        CloseSettings();
+        Logout();
+    }
+
+    // ---------------- ヘルプ / キー操作 ----------------
 
     private HelpWindow? _help;
 
@@ -372,6 +462,12 @@ public partial class MainWindow : Window
     private void Window_PreviewKeyDown(object sender, KeyEventArgs e)
     {
         if (e.Key == Key.F1) { e.Handled = true; ShowHelp(); return; }
+        if (e.Key == Key.Escape && SettingsOverlay.Visibility == Visibility.Visible)
+        {
+            e.Handled = true;
+            CloseSettings();
+            return;
+        }
         if (e.Key == Key.Escape && _openGroup is not null && MainPanel.Visibility == Visibility.Visible)
         {
             e.Handled = true;
@@ -545,7 +641,8 @@ public partial class MainWindow : Window
         else await ChangeAvatarAsync(item.Id, item.Name);
     }
 
-    private async Task ChangeAvatarAsync(string avatarId, string name)
+    /// <summary>着替える。成功したら true (クイック着替えオーバーレイが結果表示に使う)。</summary>
+    private async Task<bool> ChangeAvatarAsync(string avatarId, string name)
     {
         ChangeButton.IsEnabled = false;
         SetStatus(StatusKind.Info, $"{name} に着替えています");
@@ -559,8 +656,14 @@ public partial class MainWindow : Window
                 UpdateUserHeader();
             }
             SetStatus(StatusKind.Success, $"{name} に着替えました");
+            TouchRecentAvatar(avatarId);
+            return true;
         }
-        catch (Exception ex) { if (!HandleSessionExpired(ex)) SetStatus(StatusKind.Error, "着替えられませんでした: " + FriendlyError.Of(ex)); }
+        catch (Exception ex)
+        {
+            if (!HandleSessionExpired(ex)) SetStatus(StatusKind.Error, "着替えられませんでした: " + FriendlyError.Of(ex));
+            return false;
+        }
         finally { ChangeButton.IsEnabled = AvatarList.SelectedItem is AvatarItem { IsAvatar: true }; }
     }
 }

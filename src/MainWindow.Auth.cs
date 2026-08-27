@@ -120,7 +120,8 @@ public partial class MainWindow
         LoginStatus.Foreground = (System.Windows.Media.Brush)FindResource(error ? "DangerBrush" : "MutedTextBrush");
     }
 
-    private async void LogoutButton_Click(object sender, RoutedEventArgs e)
+    /// <summary>設定ウィンドウの「ログアウト」から呼ばれる。</summary>
+    private async void Logout()
     {
         await _api.LogoutAsync();
         BrowserLoginWindow.DeleteBrowserProfile();
@@ -131,6 +132,7 @@ public partial class MainWindow
     private async Task EnterMainAsync(CurrentUser user)
     {
         _user = user;
+        TouchRecentAvatar(user.CurrentAvatar); // 今着ているものは「最近使用」の先頭に載せる
         LoginPanel.Visibility = Visibility.Collapsed;
         MainPanel.Visibility = Visibility.Visible;
         UpdateUserHeader();
@@ -144,6 +146,7 @@ public partial class MainWindow
         _user = null;
         _allItems.Clear();
         AvatarList.ItemsSource = null;
+        CloseSettings(); // セッション切れ等で設定を開いたまま戻るケース
         MainPanel.Visibility = Visibility.Collapsed;
         LoginPanel.Visibility = Visibility.Visible;
         SetLoginStatus(message, error: false);

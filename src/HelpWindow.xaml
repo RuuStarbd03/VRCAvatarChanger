@@ -123,6 +123,10 @@
                     <TextBlock Style="{StaticResource Body}"
                                Text="衣装違いなどを 1 つにまとめられます。アバターを別のアバターにドラッグ&amp;ドロップするか、右クリック →「グループに入れる...」。ツールバーの「グループ化」を ON にするとまとめて表示され、ダブルクリックで中身を開けます。名前の変更や解除はグループを右クリックします。"/>
 
+                    <TextBlock Text="ゲーム中にサッと着替える (Shift+1)" Style="{StaticResource H2}"/>
+                    <TextBlock Style="{StaticResource Body}"
+                               Text="VRChat をデスクトップモードでプレイ中に Shift+1 を押すと、画面の右にアバター選択が重なって表示されます。クリックで着替えて自動で閉じ、VRChat に操作が戻ります。もう一度 Shift+1 か Esc で閉じられます。設定でオフにできます。"/>
+
                     <TextBlock Text="ゲーム内の着替えを反映する (OSC)" Style="{StaticResource H2}"/>
                     <TextBlock Style="{StaticResource Body}"
                                Text="VRChat で OSC を有効にすると(アクションメニュー → Options → OSC → Enabled)、ゲーム内で着替えたときも左上の「現在:」が更新されます。つながっていると「OSC 連携中」と表示され、アプリからの着替えもローカル通信で即座に反映されます。OSC が無い場合も着替えは可能です(サーバー経由のため反映に少し時間がかかることがあります)。"/>
@@ -164,7 +168,7 @@
 
                     <TextBlock Text="ログインしたままにしたくない" Style="{StaticResource Q}"/>
                     <TextBlock Style="{StaticResource Body}"
-                               Text="右上の「ログアウト」で保存されたログイン状態が消え、次回は再ログインになります。"/>
+                               Text="右上の「設定」→「ログアウト」で保存されたログイン状態が消え、次回は再ログインになります。"/>
 
                     <TextBlock Text="アップデートはどうやるの?" Style="{StaticResource Q}"/>
                     <TextBlock Style="{StaticResource Body}"

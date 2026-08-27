@@ -30,4 +30,7 @@
     <!-- 意味色 -->
     <SolidColorBrush x:Key="DangerBrush"      Color="#FFE07A7E"/>
     <SolidColorBrush x:Key="SuccessBrush"     Color="#FF6FBF8E"/>
+
+    <!-- オーバーレイの背景 (設定パネルなど) -->
+    <SolidColorBrush x:Key="ScrimBrush"       Color="#8C000000"/>
 </ResourceDictionary>
