@@ -335,8 +335,19 @@ public partial class MainWindow
                 for (var i = 1; i < idx.Count; i++)
                     for (var missing = idx[i - 1] + 1; missing < idx[i]; missing++) gaps.Add(missing);
                 var dup = idx.Count - idx.Distinct().Count();
+                var h = panel.HeightState;
+                // タイル 1 枚が本当に要る高さ (中身を測り直した値)。行高がこれより大きいと縦長に見える
+                var natural = 0.0;
+                if (VisualTreeHelper.GetChildrenCount(panel) > 0
+                    && VisualTreeHelper.GetChild(panel, 0) is UIElement first)
+                {
+                    first.Measure(new Size(h.ItemWidth, double.PositiveInfinity));
+                    natural = first.DesiredSize.Height;
+                }
                 report.AppendLine($"{label,-14} 配置={idx.Count,4} 範囲={(idx.Count > 0 ? $"{idx[0]}..{idx[^1]}" : "-"),-10} " +
-                    $"重複={dup,2} 抜け={gaps.Count,3} {(gaps.Count > 0 ? "-> " + string.Join(",", gaps.Take(20)) : "")}");
+                    $"重複={dup,2} 抜け={gaps.Count,3} | タイル幅={h.ItemWidth,6:F1} 行高={h.Row,6:F1} " +
+                    $"見積り={h.Estimate,6:F1} 実際に要る高さ={natural,6:F1} 余り={h.Row - natural,6:F1} " +
+                    $"{(gaps.Count > 0 ? "-> " + string.Join(",", gaps.Take(20)) : "")}");
             }
 
             Check("初期表示");

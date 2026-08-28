@@ -23,16 +23,24 @@ public sealed class VirtualizingUniformGrid : VirtualizingPanel, IScrollInfo
     /// <summary>1 行あたりのタイル数。</summary>
     public int Columns { get => (int)GetValue(ColumnsProperty); set => SetValue(ColumnsProperty, value); }
 
-    // 行の高さ。タイルの画像部分は ActualWidth バインディング(配置後に確定)で高さが決まるため、
-    // 実体化直後の計測値は低く出る。実測値に素直に追従すると計測のたびに行高が揺れて
-    // レイアウトが収束しない(無限ループ)ので、幅から見積もった値を下限に「増える方向にだけ」補正する。
+    // 行の高さ。タイルの画像部分は ActualWidth バインディング(= 直前の配置で決まる)で高さが出るため、
+    // まだその幅で配置していないうちの計測値は当てにならない (前の幅のままの高さが返る)。
+    // そこで「今の幅で一度配置し終えたか」を見て、済んでいるときだけ実測値に合わせる。
+    // 済んでいないうちは幅からの見積もりを使う。実測値は行高に依存しないので、これで 1 往復で収束する。
     private double _rowHeight = 160;
     private double _rowHeightItemWidth; // 見積もりに使ったタイル幅。幅(列数)が変わったら見積もり直す
+    private double _arrangedItemWidth = double.NaN; // 最後に配置したときのタイル幅
     private Size _extent;
     private Size _viewport;
     private double _offset;
 
     private int ItemCount => ItemsControl.GetItemsOwner(this)?.Items.Count ?? 0;
+
+#if DEBUG
+    /// <summary>検証用: 今の行の高さと、幅から見積もった値。</summary>
+    internal (double Row, double ItemWidth, double Estimate) HeightState
+        => (_rowHeight, _rowHeightItemWidth, _rowHeightItemWidth * 0.75 + 60);
+#endif
 
     protected override Size MeasureOverride(Size availableSize)
     {
@@ -87,7 +95,9 @@ public sealed class VirtualizingUniformGrid : VirtualizingPanel, IScrollInfo
                 measuredRowHeight = Math.Max(measuredRowHeight, child.DesiredSize.Height);
             }
         }
-        if (measuredRowHeight > _rowHeight) _rowHeight = measuredRowHeight;
+        // 今の幅で配置済みなら、計測値は信用できる (画像の高さが今の幅で確定している)。
+        // まだなら見積もりのまま置いておき、配置後の次の計測で本当の高さに合わせる
+        if (measuredRowHeight > 0 && _arrangedItemWidth == itemWidth) _rowHeight = measuredRowHeight;
 
         var extent = new Size(availableSize.Width, rows * _rowHeight);
         UpdateScrollInfo(availableSize, extent);
@@ -107,6 +117,7 @@ public sealed class VirtualizingUniformGrid : VirtualizingPanel, IScrollInfo
             var col = itemIndex % cols;
             InternalChildren[i].Arrange(new Rect(col * itemWidth, row * _rowHeight - _offset, itemWidth, _rowHeight));
         }
+        _arrangedItemWidth = itemWidth; // 次の計測で「この幅の実測値」として扱ってよい目印
         return finalSize;
     }
 
