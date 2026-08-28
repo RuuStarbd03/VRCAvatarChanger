@@ -1,4 +1,5 @@
 using System.IO;
+using System.Windows;
 using System.Windows.Media.Imaging;
 
 namespace VRCAvatarChanger;
@@ -6,27 +7,110 @@ namespace VRCAvatarChanger;
 // 画像: サムネイルの取得・デコードと、メモリ / ディスクの二段キャッシュ。
 // ディスクキャッシュ (ImageDiskCache) があるので、二回目以降の起動では通信せずに一覧が埋まる。
 //
-// 負荷を抑えるための決めごとが 2 つある:
+// 負荷を抑えるための決めごと:
 //   ・デコードは UI スレッドでやらない (1 枚 2〜6ms。数百枚だと操作が引っかかる)
 //   ・表示に必要な幅だけデコードする (リスト表示のサムネは小さいので、時間もメモリも大きく減る)
+//   ・読む順番は「画面に出たもの優先、残りは 1 本ずつ静かに」。一気に数百件を取りに行かない
+//
+// 「画面に出てから読む」だけだと、スクロールした先が灰色のままになる瞬間ができる。それを避けるため:
+//   ・一覧は画面の前後 1 ページ分まで実体化する (見える前に読み始める)
+//   ・実体化されていない残りも、裏で 1 件ずつ最後まで埋める (スクロールバーで飛んでも間に合っている)
 public partial class MainWindow
 {
-    private const int ListThumbWidth = 128;  // リスト表示の行サムネ (実サイズ ~46px、高 DPI でも足りる)
+    private const int ListThumbWidth = 128;  // リスト表示の行サムネ (実サイズ ~96px、高 DPI でも足りる)
     private const int GridThumbWidth = 320;  // ボックス表示 3 列でも粗くならない幅
+
+    private const int FrontConcurrency = 4;  // 画面に出ているものは並列で急いで読む
+    private const int FillConcurrency = 1;   // 残りは 1 本ずつ。VRChat 側にも自分の CPU にも優しく
 
     private int ThumbWidth => IsGridView ? GridThumbWidth : ListThumbWidth;
 
-    private async Task LoadThumbnailsAsync(List<AvatarItem> items, CancellationToken ct)
+    private readonly Queue<AvatarItem> _thumbFront = new();   // 画面に出た (出そうな) もの
+    private readonly HashSet<AvatarItem> _thumbFrontSet = []; // 二重投入よけ
+    private List<AvatarItem> _thumbFill = [];                 // 残り全部 (表示順)
+    private int _thumbFillIndex;
+    private int _thumbRunning;
+    private CancellationToken _thumbCt;
+
+    /// <summary>まだ今の表示に足りる画像を持っていない (未取得、または小さくデコードしたものしかない)。</summary>
+    private bool NeedsThumbnail(AvatarItem item)
+        => item.ThumbnailUrl is not null && (item.Thumbnail is null || item.ThumbnailWidth < ThumbWidth);
+
+    /// <summary>一覧が変わったとき / 表示形式が変わったとき、全件を「裏で埋める」対象として積み直す。</summary>
+    private void QueueThumbnails(List<AvatarItem> items, CancellationToken ct)
     {
-        using var gate = new SemaphoreSlim(4);
-        var tasks = items.Where(i => i.ThumbnailUrl is not null).Select(async item =>
+        _thumbCt = ct;
+        _thumbFront.Clear();
+        _thumbFrontSet.Clear();
+        _thumbFill = items.Where(i => i.IsAvatar && i.ThumbnailUrl is not null).ToList();
+        _thumbFillIndex = 0;
+        PumpThumbnails();
+    }
+
+    /// <summary>タイルが画面に出た (実体化された) ときに呼ばれる。他を後回しにして先に読む。</summary>
+    private void RequestThumbnail(AvatarItem item)
+    {
+        // グループタイルは代表メンバーの画像を映しているので、読むのは代表のぶん
+        if (item.IsGroup) item = item.Representative!;
+        if (!NeedsThumbnail(item) || !_thumbFrontSet.Add(item)) return;
+        _thumbFront.Enqueue(item);
+        PumpThumbnails();
+    }
+
+    /// <summary>データテンプレートの根から。タイルが作られたとき / 別のアバターに使い回されたときに呼ばれる。</summary>
+    private void AvatarTile_Realized(object sender, RoutedEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.DataContext is AvatarItem item) RequestThumbnail(item);
+    }
+
+    private void AvatarTile_DataContextChanged(object sender, DependencyPropertyChangedEventArgs e)
+    {
+        if (e.NewValue is AvatarItem item) RequestThumbnail(item);
+    }
+
+    /// <summary>空いている枠のぶんだけ読み込みを始める。画面に出ているものがある間は、そちらを優先する。</summary>
+    private void PumpThumbnails()
+    {
+        while (true)
         {
-            await gate.WaitAsync(ct);
-            try { item.Thumbnail = await GetImageAsync(item.ThumbnailUrl!, ct); }
-            catch (OperationCanceledException) { }
-            finally { gate.Release(); }
-        });
-        try { await Task.WhenAll(tasks); } catch (OperationCanceledException) { }
+            var front = _thumbFront.Count > 0;
+            if (_thumbRunning >= (front ? FrontConcurrency : FillConcurrency)) return;
+            var item = front ? _thumbFront.Dequeue() : NextFillItem();
+            if (item is null) return;
+            if (!NeedsThumbnail(item)) { _thumbFrontSet.Remove(item); continue; } // 先に読み終わっていた
+            _thumbRunning++;
+            _ = LoadThumbnailAsync(item, _thumbCt);
+        }
+    }
+
+    private AvatarItem? NextFillItem()
+    {
+        while (_thumbFillIndex < _thumbFill.Count)
+        {
+            var item = _thumbFill[_thumbFillIndex++];
+            if (NeedsThumbnail(item)) return item;
+        }
+        return null;
+    }
+
+    private async Task LoadThumbnailAsync(AvatarItem item, CancellationToken ct)
+    {
+        try
+        {
+            var width = ThumbWidth;
+            if (await GetImageAsync(item.ThumbnailUrl!, ct) is { } image)
+            {
+                item.Thumbnail = image;
+                item.ThumbnailWidth = width;
+            }
+        }
+        catch (OperationCanceledException) { }
+        finally
+        {
+            _thumbRunning--;
+            _thumbFrontSet.Remove(item);
+            if (!ct.IsCancellationRequested) PumpThumbnails();
+        }
     }
 
     /// <summary>

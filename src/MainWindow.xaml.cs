@@ -104,9 +104,9 @@ public partial class MainWindow : Window
         ApplyPanels();
         _settings.ViewMode = grid ? "grid" : "list";
         if (!_preview) _settings.Save();
-        // ボックス表示は大きく出すので、リスト用に小さくデコードした画像は取り直す
+        // 表示形式が変わるとサムネに要る幅も変わる。積み直して、足りないものだけ読み直す
         // (通信は発生しない。ディスクキャッシュから読んでデコードし直すだけ)
-        if (grid) _ = LoadThumbnailsAsync(_allItems.ToList(), _thumbCts?.Token ?? CancellationToken.None);
+        QueueThumbnails(_allItems.ToList(), _thumbCts?.Token ?? CancellationToken.None);
         if (AvatarList.SelectedItem is not null) AvatarList.ScrollIntoView(AvatarList.SelectedItem);
     }
 
@@ -577,7 +577,7 @@ public partial class MainWindow : Window
                 var n => $"{_allItems.Count} 件 ({n} 件の情報を更新しました)",
             });
             PruneImageCache();
-            _ = LoadThumbnailsAsync(_allItems.ToList(), ct);
+            QueueThumbnails(_allItems.ToList(), ct);
             if (refresh) _ = RefreshFavoriteStateAsync(ct);
         }
         catch (OperationCanceledException) { }
@@ -601,7 +601,7 @@ public partial class MainWindow : Window
         ApplyFilter();
         UpdateUserHeader();
         SetStatus(StatusKind.Info, status);
-        _ = LoadThumbnailsAsync(_allItems.ToList(), ct);
+        QueueThumbnails(_allItems.ToList(), ct);
     }
 
     // ---------------- 検索と絞り込みの適用 ----------------

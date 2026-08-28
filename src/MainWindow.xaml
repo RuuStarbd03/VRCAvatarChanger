@@ -78,8 +78,9 @@
             </Setter>
         </Style>
 
+        <!-- Loaded / DataContextChanged = このタイルが画面に出た (使い回された) 合図。そこでサムネを要求する -->
         <DataTemplate x:Key="AvatarRowTemplate" DataType="{x:Type local:AvatarItem}">
-            <Grid>
+            <Grid Loaded="AvatarTile_Realized" DataContextChanged="AvatarTile_DataContextChanged">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto"/>
                     <ColumnDefinition Width="*"/>
@@ -204,7 +205,7 @@
 
 
         <DataTemplate x:Key="AvatarTileTemplate" DataType="{x:Type local:AvatarItem}">
-            <StackPanel>
+            <StackPanel Loaded="AvatarTile_Realized" DataContextChanged="AvatarTile_DataContextChanged">
                 <StackPanel.ToolTip>
                     <StackPanel>
                         <TextBlock Text="{Binding Name}" FontWeight="SemiBold"/>
@@ -523,7 +524,9 @@
                               AllowDrop="True" PreviewMouseLeftButtonDown="AvatarList_PreviewMouseLeftButtonDown" PreviewMouseMove="AvatarList_PreviewMouseMove"
                               DragOver="AvatarList_DragOver" DragLeave="AvatarList_DragLeave" Drop="AvatarList_Drop"
                               VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.VirtualizationMode="Recycling"
-                              VirtualizingPanel.ScrollUnit="Pixel" local:SmoothScroll.IsEnabled="True">
+                              VirtualizingPanel.ScrollUnit="Pixel"
+                              VirtualizingPanel.CacheLengthUnit="Page" VirtualizingPanel.CacheLength="1,1"
+                              local:SmoothScroll.IsEnabled="True">
                         <ListView.ContextMenu>
                             <ContextMenu>
                                 <MenuItem x:Name="MenuChange" Header="このアバターに着替える" Click="MenuChange_Click"/>

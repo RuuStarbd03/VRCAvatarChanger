@@ -153,8 +153,8 @@ public partial class MainWindow
         // グループの中身はメイン画面の現在マーク更新の対象外なので、ここで付け直す
         var cur = _user?.CurrentAvatar;
         foreach (var i in flat) i.IsCurrent = i.Id == cur;
-        // サムネ未取得のもの (グループの中身など) を裏で読み込む
-        _ = LoadThumbnailsAsync(flat.Where(i => i.Thumbnail is null).ToList(), CancellationToken.None);
+        // サムネ未取得のもの (グループの中身など) を優先で読み込む。これから見えるものなので後回しにしない
+        foreach (var i in flat) RequestThumbnail(i);
         return flat;
     }
 

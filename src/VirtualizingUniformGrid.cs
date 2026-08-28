@@ -9,10 +9,13 @@ namespace VRCAvatarChanger;
 /// <summary>
 /// UniformGrid の見た目(固定列数・等幅タイル・上から行で埋める)のまま、行単位で仮想化するパネル。
 /// UniformGrid は仮想化に対応しておらず、ボックス表示でアバターが多いと全件分の UI 要素を作ってしまうため、
-/// 画面に見えている行 + 前後 1 行だけを実体化する。タイルの高さは全行で同じ(幅から決まる)前提。
+/// 画面に見えている行 + 前後 PrefetchRows 行だけを実体化する。タイルの高さは全行で同じ(幅から決まる)前提。
 /// </summary>
 public sealed class VirtualizingUniformGrid : VirtualizingPanel, IScrollInfo
 {
+    /// <summary>画面の外にも作っておく行数。スクロールした先が空白のままにならないようにするための先読み。</summary>
+    private const int PrefetchRows = 2;
+
     public static readonly DependencyProperty ColumnsProperty = DependencyProperty.Register(
         nameof(Columns), typeof(int), typeof(VirtualizingUniformGrid),
         new FrameworkPropertyMetadata(5, FrameworkPropertyMetadataOptions.AffectsMeasure));
@@ -54,9 +57,11 @@ public sealed class VirtualizingUniformGrid : VirtualizingPanel, IScrollInfo
         var rows = (itemCount + cols - 1) / cols;
         var viewportHeight = double.IsInfinity(availableSize.Height) ? _viewport.Height : availableSize.Height;
 
-        // 見えている行 + 前後 1 行を実体化の対象にする
-        var firstRow = Math.Max(0, (int)(_offset / _rowHeight) - 1);
-        var lastRow = Math.Min(rows - 1, (int)((_offset + viewportHeight) / _rowHeight) + 1);
+        // 見えている行 + 前後 PrefetchRows 行を実体化の対象にする。
+        // 余分に作るのは、スクロールした先のサムネイルを「見える前に」読み始めるため
+        // (実体化された時点で MainWindow がサムネイルの取得を始める)
+        var firstRow = Math.Max(0, (int)(_offset / _rowHeight) - PrefetchRows);
+        var lastRow = Math.Min(rows - 1, (int)((_offset + viewportHeight) / _rowHeight) + PrefetchRows);
         var firstIndex = firstRow * cols;
         var lastIndex = Math.Min(itemCount - 1, (lastRow + 1) * cols - 1);
 

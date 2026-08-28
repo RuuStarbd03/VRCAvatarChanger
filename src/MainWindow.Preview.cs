@@ -20,10 +20,13 @@ public partial class MainWindow
         string[] names = ["Kikyo", "Selestia", "Manuka", "Shinano", "Rurune", "Moe", "Lime", "Mizuki"];
         // VRCAC_UI_PREVIEW_COUNT=500 のように件数を増やして、仮想化やスクロールの負荷を確認できる
         var count = int.TryParse(Environment.GetEnvironmentVariable("VRCAC_UI_PREVIEW_COUNT"), out var c) ? c : names.Length;
+        // サムネイルの読み込みを試すとき用。ダミーの URL を付ける (事前にディスクキャッシュへ入れておく前提)
+        var withThumbs = Environment.GetEnvironmentVariable("VRCAC_UI_PREVIEW_THUMBS") == "1";
         for (var i = 0; i < count; i++)
             _allItems.Add(new AvatarItem(new Avatar
             {
                 Id = $"avtr_00000000-0000-4000-8000-{i + 1:D12}",
+                ThumbnailImageUrl = withThumbs ? PreviewThumbUrl(i) : null,
                 Name = names[i % names.Length] + (i >= names.Length ? $" {i + 1}" : "") + (i % 3 == 0 ? " (改変)" : ""),
                 AuthorName = "preview_author",
                 ReleaseStatus = i % 2 == 0 ? "private" : "public",
@@ -33,6 +36,7 @@ public partial class MainWindow
         ShowListState(loading: Environment.GetEnvironmentVariable("VRCAC_UI_PREVIEW_STATE") == "loading");
         if (Environment.GetEnvironmentVariable("VRCAC_UI_PREVIEW_STATE") == "empty") _allItems.Clear();
         ApplyFilter();
+        if (withThumbs) QueueThumbnails(_allItems.ToList(), CancellationToken.None); // 実際の読み込みと同じ経路を通す
         AvatarList.SelectedIndex = 1;
         if (Environment.GetEnvironmentVariable("VRCAC_UI_PREVIEW_VIEW") == "grid") ViewGrid.IsChecked = true;
         if (Environment.GetEnvironmentVariable("VRCAC_UI_PREVIEW_SOURCE") == "public") SourcePublic.IsChecked = true;
@@ -55,6 +59,7 @@ public partial class MainWindow
         SetStatus(StatusKind.Success, "Kikyo に着替えました");
         // 仮想化の自己診断: スクロールしながら実体化済みコンテナ数を VRCAC_UI_PREVIEW_REPORT のファイルに書いて終了する
         if (Environment.GetEnvironmentVariable("VRCAC_UI_PREVIEW_SCROLLTEST") == "1") _ = RunScrollTestAsync();
+        if (Environment.GetEnvironmentVariable("VRCAC_UI_PREVIEW_THUMBTEST") == "1") _ = RunThumbTestAsync();
 
         // 見た目確認: VRCAC_UI_PREVIEW_SHOT=path でウィンドウを画面外に置いたまま PNG に描画して終了する
         // (実画面をキャプチャしないので、ゲーム中でも邪魔にならない)。SETTINGS=1 なら設定オーバーレイを開いた状態で撮る
@@ -97,6 +102,69 @@ public partial class MainWindow
             Left = -4000; Top = 0;
             _ = CaptureWindowAsync(this, shotPath);
         }
+    }
+
+    /// <summary>プレビュー用のダミーサムネ URL (実際には事前に入れたディスクキャッシュから読まれる)。</summary>
+    internal static string PreviewThumbUrl(int index) => $"https://api.vrchat.cloud/api/1/file/file_preview{index:D4}/1/file";
+
+    /// <summary>
+    /// サムネイルの読み込み順の確認。一覧の中ほどへ飛んで少し待ち、
+    /// 「どの番号の画像が入ったか」を VRCAC_UI_PREVIEW_REPORT に書いて終了する。
+    /// 画面に出ているものが優先されていれば、飛んだ先が先に埋まる。
+    /// </summary>
+    private async Task RunThumbTestAsync()
+    {
+        Left = -4000; Top = 0;
+        var reportPath = Environment.GetEnvironmentVariable("VRCAC_UI_PREVIEW_REPORT");
+        var report = new System.Text.StringBuilder();
+        try
+        {
+            await Task.Delay(700); // 初期レイアウトと先頭ぶんの読み込み
+            var sv = FindDescendant<ScrollViewer>(AvatarList);
+            var items = AvatarList.Items.OfType<AvatarItem>().ToList();
+            report.AppendLine($"items={items.Count} loaded_at_top={Loaded(items).Count}");
+
+            // 一覧の中ほどへ一気に飛ぶ (スクロールバーを掴んで動かした状況)
+            var before = Loaded(items).ToHashSet();
+            sv?.ScrollToVerticalOffset((sv.ExtentHeight - sv.ViewportHeight) * 0.5);
+            await Task.Delay(500);
+            var after = Loaded(items);
+            var added = after.Where(i => !before.Contains(i)).ToList();
+            report.AppendLine($"after jump to 50%: loaded={after.Count} newly_loaded={added.Count}");
+            report.AppendLine("newly loaded indexes: " + string.Join(",", added));
+            report.AppendLine("visible indexes: " + string.Join(",", VisibleIndexes()));
+
+            await Task.Delay(3000); // 裏の埋めが最後まで走るか
+            report.AppendLine($"after 3s more: loaded={Loaded(items).Count}/{items.Count}");
+            report.AppendLine($"decoded widths: " + string.Join(", ",
+                items.GroupBy(i => i.ThumbnailWidth).OrderBy(g => g.Key).Select(g => $"{g.Key}px x{g.Count()}")));
+
+            // 表示形式を変えると必要な幅が変わる。切り替えた瞬間に空白にならず、あとで大きい画像に入れ替わるか
+            if (!IsGridView)
+            {
+                ViewGrid.IsChecked = true;
+                await Task.Delay(50);
+                report.AppendLine($"right after switching to grid: blank={items.Count(i => i.Thumbnail is null)}");
+                await Task.Delay(4000);
+                report.AppendLine($"4s after switching: blank={items.Count(i => i.Thumbnail is null)}, " +
+                    string.Join(", ", items.GroupBy(i => i.ThumbnailWidth).OrderBy(g => g.Key).Select(g => $"{g.Key}px x{g.Count()}")));
+            }
+        }
+        catch (Exception ex) { report.AppendLine("EXCEPTION: " + ex); }
+        if (!string.IsNullOrEmpty(reportPath)) File.WriteAllText(reportPath, report.ToString());
+        Application.Current.Shutdown();
+
+        static List<int> Loaded(List<AvatarItem> items)
+            => items.Select((a, n) => (n, a)).Where(t => t.a.Thumbnail is not null).Select(t => t.n).ToList();
+    }
+
+    /// <summary>今実体化されている(= 画面に出ている / 先読みされた)項目の番号。</summary>
+    private List<int> VisibleIndexes()
+    {
+        var containers = new List<ListViewItem>();
+        CollectDescendants(AvatarList, containers);
+        return containers.Select(c => AvatarList.ItemContainerGenerator.IndexFromContainer(c))
+            .Where(i => i >= 0).OrderBy(i => i).ToList();
     }
 
     private static async Task CaptureWindowAsync(Window w, string path)
