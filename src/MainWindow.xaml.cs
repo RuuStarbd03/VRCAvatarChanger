@@ -86,10 +86,16 @@ public partial class MainWindow : Window
         Loaded += async (_, _) => { if (!_preview) await CheckForUpdateAsync(); };
         // 溜まりすぎたサムネイルのディスクキャッシュを起動時に 1 回だけ整理する (UI は待たせない)
         Loaded += (_, _) => { if (!_preview) _ = Task.Run(ImageDiskCache.Trim); };
-        // トレイから開き直したときに、止めておいたサムネイルの読み込みを再開する
-        IsVisibleChanged += (_, e) => { if (e.NewValue is true) PumpThumbnails(); };
+        IsVisibleChanged += (_, e) =>
+        {
+            if (e.NewValue is not true) return;
+            PumpThumbnails(); // トレイから開き直したら、止めておいたサムネイルの読み込みを再開する
+            // 開きっぱなし / トレイ常駐で時間が経っていることがあるので、古ければ取り直す
+            // (5 分以内ならキャッシュを使い、中身が同じなら一覧も作り直さないので、開くたびの負担にはならない)
+            if (!_preview && _user is not null && MainPanel.Visibility == Visibility.Visible) _ = LoadAvatarsAsync();
+        };
         Closing += (_, _) => SaveWindowBounds();
-        Closed += (_, _) => { _settingsSaveTimer?.Stop(); _searchTimer?.Stop(); _oscRetry?.Stop(); _thumbCts?.Cancel(); _osc.Dispose(); _api.Dispose(); };
+        Closed += (_, _) => { _settingsSaveTimer?.Stop(); _searchTimer?.Stop(); _oscRetry?.Stop(); _updateTimer?.Stop(); _thumbCts?.Cancel(); _osc.Dispose(); _api.Dispose(); };
     }
 
     // ---------------- 表示形式 ----------------
@@ -106,9 +112,9 @@ public partial class MainWindow : Window
         ApplyPanels();
         _settings.ViewMode = grid ? "grid" : "list";
         if (!_preview) _settings.Save();
-        // 表示形式が変わるとサムネに要る幅も変わる。積み直して、足りないものだけ読み直す
-        // (通信は発生しない。ディスクキャッシュから読んでデコードし直すだけ)
-        QueueThumbnails(_allItems.ToList(), _thumbCts?.Token ?? CancellationToken.None);
+        // 表示形式が変わるとサムネに要る幅も変わるが、大きい版に差し替えるのは画面に出たものだけでよい。
+        // (まだ 1 枚も無いものだけ裏で埋める。通信は発生せず、ディスクキャッシュから読み直すだけ)
+        QueueThumbnails(_allItems.ToList(), _thumbCts?.Token ?? CancellationToken.None, missingOnly: true);
         if (AvatarList.SelectedItem is not null) AvatarList.ScrollIntoView(AvatarList.SelectedItem);
     }
 
@@ -527,11 +533,11 @@ public partial class MainWindow : Window
         var ct = _thumbCts.Token;
         try
         {
-            _allItems.Clear();
             int? refreshedEntries = null;
             if (pub)
             {
                 if (refresh) refreshedEntries = await RefreshPublicEntriesAsync(ct);
+                _allItems.Clear();
                 _allItems.AddRange(_public.Entries.Select(e => new AvatarItem(e.Avatar) { AddedAt = e.AddedAt, Tags = _tags.TagsOf(e.Avatar.Id) }));
             }
             else
@@ -542,21 +548,32 @@ public partial class MainWindow : Window
                 // 「再読み込み」は常に取りに行くので、新しくアップロードしたアバターもすぐ出せる
                 if (!refresh && cached is not null && DateTimeOffset.Now - cached.FetchedAt < ListCacheFreshFor)
                 {
-                    ShowAvatars(cached.Avatars, favorites, ct, $" ({cached.FetchedAt:HH:mm} 時点・F5 で取り直し)");
+                    var note = $" ({cached.FetchedAt:HH:mm} 時点・F5 で取り直し)";
+                    // すでに同じものを出しているなら作り直さない (トレイから開き直したときなど)
+                    if (AlreadyShowing(cached.Avatars))
+                    {
+                        ShowListState(loading: false);
+                        SetStatus(StatusKind.Info, CountText() + note);
+                    }
+                    else ShowAvatars(cached.Avatars, favorites, ct, note);
                     PruneImageCache();
                     return;
                 }
                 // 前回の一覧があれば先に見せる。サムネもディスクキャッシュから戻るので待たされない
                 if (cached is not null)
-                    ShowAvatars(cached.Avatars, favorites, ct, " (前回の一覧・最新を確認しています)");
+                {
+                    if (AlreadyShowing(cached.Avatars)) ShowListState(loading: false);
+                    else ShowAvatars(cached.Avatars, favorites, ct, " (前回の一覧・最新を確認しています)");
+                }
                 try
                 {
                     var avatars = favorites ? await _api.GetFavoriteAvatarsAsync(ct) : await _api.GetOwnAvatarsAsync(ct);
                     if (_user is not null) AvatarListCache.Save(kind, _user.Id, avatars);
-                    if (cached is not null && SameAvatars(_allItems, avatars))
+                    if (AlreadyShowing(avatars))
                     {
                         // 取り直したが中身は同じだった。一覧を作り直さない
                         // (件数によらず作り直しだけで 20ms 前後かかり、スクロール位置も先頭に戻ってしまう)
+                        ShowListState(loading: false);
                         SetStatus(StatusKind.Info, CountText());
                         if (refresh) _ = RefreshFavoriteStateAsync(ct);
                         return;
@@ -612,6 +629,10 @@ public partial class MainWindow : Window
         SetStatus(StatusKind.Info, CountText() + note);
         QueueThumbnails(_allItems.ToList(), ct);
     }
+
+    /// <summary>今まさに同じ内容を表示中か (何も出していないときは false)。</summary>
+    private bool AlreadyShowing(List<Avatar> avatars)
+        => _allItems.Count > 0 && SameAvatars(_allItems, avatars);
 
     /// <summary>今出ている一覧と、取り直した結果が同じ内容か (表示に関わる項目だけを見る)。</summary>
     private static bool SameAvatars(List<AvatarItem> shown, List<Avatar> fetched)

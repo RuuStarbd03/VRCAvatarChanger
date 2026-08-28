@@ -17,6 +17,11 @@ public static class ImageDiskCache
     /// <summary>この容量を超えたら、最後に使われたのが古いものから消す。320px デコード前の元画像で 1 枚 20〜80KB 程度。</summary>
     private const long MaxBytes = 300L * 1024 * 1024;
 
+    /// <summary>この量を書いたら整理する。開きっぱなしでも上限を超えたままにならないように。</summary>
+    private const long TrimEveryBytes = 50L * 1024 * 1024;
+
+    private static long _writtenSinceTrim;
+
     private static string Dir => AppPaths.In(Path.Combine("cache", "thumbs"));
 
     private static string PathOf(string url)
@@ -52,6 +57,12 @@ public static class ImageDiskCache
             var tmp = path + "." + Guid.NewGuid().ToString("N")[..8] + ".tmp";
             await File.WriteAllBytesAsync(tmp, bytes);
             File.Move(tmp, path, overwrite: true);
+            // 起動時だけの整理だと、開きっぱなしのときに上限を超えたままになる
+            if (Interlocked.Add(ref _writtenSinceTrim, bytes.Length) > TrimEveryBytes)
+            {
+                Interlocked.Exchange(ref _writtenSinceTrim, 0);
+                _ = Task.Run(Trim);
+            }
         }
         catch { /* 保存できなくても次回また取りに行くだけ */ }
     }

@@ -37,12 +37,19 @@ public partial class MainWindow
         => item.ThumbnailUrl is not null && (item.Thumbnail is null || item.ThumbnailWidth < ThumbWidth);
 
     /// <summary>一覧が変わったとき / 表示形式が変わったとき、全件を「裏で埋める」対象として積み直す。</summary>
-    private void QueueThumbnails(List<AvatarItem> items, CancellationToken ct)
+    /// <param name="missingOnly">
+    /// 裏で埋めるのを「まだ画像が 1 枚も無いもの」に限る。表示形式を変えただけのときに使う:
+    /// すでに出ている画像でとりあえず困らないので、大きい版への差し替えは画面に出たものだけでよい
+    /// (全件を大きい版にし直すと、見てもいない数百枚を作り直すことになる)。
+    /// </param>
+    private void QueueThumbnails(List<AvatarItem> items, CancellationToken ct, bool missingOnly = false)
     {
         _thumbCt = ct;
         _thumbFront.Clear();
         _thumbFrontSet.Clear();
-        _thumbFill = items.Where(i => i.IsAvatar && i.ThumbnailUrl is not null).ToList();
+        _thumbFill = items
+            .Where(i => i.IsAvatar && i.ThumbnailUrl is not null && (!missingOnly || i.Thumbnail is null))
+            .ToList();
         _thumbFillIndex = 0;
         PumpThumbnails();
     }
@@ -119,16 +126,25 @@ public partial class MainWindow
     }
 
     /// <summary>
-    /// 今の一覧から参照されなくなった画像をキャッシュから外す(再読み込みで URL が変わった古いサムネなど)。
-    /// 長時間の使用でメモリが増え続けないようにするための整理で、タブ切り替え程度では消えない量を上限にしている。
+    /// メモリ上の画像を整理する。開きっぱなしで使うアプリなので、増え続けないことを優先する。
+    ///   1. 今の一覧に無い URL のもの (再読み込みで URL が変わった古いサムネなど)
+    ///   2. それでも多ければ、今の表示形式では使わない幅のもの
+    ///      (リストとボックスを行き来すると 128px と 320px の両方が溜まるため)
+    /// 捨ててもディスクキャッシュから読み直せる。画像を足すたびに呼ぶが、上限内なら何もしない。
     /// </summary>
     private void PruneImageCache()
     {
-        const int maxEntries = 400; // 1 枚 ~300KB (320px) / ~50KB (128px)。捨てても次はディスクから戻る
+        const int maxEntries = 400; // 1 枚 ~300KB (320px) / ~50KB (128px)
         if (_imageCache.Count <= maxEntries) return;
+
         var keep = new HashSet<string>(_allItems.Select(i => i.ThumbnailUrl).OfType<string>());
         if (_user?.CurrentAvatarThumbnailImageUrl is { } header) keep.Add(header);
         foreach (var key in _imageCache.Keys.Where(k => !keep.Contains(UrlOfKey(k))).ToList())
+            _imageCache.Remove(key);
+        if (_imageCache.Count <= maxEntries) return;
+
+        var width = ThumbWidth;
+        foreach (var key in _imageCache.Keys.Where(k => WidthOfKey(k) != width).ToList())
             _imageCache.Remove(key);
     }
 
@@ -136,6 +152,9 @@ public partial class MainWindow
     private static string CacheKey(string url, int width) => width + "|" + url;
 
     private static string UrlOfKey(string key) => key[(key.IndexOf('|') + 1)..];
+
+    private static int WidthOfKey(string key)
+        => int.TryParse(key.AsSpan(0, Math.Max(0, key.IndexOf('|'))), out var width) ? width : 0;
 
     // 取得中の画像。同じサムネをヘッダと一覧が同時に要求したときに二重ダウンロードしないための台帳
     private readonly Dictionary<string, Task<BitmapImage?>> _imageLoads = [];
@@ -179,6 +198,7 @@ public partial class MainWindow
             if (img is null) return null;
             if (!fromDisk) _ = ImageDiskCache.WriteAsync(url, bytes!);
             _imageCache[key] = img;
+            PruneImageCache(); // 溜まりっぱなしにしないよう、足したその場で整理する
             return img;
         }
         catch (OperationCanceledException) { return null; }

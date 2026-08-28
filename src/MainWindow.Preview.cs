@@ -61,6 +61,7 @@ public partial class MainWindow
         if (Environment.GetEnvironmentVariable("VRCAC_UI_PREVIEW_SCROLLTEST") == "1") _ = RunScrollTestAsync();
         if (Environment.GetEnvironmentVariable("VRCAC_UI_PREVIEW_THUMBTEST") == "1") _ = RunThumbTestAsync();
         if (Environment.GetEnvironmentVariable("VRCAC_UI_PREVIEW_PERFTEST") == "1") _ = RunPerfTestAsync();
+        if (Environment.GetEnvironmentVariable("VRCAC_UI_PREVIEW_SOAKTEST") == "1") _ = RunSoakTestAsync();
 
         // 見た目確認: VRCAC_UI_PREVIEW_SHOT=path でウィンドウを画面外に置いたまま PNG に描画して終了する
         // (実画面をキャプチャしないので、ゲーム中でも邪魔にならない)。SETTINGS=1 なら設定オーバーレイを開いた状態で撮る
@@ -103,6 +104,65 @@ public partial class MainWindow
             Left = -4000; Top = 0;
             _ = CaptureWindowAsync(this, shotPath);
         }
+    }
+
+    /// <summary>
+    /// 長時間開きっぱなしにしたときに何が増えるかを測る (VRCAC_UI_PREVIEW_SOAKTEST=1)。
+    /// 検索・表示形式の切り替えを繰り返して、キャッシュ・メモリ・ハンドルの増え方を見る。
+    /// </summary>
+    private async Task RunSoakTestAsync()
+    {
+        Left = -4000; Top = 0;
+        var reportPath = Environment.GetEnvironmentVariable("VRCAC_UI_PREVIEW_REPORT");
+        var report = new System.Text.StringBuilder();
+        try
+        {
+            await Task.Delay(1500); // 最初のサムネイル読み込みが一巡するまで
+
+            void Snapshot(string label)
+            {
+                using var proc = System.Diagnostics.Process.GetCurrentProcess();
+                proc.Refresh();
+                report.AppendLine(
+                    $"{label,-16} 画像ｷｬｯｼｭ={_imageCache.Count,5} 管理ﾒﾓﾘ={GC.GetTotalMemory(false) / 1024 / 1024,4}MB " +
+                    $"ﾌﾟﾗｲﾍﾞｰﾄ={proc.PrivateMemorySize64 / 1024 / 1024,4}MB 作業ｾｯﾄ={proc.WorkingSet64 / 1024 / 1024,4}MB " +
+                    $"ﾊﾝﾄﾞﾙ={proc.HandleCount,5} GC2={GC.CollectionCount(2),3}");
+            }
+
+            Snapshot("開始");
+
+            // 検索の打鍵を 300 回ぶん
+            for (var i = 0; i < 300; i++)
+            {
+                SearchBox.Text = (i % 3) switch { 0 => "改変", 1 => "Ki", _ => "" };
+                ApplyFilter();
+            }
+            SearchBox.Text = "";
+            ApplyFilter();
+            AvatarList.UpdateLayout();
+            Snapshot("検索 300 回後");
+
+            // 表示形式の切り替えを 20 往復 (デコード幅が変わるので画像キャッシュが増えやすい)
+            for (var i = 0; i < 20; i++)
+            {
+                ViewGrid.IsChecked = true;
+                AvatarList.UpdateLayout();
+                await Task.Delay(60);
+                ViewList.IsChecked = true;
+                AvatarList.UpdateLayout();
+                await Task.Delay(60);
+            }
+            await Task.Delay(2000); // 裏の読み込みが落ち着くまで
+            Snapshot("表示切替 20 往復後");
+
+            GC.Collect();
+            GC.WaitForPendingFinalizers();
+            GC.Collect();
+            Snapshot("GC 後");
+        }
+        catch (Exception ex) { report.AppendLine("EXCEPTION: " + ex); }
+        if (!string.IsNullOrEmpty(reportPath)) File.WriteAllText(reportPath, report.ToString());
+        Application.Current.Shutdown();
     }
 
     /// <summary>
