@@ -13,6 +13,8 @@ public partial class MainWindow
 {
     private void ShowUiPreview()
     {
+        // 見た目の確認は両テーマで行いたいので、設定を書き換えずにここだけ切り替えられるようにする
+        if (Environment.GetEnvironmentVariable("VRCAC_UI_PREVIEW_THEME") is { Length: > 0 } theme) App.ApplyTheme(theme);
         _user = new CurrentUser { DisplayName = "Preview User", CurrentAvatar = "avtr_00000000-0000-4000-8000-000000000001" };
         LoginPanel.Visibility = Visibility.Collapsed;
         MainPanel.Visibility = Visibility.Visible;
@@ -39,6 +41,7 @@ public partial class MainWindow
         if (withThumbs) QueueThumbnails(_allItems.ToList(), CancellationToken.None); // 実際の読み込みと同じ経路を通す
         AvatarList.SelectedIndex = 1;
         if (Environment.GetEnvironmentVariable("VRCAC_UI_PREVIEW_VIEW") == "grid") ViewGrid.IsChecked = true;
+        if (Environment.GetEnvironmentVariable("VRCAC_UI_PREVIEW_GROUP") is { Length: > 0 } grp) GroupToggle.IsChecked = grp != "off";
         if (Environment.GetEnvironmentVariable("VRCAC_UI_PREVIEW_SOURCE") == "public") SourcePublic.IsChecked = true;
         if (Environment.GetEnvironmentVariable("VRCAC_UI_PREVIEW_TOPMOST") == "1") { Topmost = true; Activate(); }
         // ドロップ処理の確認: 一覧の 2 番目を 3 番目に重ね、続けて 1 番目をできたグループに重ねる

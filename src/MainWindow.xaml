@@ -437,16 +437,25 @@
                 </Border>
 
                 <!-- 列数 (ボックス表示のみ) + グループ化 -->
-                <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
-                <ToggleButton x:Name="GroupToggle" Style="{StaticResource SegmentToggle}" Margin="0,0,10,0" IsChecked="True"
+                <!-- グループ化: 上が詰まらないようアイコンだけにする (表示形式のボタンと同じ作法。状態は背景で示す) -->
+                <ToggleButton x:Name="GroupToggle" Grid.Column="2" Style="{StaticResource SegmentToggle}" Padding="9,0"
+                              Margin="0,0,10,0" VerticalAlignment="Center" IsChecked="True"
                               Checked="GroupToggle_Changed" Unchecked="GroupToggle_Changed" AutomationProperties.Name="グループ化"
-                              ToolTip="ON: 同じグループのアバターを 1 枚にまとめて表示 / OFF: すべて個別に表示">
-                    <StackPanel Orientation="Horizontal">
-                        <TextBlock Text="&#xE8B7;" Style="{StaticResource Icon}" Margin="0,0,8,0"/>
-                        <TextBlock Text="グループ化"/>
-                    </StackPanel>
+                              ToolTip="グループ化 — オン: 同じグループのアバターを 1 枚にまとめて表示 / オフ: すべて個別に表示">
+                    <!-- 文字が無いぶん、オンはアクセント色で示す (設定のスイッチと同じ「オン = 青」に合わせる) -->
+                    <TextBlock Text="&#xE8B7;">
+                        <TextBlock.Style>
+                            <Style TargetType="TextBlock" BasedOn="{StaticResource Icon}">
+                                <Style.Triggers>
+                                    <DataTrigger Value="True"
+                                                 Binding="{Binding IsChecked, RelativeSource={RelativeSource AncestorType=ToggleButton}}">
+                                        <Setter Property="Foreground" Value="{DynamicResource AccentBrush}"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </TextBlock.Style>
+                    </TextBlock>
                 </ToggleButton>
-                </StackPanel>
                 <StackPanel Grid.Column="3" x:Name="ColumnsPanel" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,10,0" Visibility="Collapsed">
                     <Slider x:Name="ColumnsSlider" Width="110" Minimum="3" Maximum="10" TickFrequency="1" IsSnapToTickEnabled="True"
                             SmallChange="1" LargeChange="1" ValueChanged="ColumnsSlider_ValueChanged" ToolTip="1 行に表示する数"/>
