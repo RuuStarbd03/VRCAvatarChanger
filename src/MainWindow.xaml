@@ -585,15 +585,100 @@
         <!-- ================= 設定 (アプリ内オーバーレイ) ================= -->
         <Grid x:Name="SettingsOverlay" Visibility="Collapsed">
             <Grid.Resources>
-                <!-- オン/オフの状態が読めるトグル -->
-                <Style x:Key="OnOffToggle" TargetType="ToggleButton" BasedOn="{StaticResource SegmentToggle}">
-                    <Setter Property="MinWidth" Value="72"/>
-                    <Setter Property="Content" Value="オフ"/>
-                    <Style.Triggers>
-                        <Trigger Property="IsChecked" Value="True">
-                            <Setter Property="Content" Value="オン"/>
-                        </Trigger>
-                    </Style.Triggers>
+                <!-- オン/オフのスイッチ。
+                     「押したらどうなるか」ではなく「今どちらか」が形と色で分かるようにする:
+                     つまみが左=オフ / 右=オン、オンのときだけ色が付き、状態の文字も添える。
+                     切り替えるとつまみが滑って移る (状態が変わったことが見て取れる) -->
+                <Style x:Key="OnOffToggle" TargetType="ToggleButton">
+                    <Setter Property="Cursor" Value="Hand"/>
+                    <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+                    <Setter Property="Template">
+                        <Setter.Value>
+                            <ControlTemplate TargetType="ToggleButton">
+                                <StackPanel Orientation="Horizontal" Background="Transparent">
+                                    <TextBlock x:Name="state" Text="オフ" MinWidth="28" TextAlignment="Right"
+                                               VerticalAlignment="Center" Margin="0,0,10,0" FontSize="12"
+                                               Foreground="{DynamicResource MutedTextBrush}"/>
+                                    <Grid Width="44" Height="24" VerticalAlignment="Center" SnapsToDevicePixels="True">
+                                        <Border x:Name="focus" CornerRadius="14" Margin="-3" BorderThickness="2"
+                                                BorderBrush="{DynamicResource AccentBrush}" Opacity="0"/>
+                                        <Border x:Name="trackOff" CornerRadius="12" Background="{DynamicResource InputBrush}"
+                                                BorderBrush="{DynamicResource BorderStrongBrush}" BorderThickness="1"/>
+                                        <Border x:Name="trackOn" CornerRadius="12" Opacity="0"
+                                                Background="{DynamicResource AccentBrush}"
+                                                BorderBrush="{DynamicResource AccentBrush}" BorderThickness="1"/>
+                                        <Ellipse x:Name="thumb" Width="14" Height="14" HorizontalAlignment="Left"
+                                                 Margin="4,0,0,0" Fill="{DynamicResource MutedTextBrush}">
+                                            <Ellipse.RenderTransform>
+                                                <TranslateTransform x:Name="thumbShift"/>
+                                            </Ellipse.RenderTransform>
+                                        </Ellipse>
+                                    </Grid>
+                                </StackPanel>
+                                <ControlTemplate.Triggers>
+                                    <Trigger Property="IsChecked" Value="True">
+                                        <Setter TargetName="state" Property="Text" Value="オン"/>
+                                        <Setter TargetName="state" Property="Foreground" Value="{DynamicResource TextBrush}"/>
+                                        <Setter TargetName="thumb" Property="Fill" Value="{DynamicResource OnAccentBrush}"/>
+                                        <Trigger.EnterActions>
+                                            <BeginStoryboard>
+                                                <Storyboard>
+                                                    <DoubleAnimation Storyboard.TargetName="thumbShift" Storyboard.TargetProperty="X"
+                                                                     To="20" Duration="0:0:0.16">
+                                                        <DoubleAnimation.EasingFunction>
+                                                            <CubicEase EasingMode="EaseOut"/>
+                                                        </DoubleAnimation.EasingFunction>
+                                                    </DoubleAnimation>
+                                                    <DoubleAnimation Storyboard.TargetName="trackOn" Storyboard.TargetProperty="Opacity"
+                                                                     To="1" Duration="0:0:0.16"/>
+                                                </Storyboard>
+                                            </BeginStoryboard>
+                                        </Trigger.EnterActions>
+                                        <Trigger.ExitActions>
+                                            <BeginStoryboard>
+                                                <Storyboard>
+                                                    <DoubleAnimation Storyboard.TargetName="thumbShift" Storyboard.TargetProperty="X"
+                                                                     To="0" Duration="0:0:0.16">
+                                                        <DoubleAnimation.EasingFunction>
+                                                            <CubicEase EasingMode="EaseOut"/>
+                                                        </DoubleAnimation.EasingFunction>
+                                                    </DoubleAnimation>
+                                                    <DoubleAnimation Storyboard.TargetName="trackOn" Storyboard.TargetProperty="Opacity"
+                                                                     To="0" Duration="0:0:0.16"/>
+                                                </Storyboard>
+                                            </BeginStoryboard>
+                                        </Trigger.ExitActions>
+                                    </Trigger>
+                                    <MultiTrigger>
+                                        <MultiTrigger.Conditions>
+                                            <Condition Property="IsMouseOver" Value="True"/>
+                                            <Condition Property="IsChecked" Value="False"/>
+                                        </MultiTrigger.Conditions>
+                                        <Setter TargetName="trackOff" Property="Background" Value="{DynamicResource HoverBrush}"/>
+                                        <Setter TargetName="trackOff" Property="BorderBrush" Value="{DynamicResource MutedTextBrush}"/>
+                                        <Setter TargetName="thumb" Property="Fill" Value="{DynamicResource TextBrush}"/>
+                                    </MultiTrigger>
+                                    <MultiTrigger>
+                                        <MultiTrigger.Conditions>
+                                            <Condition Property="IsMouseOver" Value="True"/>
+                                            <Condition Property="IsChecked" Value="True"/>
+                                        </MultiTrigger.Conditions>
+                                        <Setter TargetName="trackOn" Property="Background" Value="{DynamicResource AccentHoverBrush}"/>
+                                        <Setter TargetName="trackOn" Property="BorderBrush" Value="{DynamicResource AccentHoverBrush}"/>
+                                    </MultiTrigger>
+                                    <Trigger Property="IsPressed" Value="True">
+                                        <Setter TargetName="thumb" Property="Width" Value="18"/>
+                                    </Trigger>
+                                    <Trigger Property="IsKeyboardFocused" Value="True">
+                                        <Setter TargetName="focus" Property="Opacity" Value="1"/>
+                                    </Trigger>
+                                    <Trigger Property="IsEnabled" Value="False">
+                                        <Setter Property="Opacity" Value="0.5"/>
+                                    </Trigger>
+                                </ControlTemplate.Triggers>
+                            </ControlTemplate>
+                        </Setter.Value>
+                    </Setter>
                 </Style>
                 <Style x:Key="SettingTitle" TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
                     <Setter Property="FontWeight" Value="SemiBold"/>

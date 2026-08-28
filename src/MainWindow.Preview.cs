@@ -68,6 +68,19 @@ public partial class MainWindow
         // (実画面をキャプチャしないので、ゲーム中でも邪魔にならない)。SETTINGS=1 なら設定オーバーレイを開いた状態で撮る
         var shotPath = Environment.GetEnvironmentVariable("VRCAC_UI_PREVIEW_SHOT");
         if (Environment.GetEnvironmentVariable("VRCAC_UI_PREVIEW_SETTINGS") == "1") OpenSettings();
+        // スイッチの切り替えアニメーションの確認: 切り替えた直後 (滑っている最中) を撮る
+        if (Environment.GetEnvironmentVariable("VRCAC_UI_PREVIEW_TOGGLEANIM") is { Length: > 0 } toggleAt)
+        {
+            Left = -4000; Top = 0;
+            _ = Task.Run(async () =>
+            {
+                await Task.Delay(700); // 設定が開き切るのを待つ
+                await Dispatcher.InvokeAsync(() => QuickToggle.IsChecked = false);
+                if (!string.IsNullOrEmpty(shotPath))
+                    await Dispatcher.InvokeAsync(() => CaptureWindowAsync(this, shotPath, int.Parse(toggleAt)));
+            });
+            return;
+        }
         if (Environment.GetEnvironmentVariable("VRCAC_UI_PREVIEW_TOAST") == "1")
         {
             // ホットキーでの着替え結果を出す通知を画面外で撮る
@@ -408,9 +421,9 @@ public partial class MainWindow
             .Where(i => i >= 0).OrderBy(i => i).ToList();
     }
 
-    private static async Task CaptureWindowAsync(Window w, string path)
+    private static async Task CaptureWindowAsync(Window w, string path, int delayMs = 1000)
     {
-        await Task.Delay(1000); // レイアウトとテーマ適用を待つ
+        await Task.Delay(delayMs); // レイアウトとテーマ適用を待つ
         var rtb = new System.Windows.Media.Imaging.RenderTargetBitmap(
             (int)Math.Ceiling(w.ActualWidth), (int)Math.Ceiling(w.ActualHeight), 96, 96, PixelFormats.Pbgra32);
         rtb.Render(w);
