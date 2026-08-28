@@ -230,7 +230,7 @@ public partial class MainWindow
     private void SetLoginStatus(string text, bool error)
     {
         LoginStatus.Text = text;
-        LoginStatus.Foreground = (System.Windows.Media.Brush)FindResource(error ? "DangerBrush" : "MutedTextBrush");
+        LoginStatus.SetResourceReference(ForegroundProperty, error ? "DangerBrush" : "MutedTextBrush");
     }
 
     /// <summary>設定ウィンドウの「ログアウト」から呼ばれる。</summary>
@@ -240,6 +240,11 @@ public partial class MainWindow
         // 「ログイン状態を保持」中は内蔵ブラウザの Discord / Google 等のログインを残す (次回が楽になる)。
         // オフのときは従来どおりプロファイルごと消す
         if (!_settings.KeepBrowserLogin) BrowserLoginWindow.DeleteBrowserProfile();
+        // アカウントに紐づくキャッシュはログイン状態の保持に関わらずセッションと一緒に消す
+        AvatarListCache.Invalidate(AvatarListCache.Own);
+        AvatarListCache.Invalidate(AvatarListCache.Favorites);
+        _favoriteGroups = [];
+        _favoriteRecords.Clear();
         ReturnToLogin("ログアウトしました。");
     }
 
@@ -253,7 +258,9 @@ public partial class MainWindow
         MainPanel.Visibility = Visibility.Visible;
         UpdateUserHeader();
         if (!_osc.IsListening) StartOsc();
-        await LoadAvatarsAsync();
+        // ログイン直後はキャッシュを使わず必ず取り直す (直前にアップロードしたアバターを隠さないため)。
+        // お気に入りの状態 (右クリックの「お気に入りに追加」で行き先を選ぶのに使う) もここで取れる
+        await LoadAvatarsAsync(refresh: true);
     }
 
     /// <summary>メイン画面を畳んでログイン画面に戻す。セッション切れなどでも使う。</summary>

@@ -8,6 +8,8 @@ public sealed class PublicAvatarEntry
 {
     public Avatar Avatar { get; set; } = new();
     public DateTimeOffset AddedAt { get; set; }
+    /// <summary>アバター情報を最後に API から取り直した日時。null = 追加時のまま。</summary>
+    public DateTimeOffset? RefreshedAt { get; set; }
     /// <summary>ユーザーが自由に付けるタグ(絞り込み用)。</summary>
     public List<string> Tags { get; set; } = [];
 }
@@ -48,8 +50,8 @@ public sealed class PublicAvatarStore
     public bool Add(Avatar avatar)
     {
         var existing = _entries.FirstOrDefault(e => e.Avatar.Id == avatar.Id);
-        if (existing is not null) { existing.Avatar = avatar; Save(); return false; }
-        _entries.Add(new PublicAvatarEntry { Avatar = avatar, AddedAt = DateTimeOffset.Now });
+        if (existing is not null) { existing.Avatar = avatar; existing.RefreshedAt = DateTimeOffset.Now; Save(); return false; }
+        _entries.Add(new PublicAvatarEntry { Avatar = avatar, AddedAt = DateTimeOffset.Now, RefreshedAt = DateTimeOffset.Now });
         Save();
         return true;
     }
@@ -64,6 +66,8 @@ public sealed class PublicAvatarStore
     public void Update(Avatar avatar)
     {
         var existing = _entries.FirstOrDefault(e => e.Avatar.Id == avatar.Id);
-        if (existing is not null) existing.Avatar = avatar;
+        if (existing is null) return;
+        existing.Avatar = avatar;
+        existing.RefreshedAt = DateTimeOffset.Now;
     }
 }

@@ -12,6 +12,13 @@ public partial class MainWindow
     private const string RunKeyPath = @"Software\Microsoft\Windows\CurrentVersion\Run";
     private const string RunValueName = "VRCAvatarChanger";
 
+    // プロセス一覧の取得は 1 回あたり数ミリ秒かかる (実測 6.5ms / 350 プロセス)。常駐している間ずっと
+    // 走らせるものなので、間隔は広めにとる。VRChat は起動からログイン画面まで数十秒かかるため、
+    // 15 秒間隔でも「起動したら開く」体験は変わらない。
+    private static readonly TimeSpan WatchIdleInterval = TimeSpan.FromSeconds(15);
+    // 起動中は「終了したか」を見るだけで急がないので、さらに間隔を空ける
+    private static readonly TimeSpan WatchRunningInterval = TimeSpan.FromSeconds(60);
+
     private Forms.NotifyIcon? _trayIcon;
     private System.Windows.Threading.DispatcherTimer? _watchTimer;
     private bool _vrchatWasRunning;
@@ -74,7 +81,7 @@ public partial class MainWindow
         }
         if (_watchTimer is null)
         {
-            _watchTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(5) };
+            _watchTimer = new System.Windows.Threading.DispatcherTimer { Interval = WatchIdleInterval };
             _watchTimer.Tick += (_, _) => WatchTick();
         }
         _vrchatWasRunning = IsVRChatRunning(); // 有効化した時点で既に起動中なら、それを理由には開かない
@@ -99,6 +106,9 @@ public partial class MainWindow
         // 「未起動 → 起動」の変化のときだけ開く (VRChat 起動中に手で閉じたウィンドウを勝手に開き直さない)
         if (running && !_vrchatWasRunning && !IsVisible) ShowFromTray();
         _vrchatWasRunning = running;
+        // 起動中は見に行く回数を減らす
+        var interval = running ? WatchRunningInterval : WatchIdleInterval;
+        if (_watchTimer is not null && _watchTimer.Interval != interval) _watchTimer.Interval = interval;
     }
 
     private static bool IsVRChatRunning()

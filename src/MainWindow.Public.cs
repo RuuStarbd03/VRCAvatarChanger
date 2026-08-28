@@ -53,11 +53,23 @@ public partial class MainWindow
         return added;
     }
 
-    private async Task RefreshPublicEntriesAsync(CancellationToken ct)
+    /// <summary>この時間内に取り直した情報はそのまま使う(登録数が多いと 1 件 1 リクエストで重いため)。</summary>
+    private static readonly TimeSpan PublicEntryFreshFor = TimeSpan.FromHours(6);
+
+    /// <summary>
+    /// パブリックリストのアバター情報を API から取り直す。「再読み込み」のときだけ呼ぶ。
+    /// 1 件につき 1 リクエストなので、しばらく前に取ったものだけを対象にする。
+    /// </summary>
+    /// <returns>実際に取り直した件数。</returns>
+    private async Task<int> RefreshPublicEntriesAsync(CancellationToken ct)
     {
+        var now = DateTimeOffset.Now;
+        var stale = _public.Entries.Where(e => e.RefreshedAt is not { } at || now - at > PublicEntryFreshFor).ToList();
+        if (stale.Count == 0) return 0;
+
         // 件数が多くてもレート制限にかからないよう、同時 2 本まで
         using var gate = new SemaphoreSlim(2);
-        var tasks = _public.Entries.ToList().Select(async e =>
+        var tasks = stale.Select(async e =>
         {
             await gate.WaitAsync(ct);
             try { _public.Update(await _api.GetAvatarAsync(e.Avatar.Id, ct)); }
@@ -67,6 +79,7 @@ public partial class MainWindow
         });
         await Task.WhenAll(tasks);
         _public.Save();
+        return stale.Count;
     }
 
     private async void MenuAddPublic_Click(object sender, RoutedEventArgs e)

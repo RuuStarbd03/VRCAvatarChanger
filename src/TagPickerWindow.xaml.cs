@@ -24,13 +24,14 @@ public partial class TagPickerWindow : Window
 
     private void AddCheckBox(string tag, bool isChecked)
     {
-        TagList.Children.Add(new CheckBox
+        var box = new CheckBox
         {
             Content = tag,
             IsChecked = isChecked,
-            Foreground = (Brush)FindResource("TextBrush"),
             Margin = new Thickness(0, 3, 0, 3),
-        });
+        };
+        box.SetResourceReference(ForegroundProperty, "TextBrush"); // 配色を切り替えても追従するように
+        TagList.Children.Add(box);
     }
 
     private void UpdateListVisibility()

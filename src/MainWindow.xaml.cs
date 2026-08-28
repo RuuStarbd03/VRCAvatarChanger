@@ -84,8 +84,19 @@ public partial class MainWindow : Window
         SourceInitialized += (_, _) => App.ApplyTitleBarTheme(this);
         Loaded += async (_, _) => { if (!_preview) await TryRestoreSessionAsync(); };
         Loaded += async (_, _) => { if (!_preview) await CheckForUpdateAsync(); };
+        // 溜まりすぎたサムネイルのディスクキャッシュを起動時に 1 回だけ整理する (UI は待たせない)
+        Loaded += (_, _) => { if (!_preview) _ = Task.Run(ImageDiskCache.Trim); };
+        IsVisibleChanged += (_, e) =>
+        {
+            if (e.NewValue is not true) return;
+            PumpThumbnails();  // トレイから開き直したら、止めておいたサムネイルの読み込みを再開する
+            ResumeWarming();
+            // 開きっぱなし / トレイ常駐で時間が経っていることがあるので、古ければ取り直す
+            // (5 分以内ならキャッシュを使い、中身が同じなら一覧も作り直さないので、開くたびの負担にはならない)
+            if (!_preview && _user is not null && MainPanel.Visibility == Visibility.Visible) _ = LoadAvatarsAsync();
+        };
         Closing += (_, _) => SaveWindowBounds();
-        Closed += (_, _) => { _settingsSaveTimer?.Stop(); _searchTimer?.Stop(); _oscRetry?.Stop(); _thumbCts?.Cancel(); _osc.Dispose(); _api.Dispose(); };
+        Closed += (_, _) => { _settingsSaveTimer?.Stop(); _searchTimer?.Stop(); _oscRetry?.Stop(); _updateTimer?.Stop(); _thumbCts?.Cancel(); _osc.Dispose(); _api.Dispose(); };
     }
 
     // ---------------- 表示形式 ----------------
@@ -102,6 +113,9 @@ public partial class MainWindow : Window
         ApplyPanels();
         _settings.ViewMode = grid ? "grid" : "list";
         if (!_preview) _settings.Save();
+        // 表示形式が変わるとサムネに要る幅も変わる。大きい版に差し替わるのは画面に出たものだけで、
+        // 残りはスクロールして見えたときに差し替わる (見てもいない数百枚を展開しない)
+        QueueThumbnails(_allItems.ToList(), _thumbCts?.Token ?? CancellationToken.None);
         if (AvatarList.SelectedItem is not null) AvatarList.ScrollIntoView(AvatarList.SelectedItem);
     }
 
@@ -212,6 +226,8 @@ public partial class MainWindow : Window
         MenuEditTags.Visibility = pub || SourceOwn.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
         MenuEditTags.Header = isGroup ? "全員のタグを編集..." : "タグを編集...";
         MenuCopyId.Visibility = isGroup ? Visibility.Collapsed : Visibility.Visible;
+        MenuAssignHotkey.Visibility = isGroup ? Visibility.Collapsed : Visibility.Visible;
+        BuildFavoriteMenu(item);
 
         // 隠し機能が有効なときだけ出す
         MenuStripeExclude.Visibility = _settings.StripeColors ? Visibility.Visible : Visibility.Collapsed;
@@ -235,6 +251,9 @@ public partial class MainWindow : Window
 
     private enum StatusKind { Info, Success, Error }
 
+    // 色は SetResourceReference で結び付ける。ブラシを直接入れてしまうと、
+    // あとで配色を切り替えたときにそこだけ前の色のまま残る
+
     private void SetStatus(StatusKind kind, string text)
     {
         StatusText.Text = text;
@@ -242,18 +261,18 @@ public partial class MainWindow : Window
         {
             case StatusKind.Success:
                 StatusIcon.Text = "\uE73E"; // Segoe Fluent Icons: CheckMark
-                StatusIcon.Foreground = (System.Windows.Media.Brush)FindResource("SuccessBrush");
-                StatusText.Foreground = (System.Windows.Media.Brush)FindResource("TextBrush");
+                StatusIcon.SetResourceReference(ForegroundProperty, "SuccessBrush");
+                StatusText.SetResourceReference(ForegroundProperty, "TextBrush");
                 StatusIcon.Visibility = Visibility.Visible;
                 break;
             case StatusKind.Error:
                 StatusIcon.Text = "\uEA39"; // Segoe Fluent Icons: ErrorBadge
-                StatusIcon.Foreground = (System.Windows.Media.Brush)FindResource("DangerBrush");
-                StatusText.Foreground = (System.Windows.Media.Brush)FindResource("DangerBrush");
+                StatusIcon.SetResourceReference(ForegroundProperty, "DangerBrush");
+                StatusText.SetResourceReference(ForegroundProperty, "DangerBrush");
                 StatusIcon.Visibility = Visibility.Visible;
                 break;
             default:
-                StatusText.Foreground = (System.Windows.Media.Brush)FindResource("MutedTextBrush");
+                StatusText.SetResourceReference(ForegroundProperty, "MutedTextBrush");
                 StatusIcon.Visibility = Visibility.Collapsed;
                 break;
         }
@@ -300,6 +319,7 @@ public partial class MainWindow : Window
     private void UpdateUserHeader()
     {
         RefreshCurrentMarks();
+        UpdatePreviousButton();
         if (_user is null) return;
         UserNameText.Text = _user.DisplayName;
         var current = _allItems.FirstOrDefault(a => a.Id == _user.CurrentAvatar)?.Avatar;
@@ -331,11 +351,11 @@ public partial class MainWindow : Window
     private async Task LoadHeaderImageAsync(string? url)
     {
         if (string.IsNullOrEmpty(url)) { CurrentAvatarImage.Source = null; return; }
-        var img = await GetImageAsync(url, CancellationToken.None);
+        var img = await GetImageAsync(url, ListThumbWidth, CancellationToken.None);
         if (_user is not null) CurrentAvatarImage.Source = img;
     }
 
-    private async void RefreshButton_Click(object sender, RoutedEventArgs e) => await LoadAvatarsAsync(refreshPublic: true);
+    private async void RefreshButton_Click(object sender, RoutedEventArgs e) => await LoadAvatarsAsync(refresh: true);
 
     // ---------------- ウィンドウ位置の記憶 ----------------
 
@@ -403,6 +423,7 @@ public partial class MainWindow : Window
         WatchToggle.IsChecked = _settings.WatchVRChat;
         QuickToggle.IsChecked = _settings.QuickOverlay;
         KeepLoginToggle.IsChecked = _settings.KeepBrowserLogin;
+        (_settings.Theme switch { "light" => ThemeLight, "dark" => ThemeDark, _ => ThemeSystem }).IsChecked = true;
         AccountDesc.Text = (string.IsNullOrEmpty(_user?.DisplayName) ? "" : $"{_user.DisplayName} としてログイン中。")
             + "保存したログイン状態を消してログイン画面に戻ります。";
         if (SettingsOverlay.Visibility != Visibility.Visible)
@@ -447,6 +468,16 @@ public partial class MainWindow : Window
     {
         if (!_ready) return;
         SetWatchVRChat(WatchToggle.IsChecked == true);
+    }
+
+    private void Theme_Checked(object sender, RoutedEventArgs e)
+    {
+        if (!_ready) return;
+        var mode = (sender as RadioButton)?.Tag as string ?? "system";
+        if (_settings.Theme == mode) return; // 設定画面を開いたときの初期化では何もしない
+        _settings.Theme = mode;
+        if (!_preview) _settings.Save();
+        App.ApplyTheme(mode);
     }
 
     private void OpenDataFolder_Click(object sender, RoutedEventArgs e)
@@ -521,8 +552,11 @@ public partial class MainWindow : Window
 
     private bool IsPublicTab => SourcePublic.IsChecked == true;
 
-    /// <param name="refreshPublic">パブリックタブで、キャッシュ済みのアバター情報を API から取り直すか(「再読み込み」時のみ)</param>
-    private async Task LoadAvatarsAsync(bool refreshPublic = false)
+    /// <summary>この時間内に取った一覧は取り直さない(タブの行き来だけで毎回 API を叩かないため)。</summary>
+    private static readonly TimeSpan ListCacheFreshFor = TimeSpan.FromMinutes(5);
+
+    /// <param name="refresh">「再読み込み」から呼ばれたか(パブリックのアバター情報とお気に入りの状態も取り直す)</param>
+    private async Task LoadAvatarsAsync(bool refresh = false)
     {
         RefreshButton.IsEnabled = false;
         var favorites = SourceFavorites.IsChecked == true;
@@ -534,25 +568,76 @@ public partial class MainWindow : Window
         var ct = _thumbCts.Token;
         try
         {
-            _allItems.Clear();
+            int? refreshedEntries = null;
             if (pub)
             {
-                if (refreshPublic) await RefreshPublicEntriesAsync(ct);
+                if (refresh) refreshedEntries = await RefreshPublicEntriesAsync(ct);
+                _allItems.Clear();
                 _allItems.AddRange(_public.Entries.Select(e => new AvatarItem(e.Avatar) { AddedAt = e.AddedAt, Tags = _tags.TagsOf(e.Avatar.Id) }));
             }
             else
             {
-                var avatars = favorites ? await _api.GetFavoriteAvatarsAsync(ct) : await _api.GetOwnAvatarsAsync(ct);
-                // 自分のアバターにはタグを載せる（お気に入りはグループ表示を優先）
-                _allItems.AddRange(avatars.Select(a => new AvatarItem(a) { Tags = favorites ? [] : _tags.TagsOf(a.Id) }));
+                var kind = favorites ? AvatarListCache.Favorites : AvatarListCache.Own;
+                var cached = _user is null ? null : AvatarListCache.Load(kind, _user.Id);
+                // つい先ほど取ったばかりなら、そのまま使う (タブを行き来するたびに取り直さない)。
+                // 「再読み込み」は常に取りに行くので、新しくアップロードしたアバターもすぐ出せる
+                if (!refresh && cached is not null && DateTimeOffset.Now - cached.FetchedAt < ListCacheFreshFor)
+                {
+                    var note = $" ({cached.FetchedAt:HH:mm} 時点・F5 で取り直し)";
+                    // すでに同じものを出しているなら作り直さない (トレイから開き直したときなど)
+                    if (AlreadyShowing(cached.Avatars))
+                    {
+                        ShowListState(loading: false);
+                        SetStatus(StatusKind.Info, CountText() + note);
+                    }
+                    else ShowAvatars(cached.Avatars, favorites, ct, note);
+                    return;
+                }
+                // 前回の一覧があれば先に見せる。サムネもディスクキャッシュから戻るので待たされない
+                if (cached is not null)
+                {
+                    if (AlreadyShowing(cached.Avatars)) ShowListState(loading: false);
+                    else ShowAvatars(cached.Avatars, favorites, ct, " (前回の一覧・最新を確認しています)");
+                }
+                try
+                {
+                    var avatars = favorites ? await _api.GetFavoriteAvatarsAsync(ct) : await _api.GetOwnAvatarsAsync(ct);
+                    if (_user is not null) AvatarListCache.Save(kind, _user.Id, avatars);
+                    if (AlreadyShowing(avatars))
+                    {
+                        // 取り直したが中身は同じだった。一覧を作り直さない
+                        // (件数によらず作り直しだけで 20ms 前後かかり、スクロール位置も先頭に戻ってしまう)
+                        ShowListState(loading: false);
+                        SetStatus(StatusKind.Info, CountText());
+                        if (refresh) _ = RefreshFavoriteStateAsync(ct);
+                        return;
+                    }
+                    _allItems.Clear();
+                    // 自分のアバターにはタグを載せる（お気に入りはグループ表示を優先）
+                    _allItems.AddRange(avatars.Select(a => new AvatarItem(a) { Tags = favorites ? [] : _tags.TagsOf(a.Id) }));
+                }
+                catch (Exception ex) when (cached is not null
+                                           && ex is not OperationCanceledException
+                                           && ex is not VRChatApiException { IsUnauthorized: true })
+                {
+                    // 出せる一覧はもう出してある。最新に追いつけなかったことだけ伝える
+                    SetStatus(StatusKind.Error,
+                        $"最新の一覧を取得できませんでした ({FriendlyError.Of(ex)}) {cached.FetchedAt:M/d HH:mm} 時点の一覧を表示しています。");
+                    return;
+                }
             }
             ShowListState(loading: false);
             BuildFilterChips();
             ApplyFilter();
             UpdateUserHeader();
-            SetStatus(StatusKind.Info, $"{_allItems.Count} 件");
-            PruneImageCache();
-            _ = LoadThumbnailsAsync(_allItems.ToList(), ct);
+            SetStatus(StatusKind.Info, CountText() + refreshedEntries switch
+            {
+                null => "",
+                0 => " (情報は最新です)",
+                var n => $" ({n} 件の情報を更新しました)",
+            });
+            QueueThumbnails(_allItems.ToList(), ct);
+            if (refresh) _ = RefreshFavoriteStateAsync(ct);
         }
         catch (OperationCanceledException) { }
         catch (Exception ex)
@@ -563,6 +648,53 @@ public partial class MainWindow : Window
             SetStatus(StatusKind.Error, "読み込めませんでした: " + FriendlyError.Of(ex));
         }
         finally { RefreshButton.IsEnabled = true; }
+    }
+
+    /// <summary>アバター列を一覧に載せて表示する(取得したものでも、キャッシュから読んだものでも同じ扱い)。</summary>
+    private void ShowAvatars(List<Avatar> avatars, bool favorites, CancellationToken ct, string note)
+    {
+        _allItems.Clear();
+        _allItems.AddRange(avatars.Select(a => new AvatarItem(a) { Tags = favorites ? [] : _tags.TagsOf(a.Id) }));
+        ShowListState(loading: false);
+        BuildFilterChips();
+        ApplyFilter();
+        UpdateUserHeader();
+        SetStatus(StatusKind.Info, CountText() + note);
+        QueueThumbnails(_allItems.ToList(), ct);
+    }
+
+    /// <summary>今まさに同じ内容を表示中か (何も出していないときは false)。</summary>
+    private bool AlreadyShowing(List<Avatar> avatars)
+        => _allItems.Count > 0 && SameAvatars(_allItems, avatars);
+
+    /// <summary>今出ている一覧と、取り直した結果が同じ内容か (表示に関わる項目だけを見る)。</summary>
+    private static bool SameAvatars(List<AvatarItem> shown, List<Avatar> fetched)
+    {
+        if (shown.Count != fetched.Count) return false;
+        for (var i = 0; i < shown.Count; i++)
+        {
+            var a = shown[i].Avatar;
+            var b = fetched[i];
+            if (a.Id != b.Id || a.Name != b.Name || a.AuthorName != b.AuthorName
+                || a.ThumbnailImageUrl != b.ThumbnailImageUrl || a.ImageUrl != b.ImageUrl
+                || a.ReleaseStatus != b.ReleaseStatus || a.FavoriteGroup != b.FavoriteGroup
+                || a.CreatedAt != b.CreatedAt || a.UpdatedAt != b.UpdatedAt) return false;
+        }
+        return true;
+    }
+
+    /// <summary>
+    /// ステータスに出す件数。グループ化でタイルにまとまっているぶんは一覧に個別に並ばないので、
+    /// 「件数は合っているのに 1 体見当たらない」と思わせないよう、まとめた数も添える。
+    /// </summary>
+    private string CountText()
+    {
+        var tiles = AvatarList.Items.OfType<AvatarItem>().ToList();
+        var groups = tiles.Count(i => i.IsGroup);
+        var folded = tiles.Where(i => i.IsGroup).Sum(i => i.Count) - groups;
+        return folded > 0
+            ? $"{_allItems.Count} 件 (うち {folded} 体は {groups} 個のグループにまとめて表示)"
+            : $"{_allItems.Count} 件";
     }
 
     // ---------------- 検索と絞り込みの適用 ----------------
@@ -625,12 +757,35 @@ public partial class MainWindow : Window
             list.AddRange(byGroup.Select(kv => new AvatarItem(kv.Key, kv.Value)));
             list = ApplySort(list, SortKey).ToList();
         }
+        // 並びも中身も今と同じなら入れ直さない。一覧の作り直しは件数によらず 20ms 前後かかるうえ、
+        // スクロール位置と選択が先頭に戻ってしまう (タグ編集や色分けの切り替えなど、見た目が変わらない場合に効く)
+        if (AvatarList.ItemsSource is List<AvatarItem> shown && SameContent(shown, list)) list = shown;
         ApplyStripes(list);
-        AvatarList.ItemsSource = list;
+        if (!ReferenceEquals(AvatarList.ItemsSource, list)) AvatarList.ItemsSource = list;
         var reselect = list.FirstOrDefault(a => a.Id == selectedId && a.IsGroup == selectedWasGroup);
         if (reselect is not null) AvatarList.SelectedItem = reselect;
         RefreshCurrentMarks();
         if (SkeletonPanel.Visibility != Visibility.Visible) UpdateEmptyState(list.Count);
+    }
+
+    /// <summary>
+    /// 表示中の並びと中身が同じか。同じアバター (同じインスタンス) が同じ順に並んでいて、
+    /// グループタイルも同じグループ・同じメンバーを指していれば「同じ」とみなす。
+    /// インスタンスまで見るのは、作り直した項目に差し替え損ねるとサムネイルの反映先がずれるため。
+    /// </summary>
+    private static bool SameContent(List<AvatarItem> shown, List<AvatarItem> list)
+    {
+        if (shown.Count != list.Count) return false;
+        for (var i = 0; i < list.Count; i++)
+        {
+            var a = shown[i];
+            var b = list[i];
+            if (ReferenceEquals(a, b)) continue;
+            // グループタイルは絞り込みのたびに作り直されるので、指している中身で見る
+            if (!a.IsGroup || !b.IsGroup || !ReferenceEquals(a.Group, b.Group)
+                || !a.Members.SequenceEqual(b.Members)) return false;
+        }
+        return true;
     }
 
     /// <summary>「現在着ているアバター」のチェックバッジを付け直す。</summary>

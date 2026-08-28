@@ -6,10 +6,21 @@ namespace VRCAvatarChanger;
 public partial class MainWindow
 {
     private UpdateInfo? _update;
+    private System.Windows.Threading.DispatcherTimer? _updateTimer;
 
-    /// <summary>起動時に一度だけ最新リリースを確認する。見つかったらツールバーにボタンを出すだけで、勝手には更新しない。</summary>
+    /// <summary>
+    /// 最新リリースを確認する。見つかったらツールバーにボタンを出すだけで、勝手には更新しない。
+    /// 起動時に一度確認し、そのあとは 1 日ごとに見に行く (開きっぱなしでも更新に気づけるように)。
+    /// </summary>
     private async Task CheckForUpdateAsync()
     {
+        if (_updateTimer is null)
+        {
+            _updateTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromHours(24) };
+            // 見つかったあとは確認しない (ボタンはもう出ている)
+            _updateTimer.Tick += async (_, _) => { if (_update is null) await CheckForUpdateAsync(); };
+            _updateTimer.Start();
+        }
         _update = await Updater.CheckAsync();
         if (_update is null) return;
         UpdateButtonText.Text = $"v{_update.Version.ToString(3)} に更新";

@@ -115,6 +115,10 @@
                     <TextBlock Style="{StaticResource Body}"
                                Text="気に入ったパブリックアバターを登録しておく、このアプリ独自のリストです。VRChat のお気に入りと違って上限はありません。アバターの ID や URL を上の欄に貼って「追加」するか、他のタブで右クリック →「パブリックに追加」します。"/>
 
+                    <TextBlock Text="お気に入りの追加・解除" Style="{StaticResource H2}"/>
+                    <TextBlock Style="{StaticResource Body}"
+                               Text="アバターを右クリック →「お気に入りに追加」で、入れたいお気に入りグループを選べます(カッコ内は今そのグループに入っている数)。登録済みのアバターは「お気に入りから外す」が出ます。VRChat の Web サイトを開かなくても、このアプリだけでお気に入りを整理できます。"/>
+
                     <TextBlock Text="タグ" Style="{StaticResource H2}"/>
                     <TextBlock Style="{StaticResource Body}"
                                Text="「自分のアバター」と「パブリック」では、アバターを右クリック →「タグを編集...」で好きなタグを付けられます。付けたタグは一覧の上のフィルタに並び、ワンクリックで絞り込めます。グループを右クリック →「全員のタグを編集...」で、中のアバター全員に同じタグをまとめて付けられます。"/>
@@ -123,9 +127,15 @@
                     <TextBlock Style="{StaticResource Body}"
                                Text="衣装違いなどを 1 つにまとめられます。アバターを別のアバターにドラッグ&amp;ドロップするか、右クリック →「グループに入れる...」。ツールバーの「グループ化」を ON にするとまとめて表示され、ダブルクリックで中身を開けます。名前の変更や解除はグループを右クリックします。"/>
 
-                    <TextBlock Text="ゲーム中にサッと着替える (Shift+1)" Style="{StaticResource H2}"/>
+                    <TextBlock Text="ゲーム中にサッと着替える (ホットキー)" Style="{StaticResource H2}"/>
                     <TextBlock Style="{StaticResource Body}"
                                Text="VRChat をデスクトップモードでプレイ中に Shift+1 を押すと、画面の右にアバター選択が重なって表示されます。クリックで着替えて自動で閉じ、VRChat に操作が戻ります。もう一度 Shift+1 か Esc で閉じられます。設定でオフにできます。"/>
+                    <TextBlock Style="{StaticResource Body}"
+                               Text="設定 →「ホットキーの割り当て」で、このキーを変えたり、次のものにもキーを割り当てられます。反応するのは VRChat が手前にあるときだけで、割り当てたキーは VRChat には渡りません。"/>
+                    <TextBlock Style="{StaticResource Body}"
+                               Text="・直前のアバターに戻す(2 着を行き来したいとき)&#x0a;・グループ内の次のアバター(衣装違いを順に送る)&#x0a;・特定のアバターを直接呼び出す(一覧で右クリック →「ホットキーに割り当てる...」)"/>
+                    <TextBlock Style="{StaticResource Body}"
+                               Text="ホットキーで着替えると、結果がゲーム画面の上に数秒だけ表示されます。「直前のアバターに戻す」はメイン画面の左上「直前に戻す」ボタンからも使えます。"/>
 
                     <TextBlock Text="ゲーム内の着替えを反映する (OSC)" Style="{StaticResource H2}"/>
                     <TextBlock Style="{StaticResource Body}"
@@ -162,6 +172,24 @@
                     <TextBlock Style="{StaticResource Body}"
                                Text="アバターがアップロードされた日です(VRChat はお気に入りに登録した日時を返さないため)。パブリックタブの「追加日」は、このアプリに追加した日です。"/>
 
+                    <TextBlock Text="一覧に「前回の一覧」と出る / オフラインでも一覧が出る" Style="{StaticResource Q}"/>
+                    <TextBlock Style="{StaticResource Body}"
+                               Text="起動を速くするため、前回読み込んだ一覧とサムネイルをこの PC に保存しておき、先に表示してから裏で最新を取りに行きます。取得できたら自動で置き換わります。VRChat につながらないときは、前回の一覧をそのまま表示し、いつ時点のものかを下に表示します。"/>
+                    <TextBlock Style="{StaticResource Body}"
+                               Text="VRChat への問い合わせを減らすため、5 分以内に読み込んだ一覧はタブを行き来しても取り直しません。アバターをアップロードした直後など、すぐ反映したいときは右上の「再読み込み」(F5)を押してください。パブリックタブの「再読み込み」も、6 時間以内に取得済みのアバターは飛ばします(何件更新したかはステータス欄に出ます)。"/>
+
+                    <TextBlock Text="画面を明るく / 暗くしたい" Style="{StaticResource Q}"/>
+                    <TextBlock Style="{StaticResource Body}"
+                               Text="右上の「設定」→「配色」で システム / ライト / ダーク を選べます。既定の「システム」は Windows の「アプリのモード」に合わせ、Windows 側で切り替わったときも追従します。選び直すとその場で変わります(再起動は不要です)。"/>
+
+                    <TextBlock Text="アップロードしたアバターが 1 体だけ見当たらない" Style="{StaticResource Q}"/>
+                    <TextBlock Style="{StaticResource Body}"
+                               Text="まず、グループにまとまっていないか確かめてください。グループに入れたアバターは 1 枚のタイルにまとまるため、一覧には個別に並びません(ツールバーの「グループ化」をオフにすると全部が個別に並びます)。ステータス欄にも「うち ◯ 体は ◯ 個のグループにまとめて表示」と出ます。"/>
+                    <TextBlock Style="{StaticResource Body}"
+                               Text="次に、検索欄やフィルタが残っていないか、右上の「再読み込み」(F5)で取り直せないかを試してください。一覧は 5 分間キャッシュを使うため、アップロードした直後は F5 が必要なことがあります。"/>
+                    <TextBlock Style="{StaticResource Body}"
+                               Text="それでも出てこない場合、保存フォルダの cache\list-own.json に前回取得した一覧がそのまま入っています。そこに入っていなければ VRChat から届いていない、入っていれば表示側の問題、と切り分けられます。"/>
+
                     <TextBlock Text="何を保存している? 安全?" Style="{StaticResource Q}"/>
                     <TextBlock Style="{StaticResource Body}"
                                Text="パスワードは保存しません。保存するのはログイン状態・表示設定・パブリックリスト・グループだけで、すべてこの PC の %AppData%\VRCAvatarChanger にあります。ログイン状態は Windows の機能で暗号化され、通信先は VRChat のサーバーだけです。"/>
@@ -173,6 +201,8 @@
                     <TextBlock Text="パブリックタブやグループの登録はどこに保存される?" Style="{StaticResource Q}"/>
                     <TextBlock Style="{StaticResource Body}"
                                Text="この PC の %AppData%\VRCAvatarChanger フォルダにある public_avatars.json(パブリック)、groups.json(グループ)、tags.json(タグ)です。VRChat 側には保存されません。別の PC に移したいときは、この 3 つのファイルをコピーしてください。フォルダは「このアプリについて」の「保存フォルダを開く」から開けます。"/>
+                    <TextBlock Style="{StaticResource Body}"
+                               Text="同じフォルダの cache フォルダは、一覧とサムネイルの控えです。消しても次回に取り直すだけで、設定やリストは失われません。"/>
 
                     <TextBlock Text="ログインしたままにしたくない" Style="{StaticResource Q}"/>
                     <TextBlock Style="{StaticResource Body}"

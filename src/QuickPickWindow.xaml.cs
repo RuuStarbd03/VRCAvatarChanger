@@ -39,9 +39,10 @@ public partial class QuickPickWindow : Window
     /// scale は表示先モニターの DPI スケール (100% = 1.0)。
     /// </summary>
     internal void OpenAt(Win32.NativeRect areaPx, double scale, IReadOnlyList<AvatarItem> items,
-        IReadOnlyList<string> recentAvatars, string sortKey)
+        IReadOnlyList<string> recentAvatars, string sortKey, Hotkey toggleKey)
     {
         _gen++;
+        CloseHint.Text = toggleKey.IsSet ? $"{toggleKey.Display} / Esc で閉じる" : "Esc で閉じる";
         _all = items.ToList();
         _recentRank = recentAvatars.Select((id, i) => (id, i)).ToDictionary(t => t.id, t => t.i);
         _ready = false;

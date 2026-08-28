@@ -74,6 +74,9 @@ public sealed class AvatarItem : INotifyPropertyChanged
         set { _thumbnail = value; OnPropertyChanged(); }
     }
 
+    /// <summary>今持っているサムネイルをデコードした幅。表示形式が変わって足りなくなったら読み直す目印。</summary>
+    public int ThumbnailWidth { get; set; }
+
     private Brush? _stripeBrush;
     /// <summary>10 刻み色分け(隠し機能)の背景色。無効時や除外時は null。</summary>
     public Brush? StripeBrush

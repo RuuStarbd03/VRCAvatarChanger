@@ -78,8 +78,9 @@
             </Setter>
         </Style>
 
+        <!-- Loaded / DataContextChanged = このタイルが画面に出た (使い回された) 合図。そこでサムネを要求する -->
         <DataTemplate x:Key="AvatarRowTemplate" DataType="{x:Type local:AvatarItem}">
-            <Grid>
+            <Grid Loaded="AvatarTile_Realized" DataContextChanged="AvatarTile_DataContextChanged">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto"/>
                     <ColumnDefinition Width="*"/>
@@ -204,7 +205,7 @@
 
 
         <DataTemplate x:Key="AvatarTileTemplate" DataType="{x:Type local:AvatarItem}">
-            <StackPanel>
+            <StackPanel Loaded="AvatarTile_Realized" DataContextChanged="AvatarTile_DataContextChanged">
                 <StackPanel.ToolTip>
                     <StackPanel>
                         <TextBlock Text="{Binding Name}" FontWeight="SemiBold"/>
@@ -362,6 +363,14 @@
                             <StackPanel Orientation="Horizontal">
                                 <TextBlock Text="&#xE896;" Style="{StaticResource Icon}" Foreground="{DynamicResource AccentBrush}" Margin="0,0,8,0"/>
                                 <TextBlock x:Name="UpdateButtonText" Text="更新があります" Foreground="{DynamicResource AccentBrush}"/>
+                            </StackPanel>
+                        </Button>
+                        <Button x:Name="PreviousButton" Style="{StaticResource GhostButton}" Click="PreviousButton_Click"
+                                AutomationProperties.Name="直前のアバターに戻す" IsEnabled="False"
+                                ToolTip="1 つ前に着ていたアバターに戻します" Height="30" Padding="10,0" Margin="0,0,4,0">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="&#xE7A7;" Style="{StaticResource Icon}" Margin="0,0,8,0"/>
+                                <TextBlock Text="直前に戻す"/>
                             </StackPanel>
                         </Button>
                         <Button Style="{StaticResource GhostButton}" Click="SettingsButton_Click" AutomationProperties.Name="設定"
@@ -534,11 +543,17 @@
                               AllowDrop="True" PreviewMouseLeftButtonDown="AvatarList_PreviewMouseLeftButtonDown" PreviewMouseMove="AvatarList_PreviewMouseMove"
                               DragOver="AvatarList_DragOver" DragLeave="AvatarList_DragLeave" Drop="AvatarList_Drop"
                               VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.VirtualizationMode="Recycling"
-                              VirtualizingPanel.ScrollUnit="Pixel" local:SmoothScroll.IsEnabled="True">
+                              VirtualizingPanel.ScrollUnit="Pixel"
+                              VirtualizingPanel.CacheLengthUnit="Page" VirtualizingPanel.CacheLength="1,1"
+                              local:SmoothScroll.IsEnabled="True">
                         <ListView.ContextMenu>
                             <ContextMenu>
                                 <MenuItem x:Name="MenuChange" Header="このアバターに着替える" Click="MenuChange_Click"/>
                                 <MenuItem x:Name="MenuOpenGroup" Header="グループを開く" Click="MenuOpenGroup_Click"/>
+                                <Separator/>
+                                <!-- お気に入り: 追加は「どのグループに入れるか」を選ばせるので、項目は開くときに作る -->
+                                <MenuItem x:Name="MenuAddFavorite" Header="お気に入りに追加"/>
+                                <MenuItem x:Name="MenuRemoveFavorite" Header="お気に入りから外す" Click="MenuRemoveFavorite_Click"/>
                                 <Separator/>
                                 <MenuItem x:Name="MenuAssignGroup" Header="グループに入れる..." Click="MenuAssignGroup_Click"/>
                                 <MenuItem x:Name="MenuUnassignGroup" Header="グループから外す" Click="MenuUnassignGroup_Click"/>
@@ -549,6 +564,7 @@
                                 <MenuItem x:Name="MenuRemovePublic" Header="パブリックから削除" Click="MenuRemovePublic_Click"/>
                                 <MenuItem x:Name="MenuEditTags" Header="タグを編集..." Click="MenuEditTags_Click"/>
                                 <Separator/>
+                                <MenuItem x:Name="MenuAssignHotkey" Header="ホットキーに割り当てる..." Click="MenuAssignHotkey_Click"/>
                                 <MenuItem x:Name="MenuCopyId" Header="アバター ID をコピー" Click="MenuCopyId_Click"/>
                                 <MenuItem x:Name="MenuStripeExclude" Header="カウントから除外" Click="MenuStripeExclude_Click" Visibility="Collapsed"/>
                             </ContextMenu>
@@ -588,15 +604,100 @@
         <!-- ================= 設定 (アプリ内オーバーレイ) ================= -->
         <Grid x:Name="SettingsOverlay" Visibility="Collapsed">
             <Grid.Resources>
-                <!-- オン/オフの状態が読めるトグル -->
-                <Style x:Key="OnOffToggle" TargetType="ToggleButton" BasedOn="{StaticResource SegmentToggle}">
-                    <Setter Property="MinWidth" Value="72"/>
-                    <Setter Property="Content" Value="オフ"/>
-                    <Style.Triggers>
-                        <Trigger Property="IsChecked" Value="True">
-                            <Setter Property="Content" Value="オン"/>
-                        </Trigger>
-                    </Style.Triggers>
+                <!-- オン/オフのスイッチ。
+                     「押したらどうなるか」ではなく「今どちらか」が形と色で分かるようにする:
+                     つまみが左=オフ / 右=オン、オンのときだけ色が付き、状態の文字も添える。
+                     切り替えるとつまみが滑って移る (状態が変わったことが見て取れる) -->
+                <Style x:Key="OnOffToggle" TargetType="ToggleButton">
+                    <Setter Property="Cursor" Value="Hand"/>
+                    <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+                    <Setter Property="Template">
+                        <Setter.Value>
+                            <ControlTemplate TargetType="ToggleButton">
+                                <StackPanel Orientation="Horizontal" Background="Transparent">
+                                    <TextBlock x:Name="state" Text="オフ" MinWidth="28" TextAlignment="Right"
+                                               VerticalAlignment="Center" Margin="0,0,10,0" FontSize="12"
+                                               Foreground="{DynamicResource MutedTextBrush}"/>
+                                    <Grid Width="44" Height="24" VerticalAlignment="Center" SnapsToDevicePixels="True">
+                                        <Border x:Name="focus" CornerRadius="14" Margin="-3" BorderThickness="2"
+                                                BorderBrush="{DynamicResource AccentBrush}" Opacity="0"/>
+                                        <Border x:Name="trackOff" CornerRadius="12" Background="{DynamicResource InputBrush}"
+                                                BorderBrush="{DynamicResource BorderStrongBrush}" BorderThickness="1"/>
+                                        <Border x:Name="trackOn" CornerRadius="12" Opacity="0"
+                                                Background="{DynamicResource AccentBrush}"
+                                                BorderBrush="{DynamicResource AccentBrush}" BorderThickness="1"/>
+                                        <Ellipse x:Name="thumb" Width="14" Height="14" HorizontalAlignment="Left"
+                                                 Margin="4,0,0,0" Fill="{DynamicResource MutedTextBrush}">
+                                            <Ellipse.RenderTransform>
+                                                <TranslateTransform x:Name="thumbShift"/>
+                                            </Ellipse.RenderTransform>
+                                        </Ellipse>
+                                    </Grid>
+                                </StackPanel>
+                                <ControlTemplate.Triggers>
+                                    <Trigger Property="IsChecked" Value="True">
+                                        <Setter TargetName="state" Property="Text" Value="オン"/>
+                                        <Setter TargetName="state" Property="Foreground" Value="{DynamicResource TextBrush}"/>
+                                        <Setter TargetName="thumb" Property="Fill" Value="{DynamicResource OnAccentBrush}"/>
+                                        <Trigger.EnterActions>
+                                            <BeginStoryboard>
+                                                <Storyboard>
+                                                    <DoubleAnimation Storyboard.TargetName="thumbShift" Storyboard.TargetProperty="X"
+                                                                     To="20" Duration="0:0:0.16">
+                                                        <DoubleAnimation.EasingFunction>
+                                                            <CubicEase EasingMode="EaseOut"/>
+                                                        </DoubleAnimation.EasingFunction>
+                                                    </DoubleAnimation>
+                                                    <DoubleAnimation Storyboard.TargetName="trackOn" Storyboard.TargetProperty="Opacity"
+                                                                     To="1" Duration="0:0:0.16"/>
+                                                </Storyboard>
+                                            </BeginStoryboard>
+                                        </Trigger.EnterActions>
+                                        <Trigger.ExitActions>
+                                            <BeginStoryboard>
+                                                <Storyboard>
+                                                    <DoubleAnimation Storyboard.TargetName="thumbShift" Storyboard.TargetProperty="X"
+                                                                     To="0" Duration="0:0:0.16">
+                                                        <DoubleAnimation.EasingFunction>
+                                                            <CubicEase EasingMode="EaseOut"/>
+                                                        </DoubleAnimation.EasingFunction>
+                                                    </DoubleAnimation>
+                                                    <DoubleAnimation Storyboard.TargetName="trackOn" Storyboard.TargetProperty="Opacity"
+                                                                     To="0" Duration="0:0:0.16"/>
+                                                </Storyboard>
+                                            </BeginStoryboard>
+                                        </Trigger.ExitActions>
+                                    </Trigger>
+                                    <MultiTrigger>
+                                        <MultiTrigger.Conditions>
+                                            <Condition Property="IsMouseOver" Value="True"/>
+                                            <Condition Property="IsChecked" Value="False"/>
+                                        </MultiTrigger.Conditions>
+                                        <Setter TargetName="trackOff" Property="Background" Value="{DynamicResource HoverBrush}"/>
+                                        <Setter TargetName="trackOff" Property="BorderBrush" Value="{DynamicResource MutedTextBrush}"/>
+                                        <Setter TargetName="thumb" Property="Fill" Value="{DynamicResource TextBrush}"/>
+                                    </MultiTrigger>
+                                    <MultiTrigger>
+                                        <MultiTrigger.Conditions>
+                                            <Condition Property="IsMouseOver" Value="True"/>
+                                            <Condition Property="IsChecked" Value="True"/>
+                                        </MultiTrigger.Conditions>
+                                        <Setter TargetName="trackOn" Property="Background" Value="{DynamicResource AccentHoverBrush}"/>
+                                        <Setter TargetName="trackOn" Property="BorderBrush" Value="{DynamicResource AccentHoverBrush}"/>
+                                    </MultiTrigger>
+                                    <Trigger Property="IsPressed" Value="True">
+                                        <Setter TargetName="thumb" Property="Width" Value="18"/>
+                                    </Trigger>
+                                    <Trigger Property="IsKeyboardFocused" Value="True">
+                                        <Setter TargetName="focus" Property="Opacity" Value="1"/>
+                                    </Trigger>
+                                    <Trigger Property="IsEnabled" Value="False">
+                                        <Setter Property="Opacity" Value="0.5"/>
+                                    </Trigger>
+                                </ControlTemplate.Triggers>
+                            </ControlTemplate>
+                        </Setter.Value>
+                    </Setter>
                 </Style>
                 <Style x:Key="SettingTitle" TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
                     <Setter Property="FontWeight" Value="SemiBold"/>
@@ -620,7 +721,11 @@
             <!-- 背景クリックで閉じる -->
             <Border Background="{DynamicResource ScrimBrush}" MouseLeftButtonDown="SettingsBackdrop_MouseLeftButtonDown"/>
 
+            <!-- カードの高さの上限を測るための入れ物。画面が低いときにカードが画面外へはみ出さないようにする -->
+            <Border x:Name="SettingsBounds" Margin="0,32" IsHitTestVisible="False"/>
+
             <Border x:Name="SettingsCard" Style="{StaticResource Card}" Width="480" VerticalAlignment="Center" HorizontalAlignment="Center" Padding="20"
+                    MaxHeight="{Binding ActualHeight, ElementName=SettingsBounds}"
                     RenderTransformOrigin="0.5,0.5">
                 <Border.RenderTransform>
                     <ScaleTransform x:Name="SettingsCardScale"/>
@@ -628,7 +733,13 @@
                 <Border.Effect>
                     <DropShadowEffect BlurRadius="28" ShadowDepth="4" Opacity="0.35" Color="#000000"/>
                 </Border.Effect>
-                <StackPanel>
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+
                     <Grid Margin="0,0,0,14">
                         <TextBlock Text="設定" FontWeight="SemiBold" FontSize="16" VerticalAlignment="Center"/>
                         <Button Style="{StaticResource GhostButton}" Click="SettingsClose_Click" AutomationProperties.Name="設定を閉じる"
@@ -636,6 +747,10 @@
                             <TextBlock Text="&#xE711;" Style="{StaticResource Icon}"/>
                         </Button>
                     </Grid>
+
+                    <!-- 項目が画面に収まらないときはここだけスクロールする (見出しと閉じるは残す) -->
+                    <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" Padding="0,0,2,0">
+                    <StackPanel>
 
                     <Border Style="{StaticResource SettingRow}">
                         <Grid>
@@ -661,9 +776,9 @@
                                 <ColumnDefinition Width="Auto"/>
                             </Grid.ColumnDefinitions>
                             <StackPanel>
-                                <TextBlock Text="クイック着替え (Shift+1)" Style="{StaticResource SettingTitle}"/>
+                                <TextBlock Text="クイック着替え / ホットキー" Style="{StaticResource SettingTitle}"/>
                                 <TextBlock Style="{StaticResource SettingDesc}"
-                                           Text="VRChat をデスクトップモードでプレイ中に Shift+1 を押すと、画面の右にアバター選択を重ねて表示します。VRChat (またはこのオーバーレイ) が手前にあるときだけ反応します。"/>
+                                           Text="VRChat をデスクトップモードでプレイ中にホットキーを使えるようにします。既定では Shift+1 で画面の右にアバター選択を重ねて表示します。VRChat (またはこのオーバーレイ) が手前にあるときだけ反応します。"/>
                             </StackPanel>
                             <ToggleButton Grid.Column="1" x:Name="QuickToggle" Style="{StaticResource OnOffToggle}"
                                           Checked="QuickToggle_Changed" Unchecked="QuickToggle_Changed"
@@ -685,6 +800,48 @@
                             <ToggleButton Grid.Column="1" x:Name="KeepLoginToggle" Style="{StaticResource OnOffToggle}"
                                           Checked="KeepLoginToggle_Changed" Unchecked="KeepLoginToggle_Changed"
                                           VerticalAlignment="Top" Margin="14,0,0,0" AutomationProperties.Name="ブラウザのログイン状態を保持"/>
+                        </Grid>
+                    </Border>
+
+                    <Border Style="{StaticResource SettingRow}">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <StackPanel>
+                                <TextBlock Text="ホットキーの割り当て" Style="{StaticResource SettingTitle}"/>
+                                <TextBlock Style="{StaticResource SettingDesc}"
+                                           Text="クイック着替えを開く、直前のアバターに戻す、グループ内の次のアバターへ送る、特定のアバターを直接呼び出す — それぞれにキーを割り当てられます。"/>
+                            </StackPanel>
+                            <Button Grid.Column="1" Content="設定..." Style="{StaticResource SecondaryButton}" Click="HotkeySettings_Click"
+                                    MinWidth="80" Height="32" VerticalAlignment="Top" Margin="14,0,0,0"/>
+                        </Grid>
+                    </Border>
+
+                    <Border Style="{StaticResource SettingRow}">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <StackPanel>
+                                <TextBlock Text="配色" Style="{StaticResource SettingTitle}"/>
+                                <TextBlock Style="{StaticResource SettingDesc}"
+                                           Text="「システム」は Windows の「アプリのモード」に合わせ、切り替わったら追従します。選ぶとその場で変わります。"/>
+                            </StackPanel>
+                            <Border Grid.Column="1" Background="{DynamicResource InputBrush}" BorderBrush="{DynamicResource BorderBrush}"
+                                    BorderThickness="1" CornerRadius="{StaticResource ControlRadius}"
+                                    VerticalAlignment="Top" Margin="14,0,0,0">
+                                <StackPanel Orientation="Horizontal">
+                                    <RadioButton x:Name="ThemeSystem" Content="システム" Tag="system" GroupName="Theme"
+                                                 Style="{StaticResource SegmentButton}" Checked="Theme_Checked"/>
+                                    <RadioButton x:Name="ThemeLight" Content="ライト" Tag="light" GroupName="Theme"
+                                                 Style="{StaticResource SegmentButton}" Checked="Theme_Checked"/>
+                                    <RadioButton x:Name="ThemeDark" Content="ダーク" Tag="dark" GroupName="Theme"
+                                                 Style="{StaticResource SegmentButton}" Checked="Theme_Checked"/>
+                                </StackPanel>
+                            </Border>
                         </Grid>
                     </Border>
 
@@ -720,8 +877,12 @@
                         </Grid>
                     </Border>
 
-                    <Button Content="閉じる" Click="SettingsClose_Click" MinWidth="100" Height="34" HorizontalAlignment="Right" Margin="0,4,0,0"/>
-                </StackPanel>
+                    </StackPanel>
+                    </ScrollViewer>
+
+                    <Button Grid.Row="2" Content="閉じる" Click="SettingsClose_Click" MinWidth="100" Height="34"
+                            HorizontalAlignment="Right" Margin="0,14,0,0"/>
+                </Grid>
             </Border>
         </Grid>
     </Grid>
