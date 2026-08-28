@@ -62,6 +62,7 @@ public partial class MainWindow
         if (Environment.GetEnvironmentVariable("VRCAC_UI_PREVIEW_THUMBTEST") == "1") _ = RunThumbTestAsync();
         if (Environment.GetEnvironmentVariable("VRCAC_UI_PREVIEW_PERFTEST") == "1") _ = RunPerfTestAsync();
         if (Environment.GetEnvironmentVariable("VRCAC_UI_PREVIEW_SOAKTEST") == "1") _ = RunSoakTestAsync();
+        if (Environment.GetEnvironmentVariable("VRCAC_UI_PREVIEW_GRIDTEST") == "1") _ = RunGridTestAsync();
 
         // 見た目確認: VRCAC_UI_PREVIEW_SHOT=path でウィンドウを画面外に置いたまま PNG に描画して終了する
         // (実画面をキャプチャしないので、ゲーム中でも邪魔にならない)。SETTINGS=1 なら設定オーバーレイを開いた状態で撮る
@@ -104,6 +105,60 @@ public partial class MainWindow
             Left = -4000; Top = 0;
             _ = CaptureWindowAsync(this, shotPath);
         }
+    }
+
+    /// <summary>
+    /// ボックス表示で一度にたくさん見えるとき (10 列・大きなウィンドウ) の実体化数と保持量を測る
+    /// (VRCAC_UI_PREVIEW_GRIDTEST=1)。スクロールしても見えているものが空白にならないかも見る。
+    /// </summary>
+    private async Task RunGridTestAsync()
+    {
+        Left = -4000; Top = 0;
+        Width = 1900; Height = 1250; // 大きめのモニターでの最大化に近い状態
+        var reportPath = Environment.GetEnvironmentVariable("VRCAC_UI_PREVIEW_REPORT");
+        var report = new System.Text.StringBuilder();
+        try
+        {
+            var columns = int.TryParse(Environment.GetEnvironmentVariable("VRCAC_UI_PREVIEW_COLUMNS"), out var c) ? c : 10;
+            ViewGrid.IsChecked = true;
+            ColumnsSlider.Value = columns;
+            GridColumns = columns;
+            AvatarList.UpdateLayout();
+            await Task.Delay(1800);
+
+            var items = AvatarList.Items.OfType<AvatarItem>().ToList();
+            void Snapshot(string label)
+            {
+                var visible = VisibleIndexes().Where(i => i < items.Count).ToList();
+                var blank = visible.Count(i => items[i].Thumbnail is null && items[i].ThumbnailUrl is not null);
+                var live = items.Count(i => i.Thumbnail is not null);
+                var bytes = items.Where(i => i.Thumbnail is not null)
+                    .Sum(i => (long)i.Thumbnail!.PixelWidth * i.Thumbnail!.PixelHeight * 4);
+                using var proc = System.Diagnostics.Process.GetCurrentProcess();
+                report.AppendLine($"{label,-14} 実体化={visible.Count,4} 表示中の空白={blank,3} " +
+                    $"保持画像={live,4}枚/{bytes / 1024 / 1024,3}MB ﾌﾟﾗｲﾍﾞｰﾄ={proc.PrivateMemorySize64 / 1024 / 1024,4}MB");
+            }
+            report.AppendLine($"ウィンドウ={Width}x{Height} 列数={GridColumns} 件数={items.Count} " +
+                $"タイル幅={AvatarList.ActualWidth / GridColumns:F0}dip 展開幅={ThumbWidth}px");
+            Snapshot("先頭");
+
+            var sv = FindDescendant<ScrollViewer>(AvatarList);
+            for (var i = 1; i <= 6; i++)
+            {
+                sv?.ScrollToVerticalOffset((sv.ExtentHeight - sv.ViewportHeight) * i / 6.0);
+                AvatarList.UpdateLayout();
+                await Task.Delay(700); // 展開が追いつく時間
+                Snapshot($"スクロール {i}/6");
+            }
+            // 一気に先頭へ戻す (捨てたものを読み直せるか)
+            sv?.ScrollToVerticalOffset(0);
+            AvatarList.UpdateLayout();
+            await Task.Delay(700);
+            Snapshot("先頭へ戻す");
+        }
+        catch (Exception ex) { report.AppendLine("EXCEPTION: " + ex); }
+        if (!string.IsNullOrEmpty(reportPath)) File.WriteAllText(reportPath, report.ToString());
+        Application.Current.Shutdown();
     }
 
     /// <summary>

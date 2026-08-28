@@ -1,5 +1,6 @@
 using System.IO;
 using System.Windows;
+using System.Windows.Media;
 using System.Windows.Media.Imaging;
 
 namespace VRCAvatarChanger;
@@ -17,14 +18,37 @@ namespace VRCAvatarChanger;
 // (ボックス表示は前後 2 行) まで実体化しておき、見える前に展開を始める。
 public partial class MainWindow
 {
-    private const int ListThumbWidth = 128;  // リスト表示の行サムネ (実サイズ ~96px、高 DPI でも足りる)
-    private const int GridThumbWidth = 320;  // ボックス表示 3 列でも粗くならない幅
+    private const int ListThumbWidth = 128;  // リスト表示の行サムネ (実サイズ 96 DIP。高 DPI でも足りる)
     private const int FrontConcurrency = 4;  // 画面に出ているものは並列で急いで展開する
 
-    /// <summary>展開したまま抱えておく画像の合計上限。320px なら約 160 枚、128px なら約 1000 枚ぶん。</summary>
+    /// <summary>展開したまま抱えておく画像の合計上限。1 枚 110KB (192px) なら約 440 枚ぶん。</summary>
     private const long MaxThumbnailBytes = 48L * 1024 * 1024;
 
-    private int ThumbWidth => IsGridView ? GridThumbWidth : ListThumbWidth;
+    /// <summary>
+    /// 展開する幅の段階。表示する大きさに合わせて選ぶ (小さすぎるとぼやけ、大きすぎるとメモリの無駄)。
+    /// 1px 刻みにするとウィンドウを動かすたびに展開し直すことになるので、決まった段階に丸める。
+    /// 上限を 320px にしているのは、VRChat のサムネイル自体がそれほど大きくないため
+    /// (それ以上を指定しても引き伸ばすだけでメモリを食う)。
+    /// </summary>
+    private static readonly int[] ThumbWidthSteps = [128, 192, 256, 320];
+
+    /// <summary>
+    /// 今の表示で 1 枚に必要な展開幅。ボックス表示はタイルの実寸 (一覧の幅 ÷ 列数) に合わせるので、
+    /// 列数を増やして 1 枚が小さくなるほど、抱えるメモリも小さくなる。
+    /// </summary>
+    private int ThumbWidth
+    {
+        get
+        {
+            var dip = IsGridView && GridColumns > 0 && AvatarList.ActualWidth > 0
+                ? AvatarList.ActualWidth / GridColumns
+                : 96; // リスト表示の行サムネは 96 DIP 固定
+            var needed = dip * VisualTreeHelper.GetDpi(this).DpiScaleX; // 高 DPI ではその分だけ実ピクセルが要る
+            foreach (var step in ThumbWidthSteps)
+                if (step >= needed) return step;
+            return ThumbWidthSteps[^1];
+        }
+    }
 
     // 展開待ち (画面に出た / 出そうなもの)
     private readonly Queue<AvatarItem> _thumbFront = new();
