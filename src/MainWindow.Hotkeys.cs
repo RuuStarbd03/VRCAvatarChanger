@@ -1,4 +1,5 @@
 using System.Windows;
+using System.Windows.Input;
 
 namespace VRCAvatarChanger;
 
@@ -27,6 +28,15 @@ public partial class MainWindow
             if (!key.IsSet || _hotkeys.Any(h => h.Key == key)) return;
             _hotkeys.Add((key, action, avatarId, name));
         }
+    }
+
+    /// <summary>そのキーに (修飾キーを問わず) 割り当てがあるか。押鍵ごとの判定を安く済ませるための足切り。</summary>
+    private bool HasHotkeyFor(Key key)
+    {
+        if (key == Key.None) return false;
+        foreach (var hotkey in _hotkeys)
+            if (hotkey.Key.Key == key) return true;
+        return false;
     }
 
     private (Hotkey Key, HotkeyAction Action, string? AvatarId, string? Name)? FindHotkey(Hotkey pressed)

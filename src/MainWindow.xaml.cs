@@ -104,6 +104,9 @@ public partial class MainWindow : Window
         ApplyPanels();
         _settings.ViewMode = grid ? "grid" : "list";
         if (!_preview) _settings.Save();
+        // ボックス表示は大きく出すので、リスト用に小さくデコードした画像は取り直す
+        // (通信は発生しない。ディスクキャッシュから読んでデコードし直すだけ)
+        if (grid) _ = LoadThumbnailsAsync(_allItems.ToList(), _thumbCts?.Token ?? CancellationToken.None);
         if (AvatarList.SelectedItem is not null) AvatarList.ScrollIntoView(AvatarList.SelectedItem);
     }
 
@@ -506,6 +509,9 @@ public partial class MainWindow : Window
 
     private bool IsPublicTab => SourcePublic.IsChecked == true;
 
+    /// <summary>この時間内に取った一覧は取り直さない(タブの行き来だけで毎回 API を叩かないため)。</summary>
+    private static readonly TimeSpan ListCacheFreshFor = TimeSpan.FromMinutes(5);
+
     /// <param name="refresh">「再読み込み」から呼ばれたか(パブリックのアバター情報とお気に入りの状態も取り直す)</param>
     private async Task LoadAvatarsAsync(bool refresh = false)
     {
@@ -520,15 +526,25 @@ public partial class MainWindow : Window
         try
         {
             _allItems.Clear();
+            int? refreshedEntries = null;
             if (pub)
             {
-                if (refresh) await RefreshPublicEntriesAsync(ct);
+                if (refresh) refreshedEntries = await RefreshPublicEntriesAsync(ct);
                 _allItems.AddRange(_public.Entries.Select(e => new AvatarItem(e.Avatar) { AddedAt = e.AddedAt, Tags = _tags.TagsOf(e.Avatar.Id) }));
             }
             else
             {
                 var kind = favorites ? AvatarListCache.Favorites : AvatarListCache.Own;
                 var cached = _user is null ? null : AvatarListCache.Load(kind, _user.Id);
+                // つい先ほど取ったばかりなら、そのまま使う (タブを行き来するたびに取り直さない)。
+                // 「再読み込み」は常に取りに行くので、新しくアップロードしたアバターもすぐ出せる
+                if (!refresh && cached is not null && DateTimeOffset.Now - cached.FetchedAt < ListCacheFreshFor)
+                {
+                    ShowAvatars(cached.Avatars, favorites, ct,
+                        $"{cached.Avatars.Count} 件 ({cached.FetchedAt:HH:mm} 時点・F5 で取り直し)");
+                    PruneImageCache();
+                    return;
+                }
                 // 前回の一覧があれば先に見せる。サムネもディスクキャッシュから戻るので待たされない
                 if (cached is not null)
                     ShowAvatars(cached.Avatars, favorites, ct, $"{cached.Avatars.Count} 件 (前回の一覧・最新を確認しています)");
@@ -554,7 +570,12 @@ public partial class MainWindow : Window
             BuildFilterChips();
             ApplyFilter();
             UpdateUserHeader();
-            SetStatus(StatusKind.Info, $"{_allItems.Count} 件");
+            SetStatus(StatusKind.Info, refreshedEntries switch
+            {
+                null => $"{_allItems.Count} 件",
+                0 => $"{_allItems.Count} 件 (情報は最新です)",
+                var n => $"{_allItems.Count} 件 ({n} 件の情報を更新しました)",
+            });
             PruneImageCache();
             _ = LoadThumbnailsAsync(_allItems.ToList(), ct);
             if (refresh) _ = RefreshFavoriteStateAsync(ct);

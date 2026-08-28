@@ -65,11 +65,15 @@ public partial class MainWindow
 
     private nint KeyHookProc(int nCode, nint wParam, nint lParam)
     {
-        // Alt を含む組み合わせは WM_SYSKEYDOWN で来る
+        // Alt を含む組み合わせは WM_SYSKEYDOWN で来る。
+        // ここはキーを押すたびに (VRChat 以外を触っているときも) 通るので、安い判定から順に篩う:
+        //   割り当てのあるキーか → 修飾キーが一致するか → VRChat が手前か (プロセス照会があり一番重い)
         if (nCode >= 0 && (wParam == Win32.WmKeydown || wParam == Win32.WmSysKeydown) && _hotkeys.Count > 0)
         {
-            var pressed = new Hotkey(Win32.CurrentModifiers(), Hotkey.FromVirtualKey(Marshal.ReadInt32(lParam)));
-            if (pressed.IsSet && !Hotkey.IsModifierKey(pressed.Key) && FindHotkey(pressed) is { } hit && ShouldHandleQuickKey())
+            var key = Hotkey.FromVirtualKey(Marshal.ReadInt32(lParam));
+            if (HasHotkeyFor(key)
+                && FindHotkey(new Hotkey(Win32.CurrentModifiers(), key)) is { } hit
+                && ShouldHandleQuickKey())
             {
                 Dispatcher.BeginInvoke(() => RunHotkey(hit));
                 return 1; // 割り当てたキーは VRChat 側に渡さない

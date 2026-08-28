@@ -169,6 +169,8 @@
                     <TextBlock Text="一覧に「前回の一覧」と出る / オフラインでも一覧が出る" Style="{StaticResource Q}"/>
                     <TextBlock Style="{StaticResource Body}"
                                Text="起動を速くするため、前回読み込んだ一覧とサムネイルをこの PC に保存しておき、先に表示してから裏で最新を取りに行きます。取得できたら自動で置き換わります。VRChat につながらないときは、前回の一覧をそのまま表示し、いつ時点のものかを下に表示します。"/>
+                    <TextBlock Style="{StaticResource Body}"
+                               Text="VRChat への問い合わせを減らすため、5 分以内に読み込んだ一覧はタブを行き来しても取り直しません。アバターをアップロードした直後など、すぐ反映したいときは右上の「再読み込み」(F5)を押してください。パブリックタブの「再読み込み」も、6 時間以内に取得済みのアバターは飛ばします(何件更新したかはステータス欄に出ます)。"/>
 
                     <TextBlock Text="何を保存している? 安全?" Style="{StaticResource Q}"/>
                     <TextBlock Style="{StaticResource Body}"
