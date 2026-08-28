@@ -63,6 +63,8 @@ public partial class MainWindow
         if (Environment.GetEnvironmentVariable("VRCAC_UI_PREVIEW_PERFTEST") == "1") _ = RunPerfTestAsync();
         if (Environment.GetEnvironmentVariable("VRCAC_UI_PREVIEW_SOAKTEST") == "1") _ = RunSoakTestAsync();
         if (Environment.GetEnvironmentVariable("VRCAC_UI_PREVIEW_GRIDTEST") == "1") _ = RunGridTestAsync();
+        if (Environment.GetEnvironmentVariable("VRCAC_UI_PREVIEW_GAPTEST") == "1") _ = RunGapTestAsync();
+        if (Environment.GetEnvironmentVariable("VRCAC_UI_PREVIEW_RETRYTEST") == "1") _ = RunRetryTestAsync();
 
         // 見た目確認: VRCAC_UI_PREVIEW_SHOT=path でウィンドウを画面外に置いたまま PNG に描画して終了する
         // (実画面をキャプチャしないので、ゲーム中でも邪魔にならない)。SETTINGS=1 なら設定オーバーレイを開いた状態で撮る
@@ -203,6 +205,118 @@ public partial class MainWindow
 
     private static string Fmt(Win32.NativeRect? r)
         => r is { } v ? $"{v.Left},{v.Top} - {v.Right},{v.Bottom} ({v.Right - v.Left}x{v.Bottom - v.Top})" : "(null)";
+
+    /// <summary>
+    /// 取れなかったサムネイルが取り直されるかを見る (VRCAC_UI_PREVIEW_RETRYTEST=1)。
+    /// 実際のキャッシュ (list-own.json) の URL を使うので、展開はディスクから完結する。
+    /// VRCAC_TEST_FAIL_FIRST で最初の n 枚を失敗させ、時間を置いて埋まるかを測る。
+    /// </summary>
+    private async Task RunRetryTestAsync()
+    {
+        Left = -4000; Top = 0;
+        Width = 1080; Height = 740;
+        var reportPath = Environment.GetEnvironmentVariable("VRCAC_UI_PREVIEW_REPORT");
+        var report = new System.Text.StringBuilder();
+        try
+        {
+            var listPath = AppPaths.In(Path.Combine("cache", "list-own.json"));
+            var real = JsonFile.Load<CachedAvatarList>(listPath, new System.Text.Json.JsonSerializerOptions());
+            report.AppendLine($"実キャッシュ: {(real is null ? "読めず" : $"{real.Avatars.Count} 件")}");
+            if (real is null) { File.WriteAllText(reportPath!, report.ToString()); Application.Current.Shutdown(); return; }
+
+            _allItems.Clear();
+            _allItems.AddRange(real.Avatars.Select(a => new AvatarItem(a)));
+            ViewGrid.IsChecked = true;
+            ColumnsSlider.Value = 10;
+            GridColumns = 10;
+            ApplyFilter();
+            AvatarList.UpdateLayout();
+            QueueThumbnails(_allItems.ToList(), CancellationToken.None);
+
+            void Snap(string label)
+            {
+                // 添字は「表示中のリスト」のもの。_allItems (フラット) とは並びが違うので取り違えないこと
+                var shown = AvatarList.Items.OfType<AvatarItem>().ToList();
+                var visible = VisibleIndexes().Where(i => i < shown.Count).ToList();
+                var blankIdx = visible.Where(i => shown[i].Thumbnail is null && shown[i].ThumbnailUrl is not null).ToList();
+                report.AppendLine($"{label,-16} 一覧={shown.Count,3} 表示中={visible.Count,3} 画像なし={blankIdx.Count,3} " +
+                    (blankIdx.Count > 0 ? "-> " + string.Join(",", blankIdx.Take(12).Select(i => $"#{i}:{shown[i].Name}")) : ""));
+            }
+
+            foreach (var wait in new[] { 1500, 2000, 3000, 4000, 5000 })
+            {
+                await Task.Delay(wait);
+                AvatarList.UpdateLayout();
+                Snap($"+{wait}ms");
+            }
+        }
+        catch (Exception ex) { report.AppendLine("EXCEPTION: " + ex); }
+        if (!string.IsNullOrEmpty(reportPath)) File.WriteAllText(reportPath, report.ToString());
+        Application.Current.Shutdown();
+    }
+
+    /// <summary>
+    /// 実際に配置されたタイルの項目番号を集め、連番に抜けが無いかを見る (VRCAC_UI_PREVIEW_GAPTEST=1)。
+    /// 「一覧に居るのにタイルが出ない」が起きていないかの判定用。
+    /// </summary>
+    private async Task RunGapTestAsync()
+    {
+        Left = -4000; Top = 0;
+        Width = 1080; Height = 740; // 利用者のウィンドウサイズに合わせる
+        var reportPath = Environment.GetEnvironmentVariable("VRCAC_UI_PREVIEW_REPORT");
+        var report = new System.Text.StringBuilder();
+        try
+        {
+            var columns = int.TryParse(Environment.GetEnvironmentVariable("VRCAC_UI_PREVIEW_COLUMNS"), out var c) ? c : 10;
+            ViewGrid.IsChecked = true;
+            ColumnsSlider.Value = columns;
+            GridColumns = columns;
+            AvatarList.UpdateLayout();
+            await Task.Delay(1500);
+
+            var items = AvatarList.Items.OfType<AvatarItem>().ToList();
+            var panel = FindDescendant<VirtualizingUniformGrid>(AvatarList);
+            report.AppendLine($"件数={items.Count} 列数={columns} panel={(panel is null ? "見つからず" : "あり")}");
+
+            void Check(string label)
+            {
+                if (panel is null) return;
+                var idx = new List<int>();
+                for (var i = 0; i < VisualTreeHelper.GetChildrenCount(panel); i++)
+                {
+                    if (VisualTreeHelper.GetChild(panel, i) is FrameworkElement { DataContext: AvatarItem it })
+                    {
+                        var at = items.IndexOf(it);
+                        if (at >= 0) idx.Add(at);
+                    }
+                }
+                idx.Sort();
+                var gaps = new List<int>();
+                for (var i = 1; i < idx.Count; i++)
+                    for (var missing = idx[i - 1] + 1; missing < idx[i]; missing++) gaps.Add(missing);
+                var dup = idx.Count - idx.Distinct().Count();
+                report.AppendLine($"{label,-14} 配置={idx.Count,4} 範囲={(idx.Count > 0 ? $"{idx[0]}..{idx[^1]}" : "-"),-10} " +
+                    $"重複={dup,2} 抜け={gaps.Count,3} {(gaps.Count > 0 ? "-> " + string.Join(",", gaps.Take(20)) : "")}");
+            }
+
+            Check("初期表示");
+            var sv = FindDescendant<ScrollViewer>(AvatarList);
+            for (var i = 1; i <= 6; i++)
+            {
+                sv?.ScrollToVerticalOffset((sv.ExtentHeight - sv.ViewportHeight) * i / 6.0);
+                AvatarList.UpdateLayout();
+                await Task.Delay(500);
+                Check($"スクロール {i}/6");
+            }
+            sv?.ScrollToVerticalOffset(0);
+            AvatarList.UpdateLayout();
+            await Task.Delay(500);
+            Check("先頭へ戻す");
+        }
+        catch (Exception ex) { report.AppendLine("EXCEPTION: " + ex); }
+        if (!string.IsNullOrEmpty(reportPath)) File.WriteAllText(reportPath, report.ToString());
+        Application.Current.Shutdown();
+    }
 
     /// <summary>
     /// ボックス表示で一度にたくさん見えるとき (10 列・大きなウィンドウ) の実体化数と保持量を測る

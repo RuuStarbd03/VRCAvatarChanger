@@ -56,6 +56,14 @@ public partial class MainWindow
     private int _thumbRunning;
     private CancellationToken _thumbCt;
 
+    /// <summary>取れなかったサムネイルの再試行回数。上限を超えたらあきらめる (消された画像を叩き続けないため)。</summary>
+    private readonly Dictionary<AvatarItem, int> _thumbAttempts = [];
+    private const int MaxThumbnailAttempts = 3;
+#if DEBUG
+    /// <summary>検証用: VRCAC_TEST_FAIL_FIRST=n で最初の n 枚の取得を失敗させ、レート制限に当たった状態を作る。</summary>
+    private int _testFailFirst = int.TryParse(Environment.GetEnvironmentVariable("VRCAC_TEST_FAIL_FIRST"), out var f) ? f : 0;
+#endif
+
     // 展開済み画像の管理。合計サイズと「最後に画面へ出た順」(先頭が新しい)
     private long _thumbBytes;
     private readonly LinkedList<AvatarItem> _thumbLru = new();
@@ -76,9 +84,17 @@ public partial class MainWindow
     private void QueueThumbnails(List<AvatarItem> items, CancellationToken ct)
     {
         _thumbCt = ct;
+        _thumbAttempts.Clear(); // 一覧が変わったら再試行の回数は数え直す
+        _thumbItems = items;
+        // ここへ来る前にタイルが実体化していると、その要求はもう入っている。
+        // 一律に捨てると「画面に出ているのに要求だけ消えた」タイルができ、
+        // 要求はタイルが出た瞬間にしか発行されないので二度と埋まらない。今の一覧に残るものは持ち越す
+        var keep = new HashSet<AvatarItem>(items);
+        var pending = _thumbFront.Where(keep.Contains).ToList();
         _thumbFront.Clear();
         _thumbFrontSet.Clear();
-        _thumbItems = items;
+        foreach (var item in pending)
+            if (_thumbFrontSet.Add(item)) _thumbFront.Enqueue(item);
         RebuildThumbnailBudget(items);
         StartWarming(ct);
         PumpThumbnails();
@@ -120,10 +136,23 @@ public partial class MainWindow
 
     private async Task LoadThumbnailAsync(AvatarItem item, CancellationToken ct)
     {
+        var loaded = false;
         try
         {
             var width = ThumbWidth;
-            if (await GetImageAsync(item.ThumbnailUrl!, width, ct) is { } image) SetThumbnail(item, image, width);
+#if DEBUG
+            // 429 と同じく「取れなかった」状態にする (return してしまうと再試行の経路まで飛ばすので、値で分ける)
+            var forceFail = _testFailFirst > 0;
+            if (forceFail) _testFailFirst--;
+#else
+            const bool forceFail = false;
+#endif
+            if (!forceFail && await GetImageAsync(item.ThumbnailUrl!, width, ct) is { } image)
+            {
+                SetThumbnail(item, image, width);
+                loaded = true;
+                _thumbAttempts.Remove(item);
+            }
         }
         catch (OperationCanceledException) { }
         finally
@@ -131,6 +160,26 @@ public partial class MainWindow
             _thumbRunning--;
             if (!ct.IsCancellationRequested) PumpThumbnails();
         }
+        // 取れなかったぶんは時間を置いて取り直す。要求はタイルが画面に出た瞬間しか出ないので、
+        // ここで拾わないと「画面に出たままのタイルが空のまま」になる (レート制限に当たったときに起きる)
+        if (!loaded && !ct.IsCancellationRequested) ScheduleThumbnailRetry(item, ct);
+    }
+
+    /// <summary>
+    /// 取れなかったサムネイルを、間を置いて取り直す。
+    /// 消えた画像を延々と叩かないよう回数に上限を設け、待ち時間は 1 回ごとに延ばす。
+    /// </summary>
+    private async void ScheduleThumbnailRetry(AvatarItem item, CancellationToken ct)
+    {
+        var tried = _thumbAttempts.TryGetValue(item, out var n) ? n : 0;
+        if (tried >= MaxThumbnailAttempts) return;
+        _thumbAttempts[item] = tried + 1;
+        try { await Task.Delay(TimeSpan.FromSeconds(3 * (tried + 1)), ct); }
+        catch (OperationCanceledException) { return; }
+        // 待っている間に一覧が入れ替わった / 別経路で読めていたなら何もしない
+        if (!NeedsThumbnail(item) || !_thumbItems.Contains(item)) return;
+        if (_thumbFrontSet.Add(item)) _thumbFront.Enqueue(item);
+        PumpThumbnails();
     }
 
     // ---------------- 展開済み画像の上限 ----------------
