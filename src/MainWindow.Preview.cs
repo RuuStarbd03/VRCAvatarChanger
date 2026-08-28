@@ -123,13 +123,27 @@ public partial class MainWindow
             {
                 using var proc = System.Diagnostics.Process.GetCurrentProcess();
                 proc.Refresh();
+                var live = _allItems.Count(i => i.Thumbnail is not null);
+                var bytes = _allItems.Where(i => i.Thumbnail is not null)
+                    .Sum(i => (long)i.Thumbnail!.PixelWidth * i.Thumbnail!.PixelHeight * 4);
                 report.AppendLine(
-                    $"{label,-16} 画像ｷｬｯｼｭ={_imageCache.Count,5} 管理ﾒﾓﾘ={GC.GetTotalMemory(false) / 1024 / 1024,4}MB " +
+                    $"{label,-16} 保持画像={live,4}枚/{bytes / 1024 / 1024,4}MB " +
+                    $"管理ﾒﾓﾘ={GC.GetTotalMemory(false) / 1024 / 1024,4}MB " +
                     $"ﾌﾟﾗｲﾍﾞｰﾄ={proc.PrivateMemorySize64 / 1024 / 1024,4}MB 作業ｾｯﾄ={proc.WorkingSet64 / 1024 / 1024,4}MB " +
                     $"ﾊﾝﾄﾞﾙ={proc.HandleCount,5} GC2={GC.CollectionCount(2),3}");
             }
 
-            Snapshot("開始");
+            Snapshot("開始 (リスト)");
+
+            // ボックス表示の定常状態 (大きい版に差し替わる)
+            ViewGrid.IsChecked = true;
+            AvatarList.UpdateLayout();
+            await Task.Delay(2500);
+            Snapshot("ボックス表示");
+            ViewList.IsChecked = true;
+            AvatarList.UpdateLayout();
+            await Task.Delay(1500);
+            Snapshot("リストに戻す");
 
             // 検索の打鍵を 300 回ぶん
             for (var i = 0; i < 300; i++)
@@ -276,7 +290,10 @@ public partial class MainWindow
             await Task.Delay(700); // 初期レイアウトと先頭ぶんの読み込み
             var sv = FindDescendant<ScrollViewer>(AvatarList);
             var items = AvatarList.Items.OfType<AvatarItem>().ToList();
-            report.AppendLine($"items={items.Count} loaded_at_top={Loaded(items).Count}");
+            // 画面に出ているもののうち、まだ画像が入っていない数 (これが 0 なら灰色の枠は見えない)
+            int VisibleBlank() => VisibleIndexes().Where(i => i < items.Count)
+                .Count(i => items[i].Thumbnail is null && items[i].ThumbnailUrl is not null);
+            report.AppendLine($"items={items.Count} 展開済={Loaded(items).Count} 表示中の空白={VisibleBlank()}");
 
             // 一覧の中ほどへ一気に飛ぶ (スクロールバーを掴んで動かした状況)
             var before = Loaded(items).ToHashSet();
@@ -284,32 +301,39 @@ public partial class MainWindow
             await Task.Delay(500);
             var after = Loaded(items);
             var added = after.Where(i => !before.Contains(i)).ToList();
-            report.AppendLine($"after jump to 50%: loaded={after.Count} newly_loaded={added.Count}");
-            report.AppendLine("newly loaded indexes: " + string.Join(",", added));
-            report.AppendLine("visible indexes: " + string.Join(",", VisibleIndexes()));
+            report.AppendLine($"中ほどへ飛んだあと: 展開済={after.Count} 新たに展開={added.Count} 表示中の空白={VisibleBlank()}");
+            report.AppendLine("新たに展開した番号: " + string.Join(",", added));
+            report.AppendLine("表示中の番号:       " + string.Join(",", VisibleIndexes()));
 
             // ウィンドウを閉じている (トレイ常駐) 間は、裏の埋めが止まっているか
             Hide();
             var hiddenAt = Loaded(items).Count;
             await Task.Delay(1200);
-            report.AppendLine($"hidden: {hiddenAt} -> {Loaded(items).Count} (増えなければ止まっている)");
+            report.AppendLine($"非表示中: {hiddenAt} -> {Loaded(items).Count} 枚 (増えなければ止まっている)");
             Show();
             Left = -4000; Top = 0;
 
-            await Task.Delay(3000); // 開き直したら最後まで走るか
-            report.AppendLine($"after showing again: loaded={Loaded(items).Count}/{items.Count}");
-            report.AppendLine($"decoded widths: " + string.Join(", ",
+            await Task.Delay(3000);
+            report.AppendLine($"開き直したあと: 展開済={Loaded(items).Count}/{items.Count} 表示中の空白={VisibleBlank()}");
+            report.AppendLine("展開した幅の内訳: " + string.Join(", ",
                 items.GroupBy(i => i.ThumbnailWidth).OrderBy(g => g.Key).Select(g => $"{g.Key}px x{g.Count()}")));
 
             // 表示形式を変えると必要な幅が変わる。切り替えた瞬間に空白にならず、あとで大きい画像に入れ替わるか
             if (!IsGridView)
             {
                 ViewGrid.IsChecked = true;
+                AvatarList.UpdateLayout();
                 await Task.Delay(50);
-                report.AppendLine($"right after switching to grid: blank={items.Count(i => i.Thumbnail is null)}");
+                report.AppendLine($"ボックスに切替えた直後: 表示中の空白={VisibleBlank()}");
                 await Task.Delay(4000);
-                report.AppendLine($"4s after switching: blank={items.Count(i => i.Thumbnail is null)}, " +
+                report.AppendLine($"切替 4 秒後: 表示中の空白={VisibleBlank()}、展開した幅の内訳: " +
                     string.Join(", ", items.GroupBy(i => i.ThumbnailWidth).OrderBy(g => g.Key).Select(g => $"{g.Key}px x{g.Count()}")));
+
+                // 端まで一気にスクロールしたときに、着いた先が空白のままにならないか
+                sv?.ScrollToVerticalOffset(sv.ExtentHeight);
+                AvatarList.UpdateLayout();
+                await Task.Delay(600);
+                report.AppendLine($"末尾へ飛んだ 0.6 秒後: 表示中の空白={VisibleBlank()}");
             }
         }
         catch (Exception ex) { report.AppendLine("EXCEPTION: " + ex); }

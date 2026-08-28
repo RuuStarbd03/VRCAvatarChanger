@@ -89,7 +89,8 @@ public partial class MainWindow : Window
         IsVisibleChanged += (_, e) =>
         {
             if (e.NewValue is not true) return;
-            PumpThumbnails(); // トレイから開き直したら、止めておいたサムネイルの読み込みを再開する
+            PumpThumbnails();  // トレイから開き直したら、止めておいたサムネイルの読み込みを再開する
+            ResumeWarming();
             // 開きっぱなし / トレイ常駐で時間が経っていることがあるので、古ければ取り直す
             // (5 分以内ならキャッシュを使い、中身が同じなら一覧も作り直さないので、開くたびの負担にはならない)
             if (!_preview && _user is not null && MainPanel.Visibility == Visibility.Visible) _ = LoadAvatarsAsync();
@@ -112,9 +113,9 @@ public partial class MainWindow : Window
         ApplyPanels();
         _settings.ViewMode = grid ? "grid" : "list";
         if (!_preview) _settings.Save();
-        // 表示形式が変わるとサムネに要る幅も変わるが、大きい版に差し替えるのは画面に出たものだけでよい。
-        // (まだ 1 枚も無いものだけ裏で埋める。通信は発生せず、ディスクキャッシュから読み直すだけ)
-        QueueThumbnails(_allItems.ToList(), _thumbCts?.Token ?? CancellationToken.None, missingOnly: true);
+        // 表示形式が変わるとサムネに要る幅も変わる。大きい版に差し替わるのは画面に出たものだけで、
+        // 残りはスクロールして見えたときに差し替わる (見てもいない数百枚を展開しない)
+        QueueThumbnails(_allItems.ToList(), _thumbCts?.Token ?? CancellationToken.None);
         if (AvatarList.SelectedItem is not null) AvatarList.ScrollIntoView(AvatarList.SelectedItem);
     }
 
@@ -347,7 +348,7 @@ public partial class MainWindow : Window
     private async Task LoadHeaderImageAsync(string? url)
     {
         if (string.IsNullOrEmpty(url)) { CurrentAvatarImage.Source = null; return; }
-        var img = await GetImageAsync(url, CancellationToken.None);
+        var img = await GetImageAsync(url, ListThumbWidth, CancellationToken.None);
         if (_user is not null) CurrentAvatarImage.Source = img;
     }
 
@@ -556,7 +557,6 @@ public partial class MainWindow : Window
                         SetStatus(StatusKind.Info, CountText() + note);
                     }
                     else ShowAvatars(cached.Avatars, favorites, ct, note);
-                    PruneImageCache();
                     return;
                 }
                 // 前回の一覧があれば先に見せる。サムネもディスクキャッシュから戻るので待たされない
@@ -602,7 +602,6 @@ public partial class MainWindow : Window
                 0 => " (情報は最新です)",
                 var n => $" ({n} 件の情報を更新しました)",
             });
-            PruneImageCache();
             QueueThumbnails(_allItems.ToList(), ct);
             if (refresh) _ = RefreshFavoriteStateAsync(ct);
         }

@@ -4,61 +4,68 @@ using System.Windows.Media.Imaging;
 
 namespace VRCAvatarChanger;
 
-// 画像: サムネイルの取得・デコードと、メモリ / ディスクの二段キャッシュ。
-// ディスクキャッシュ (ImageDiskCache) があるので、二回目以降の起動では通信せずに一覧が埋まる。
+// 画像: サムネイルの取得・展開と、ディスクキャッシュ (ImageDiskCache) との行き来。
 //
-// 負荷を抑えるための決めごと:
-//   ・デコードは UI スレッドでやらない (1 枚 2〜6ms。数百枚だと操作が引っかかる)
-//   ・表示に必要な幅だけデコードする (リスト表示のサムネは小さいので、時間もメモリも大きく減る)
-//   ・読む順番は「画面に出たもの優先、残りは 1 本ずつ静かに」。一気に数百件を取りに行かない
+// 開きっぱなしで使う前提なので、メモリが増え続けないことを最優先にしている:
+//   ・展開した画像を持つのは AvatarItem だけ。合計サイズに上限を設け、
+//     最後に画面へ出たのが古いものから手放す (捨ててもディスクから数ミリ秒で戻せる)
+//   ・裏で先に用意するのは「ファイルをディスクに置くところまで」で、展開はしない。
+//     見てもいない数百枚を展開すると、それだけで数十 MB になるため
+//   ・展開するのは画面に出た (出そうな) ものだけ。1 枚あたり数ミリ秒かかるので UI スレッドの外で行う
 //
-// 「画面に出てから読む」だけだと、スクロールした先が灰色のままになる瞬間ができる。それを避けるため:
-//   ・一覧は画面の前後 1 ページ分まで実体化する (見える前に読み始める)
-//   ・実体化されていない残りも、裏で 1 件ずつ最後まで埋める (スクロールバーで飛んでも間に合っている)
+// 「画面に出てから読む」だけだとスクロールした先が灰色になるので、一覧は画面の前後 1 ページ分
+// (ボックス表示は前後 2 行) まで実体化しておき、見える前に展開を始める。
 public partial class MainWindow
 {
     private const int ListThumbWidth = 128;  // リスト表示の行サムネ (実サイズ ~96px、高 DPI でも足りる)
     private const int GridThumbWidth = 320;  // ボックス表示 3 列でも粗くならない幅
+    private const int FrontConcurrency = 4;  // 画面に出ているものは並列で急いで展開する
 
-    private const int FrontConcurrency = 4;  // 画面に出ているものは並列で急いで読む
-    private const int FillConcurrency = 1;   // 残りは 1 本ずつ。VRChat 側にも自分の CPU にも優しく
+    /// <summary>展開したまま抱えておく画像の合計上限。320px なら約 160 枚、128px なら約 1000 枚ぶん。</summary>
+    private const long MaxThumbnailBytes = 48L * 1024 * 1024;
 
     private int ThumbWidth => IsGridView ? GridThumbWidth : ListThumbWidth;
 
-    private readonly Queue<AvatarItem> _thumbFront = new();   // 画面に出た (出そうな) もの
-    private readonly HashSet<AvatarItem> _thumbFrontSet = []; // 二重投入よけ
-    private List<AvatarItem> _thumbFill = [];                 // 残り全部 (表示順)
-    private int _thumbFillIndex;
+    // 展開待ち (画面に出た / 出そうなもの)
+    private readonly Queue<AvatarItem> _thumbFront = new();
+    private readonly HashSet<AvatarItem> _thumbFrontSet = [];
     private int _thumbRunning;
     private CancellationToken _thumbCt;
 
-    /// <summary>まだ今の表示に足りる画像を持っていない (未取得、または小さくデコードしたものしかない)。</summary>
+    // 展開済み画像の管理。合計サイズと「最後に画面へ出た順」(先頭が新しい)
+    private long _thumbBytes;
+    private readonly LinkedList<AvatarItem> _thumbLru = new();
+    private readonly Dictionary<AvatarItem, LinkedListNode<AvatarItem>> _thumbLruNodes = [];
+
+    // 取得中の画像。同じサムネを一覧とヘッダが同時に要求したときに二重取得しないための台帳
+    private readonly Dictionary<string, Task<BitmapImage?>> _imageLoads = [];
+
+    // 裏でディスクキャッシュを用意する処理
+    private List<AvatarItem> _thumbItems = [];
+    private CancellationTokenSource? _warmCts;
+
+    /// <summary>今の表示に足りる画像を持っていない (未展開、または小さく展開したものしかない)。</summary>
     private bool NeedsThumbnail(AvatarItem item)
         => item.ThumbnailUrl is not null && (item.Thumbnail is null || item.ThumbnailWidth < ThumbWidth);
 
-    /// <summary>一覧が変わったとき / 表示形式が変わったとき、全件を「裏で埋める」対象として積み直す。</summary>
-    /// <param name="missingOnly">
-    /// 裏で埋めるのを「まだ画像が 1 枚も無いもの」に限る。表示形式を変えただけのときに使う:
-    /// すでに出ている画像でとりあえず困らないので、大きい版への差し替えは画面に出たものだけでよい
-    /// (全件を大きい版にし直すと、見てもいない数百枚を作り直すことになる)。
-    /// </param>
-    private void QueueThumbnails(List<AvatarItem> items, CancellationToken ct, bool missingOnly = false)
+    /// <summary>一覧が変わったとき / 表示形式が変わったときに呼ぶ。</summary>
+    private void QueueThumbnails(List<AvatarItem> items, CancellationToken ct)
     {
         _thumbCt = ct;
         _thumbFront.Clear();
         _thumbFrontSet.Clear();
-        _thumbFill = items
-            .Where(i => i.IsAvatar && i.ThumbnailUrl is not null && (!missingOnly || i.Thumbnail is null))
-            .ToList();
-        _thumbFillIndex = 0;
+        _thumbItems = items;
+        RebuildThumbnailBudget(items);
+        StartWarming(ct);
         PumpThumbnails();
     }
 
-    /// <summary>タイルが画面に出た (実体化された) ときに呼ばれる。他を後回しにして先に読む。</summary>
+    /// <summary>タイルが画面に出た (実体化された) ときに呼ばれる。他を後回しにして先に展開する。</summary>
     private void RequestThumbnail(AvatarItem item)
     {
-        // グループタイルは代表メンバーの画像を映しているので、読むのは代表のぶん
+        // グループタイルは代表メンバーの画像を映しているので、扱うのは代表のぶん
         if (item.IsGroup) item = item.Representative!;
+        TouchThumbnail(item); // 「今見えている」印。手放す順番の基準になる
         if (!NeedsThumbnail(item) || !_thumbFrontSet.Add(item)) return;
         _thumbFront.Enqueue(item);
         PumpThumbnails();
@@ -75,34 +82,16 @@ public partial class MainWindow
         if (e.NewValue is AvatarItem item) RequestThumbnail(item);
     }
 
-    /// <summary>
-    /// 空いている枠のぶんだけ読み込みを始める。画面に出ているものがある間は、そちらを優先する。
-    /// ウィンドウが閉じている (トレイ常駐中) 間は裏の埋めを進めない。誰も見ていない画像のために
-    /// ディスクと CPU を使わないためで、開いた時点で再開する。クイック着替えからの要求 (front) は常に通す。
-    /// </summary>
     private void PumpThumbnails()
     {
-        while (true)
+        while (_thumbFront.Count > 0 && _thumbRunning < FrontConcurrency)
         {
-            var front = _thumbFront.Count > 0;
-            if (!front && !IsVisible) return;
-            if (_thumbRunning >= (front ? FrontConcurrency : FillConcurrency)) return;
-            var item = front ? _thumbFront.Dequeue() : NextFillItem();
-            if (item is null) return;
-            if (!NeedsThumbnail(item)) { _thumbFrontSet.Remove(item); continue; } // 先に読み終わっていた
+            var item = _thumbFront.Dequeue();
+            _thumbFrontSet.Remove(item);
+            if (!NeedsThumbnail(item)) continue; // 先に読み終わっていた
             _thumbRunning++;
             _ = LoadThumbnailAsync(item, _thumbCt);
         }
-    }
-
-    private AvatarItem? NextFillItem()
-    {
-        while (_thumbFillIndex < _thumbFill.Count)
-        {
-            var item = _thumbFill[_thumbFillIndex++];
-            if (NeedsThumbnail(item)) return item;
-        }
-        return null;
     }
 
     private async Task LoadThumbnailAsync(AvatarItem item, CancellationToken ct)
@@ -110,123 +99,183 @@ public partial class MainWindow
         try
         {
             var width = ThumbWidth;
-            if (await GetImageAsync(item.ThumbnailUrl!, ct) is { } image)
-            {
-                item.Thumbnail = image;
-                item.ThumbnailWidth = width;
-            }
+            if (await GetImageAsync(item.ThumbnailUrl!, width, ct) is { } image) SetThumbnail(item, image, width);
         }
         catch (OperationCanceledException) { }
         finally
         {
             _thumbRunning--;
-            _thumbFrontSet.Remove(item);
             if (!ct.IsCancellationRequested) PumpThumbnails();
         }
     }
 
-    /// <summary>
-    /// メモリ上の画像を整理する。開きっぱなしで使うアプリなので、増え続けないことを優先する。
-    ///   1. 今の一覧に無い URL のもの (再読み込みで URL が変わった古いサムネなど)
-    ///   2. それでも多ければ、今の表示形式では使わない幅のもの
-    ///      (リストとボックスを行き来すると 128px と 320px の両方が溜まるため)
-    /// 捨ててもディスクキャッシュから読み直せる。画像を足すたびに呼ぶが、上限内なら何もしない。
-    /// </summary>
-    private void PruneImageCache()
+    // ---------------- 展開済み画像の上限 ----------------
+
+    private static long BytesOf(BitmapImage image) => (long)image.PixelWidth * image.PixelHeight * 4;
+
+    private void SetThumbnail(AvatarItem item, BitmapImage image, int width)
     {
-        const int maxEntries = 400; // 1 枚 ~300KB (320px) / ~50KB (128px)
-        if (_imageCache.Count <= maxEntries) return;
-
-        var keep = new HashSet<string>(_allItems.Select(i => i.ThumbnailUrl).OfType<string>());
-        if (_user?.CurrentAvatarThumbnailImageUrl is { } header) keep.Add(header);
-        foreach (var key in _imageCache.Keys.Where(k => !keep.Contains(UrlOfKey(k))).ToList())
-            _imageCache.Remove(key);
-        if (_imageCache.Count <= maxEntries) return;
-
-        var width = ThumbWidth;
-        foreach (var key in _imageCache.Keys.Where(k => WidthOfKey(k) != width).ToList())
-            _imageCache.Remove(key);
+        if (item.Thumbnail is { } old) _thumbBytes -= BytesOf(old);
+        item.Thumbnail = image;
+        item.ThumbnailWidth = width;
+        _thumbBytes += BytesOf(image);
+        TouchThumbnail(item);
+        TrimThumbnails();
     }
 
-    // メモリキャッシュのキー。同じ URL でもデコード幅が違えば別物なので、幅を混ぜる
-    private static string CacheKey(string url, int width) => width + "|" + url;
-
-    private static string UrlOfKey(string key) => key[(key.IndexOf('|') + 1)..];
-
-    private static int WidthOfKey(string key)
-        => int.TryParse(key.AsSpan(0, Math.Max(0, key.IndexOf('|'))), out var width) ? width : 0;
-
-    // 取得中の画像。同じサムネをヘッダと一覧が同時に要求したときに二重ダウンロードしないための台帳
-    private readonly Dictionary<string, Task<BitmapImage?>> _imageLoads = [];
-
-    private Task<BitmapImage?> GetImageAsync(string url, CancellationToken ct)
+    /// <summary>「最後に画面へ出た順」の先頭に持ってくる。</summary>
+    private void TouchThumbnail(AvatarItem item)
     {
-        var width = ThumbWidth;
-        if (CachedImage(url, width) is { } cached) return Task.FromResult<BitmapImage?>(cached);
-        var key = CacheKey(url, width);
+        if (item.Thumbnail is null) return;
+        if (_thumbLruNodes.TryGetValue(item, out var node)) _thumbLru.Remove(node);
+        else node = new LinkedListNode<AvatarItem>(item);
+        _thumbLru.AddFirst(node);
+        _thumbLruNodes[item] = node;
+    }
+
+    /// <summary>
+    /// 合計が上限を超えたら、最後に画面へ出たのが古いものから画像を手放す。
+    /// 今見えているものは直前に印が付いているので対象にならない。
+    /// </summary>
+    private void TrimThumbnails()
+    {
+        var node = _thumbLru.Last;
+        while (node is not null && _thumbBytes > MaxThumbnailBytes)
+        {
+            var prev = node.Previous;
+            var item = node.Value;
+            if (item.Thumbnail is { } image)
+            {
+                _thumbBytes -= BytesOf(image);
+                item.Thumbnail = null;
+                item.ThumbnailWidth = 0;
+            }
+            _thumbLru.Remove(node);
+            _thumbLruNodes.Remove(item);
+            node = prev;
+        }
+    }
+
+    /// <summary>一覧が入れ替わったときに、合計と順番を今の顔ぶれで作り直す。</summary>
+    private void RebuildThumbnailBudget(List<AvatarItem> items)
+    {
+        _thumbLru.Clear();
+        _thumbLruNodes.Clear();
+        _thumbBytes = 0;
+        foreach (var item in items)
+        {
+            if (item.Thumbnail is not { } image) continue;
+            _thumbBytes += BytesOf(image);
+            _thumbLruNodes[item] = _thumbLru.AddLast(item);
+        }
+        TrimThumbnails();
+    }
+
+    // ---------------- 裏でディスクキャッシュを用意する ----------------
+
+    /// <summary>
+    /// まだディスクに無いサムネイルを、裏で 1 件ずつ取っておく (展開はしない = メモリを使わない)。
+    /// これがあるので、スクロールした先でも通信待ちにはならず、数ミリ秒の展開だけで出せる。
+    /// </summary>
+    private void StartWarming(CancellationToken ct)
+    {
+        _warmCts?.Cancel();
+        _warmCts?.Dispose();
+        _warmCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        _ = WarmDiskCacheAsync(_warmCts.Token);
+    }
+
+    /// <summary>トレイから開き直したときなど、止めていた用意を再開する。</summary>
+    private void ResumeWarming()
+    {
+        if (_thumbItems.Count > 0) StartWarming(_thumbCt);
+    }
+
+    private async Task WarmDiskCacheAsync(CancellationToken ct)
+    {
+        try
+        {
+            if (!IsVisible) return; // 誰も見ていない間は進めない
+            var urls = _thumbItems.Where(i => i.IsAvatar).Select(i => i.ThumbnailUrl).OfType<string>().Distinct().ToList();
+            foreach (var url in await ImageDiskCache.MissingAsync(urls, ct))
+            {
+                // 画面に出ているものの展開を邪魔しない。閉じられたらそこで止める
+                while (_thumbFront.Count > 0 || _thumbRunning > 0)
+                {
+                    await Task.Delay(50, ct);
+                    if (!IsVisible) return;
+                }
+                if (!IsVisible) return;
+                if (await _api.DownloadImageAsync(url, ct) is { } bytes) await ImageDiskCache.WriteAsync(url, bytes);
+            }
+        }
+        catch (OperationCanceledException) { }
+    }
+
+    // ---------------- 取得と展開 ----------------
+
+    private Task<BitmapImage?> GetImageAsync(string url, int width, CancellationToken ct)
+    {
+        var key = width + "|" + url;
         if (_imageLoads.TryGetValue(key, out var inFlight)) return inFlight;
-        var task = DownloadAndDecodeAsync(url, width, key, ct);
+        var task = LoadImageAsync(url, width, key, ct);
         _imageLoads[key] = task;
         return task;
     }
 
-    /// <summary>キャッシュ済みの画像。要求より大きいものが既にあるなら、それを縮めて出せば足りる。</summary>
-    private BitmapImage? CachedImage(string url, int width)
-    {
-        if (_imageCache.TryGetValue(CacheKey(url, width), out var exact)) return exact;
-        if (width < GridThumbWidth && _imageCache.TryGetValue(CacheKey(url, GridThumbWidth), out var larger)) return larger;
-        return null;
-    }
-
-    private async Task<BitmapImage?> DownloadAndDecodeAsync(string url, int width, string key, CancellationToken ct)
+    private async Task<BitmapImage?> LoadImageAsync(string url, int width, string key, CancellationToken ct)
     {
         try
         {
-            // まずディスクキャッシュを見て、無ければ VRChat から取って保存する
-            var bytes = await ImageDiskCache.TryReadAsync(url, ct);
-            var fromDisk = bytes is not null;
-            bytes ??= await _api.DownloadImageAsync(url, ct); // 失敗・キャンセル時は null (例外は投げない)
-            var img = bytes is null ? null : await DecodeAsync(bytes, width, ct);
-            if (img is null && fromDisk)
-            {
-                // キャッシュが壊れていた: 捨てて取り直す
-                ImageDiskCache.Delete(url);
-                fromDisk = false;
-                bytes = await _api.DownloadImageAsync(url, ct);
-                img = bytes is null ? null : await DecodeAsync(bytes, width, ct);
-            }
-            if (img is null) return null;
-            if (!fromDisk) _ = ImageDiskCache.WriteAsync(url, bytes!);
-            _imageCache[key] = img;
-            PruneImageCache(); // 溜まりっぱなしにしないよう、足したその場で整理する
-            return img;
+            // ディスクにあればそこから展開する。無ければ VRChat から取って保存する
+            if (await DecodeFromDiskAsync(url, width, ct) is { } cached) return cached;
+            var bytes = await _api.DownloadImageAsync(url, ct); // 失敗・キャンセル時は null (例外は投げない)
+            if (bytes is null) return null;
+            var image = await DecodeAsync(bytes, width, ct);
+            if (image is null) return null;
+            _ = ImageDiskCache.WriteAsync(url, bytes);
+            return image;
         }
         catch (OperationCanceledException) { return null; }
         finally { _imageLoads.Remove(key); } // 失敗・キャンセル分を台帳に残さない(次の要求で再試行できる)
     }
 
-    /// <summary>
-    /// 受信したバイト列を表示用のビットマップにする。壊れていれば null。
-    /// デコードは 1 枚あたり数ミリ秒かかるので、UI スレッドから外して行う
-    /// (Freeze 済みなので、出来上がったものは UI スレッドでそのまま使える)。
-    /// </summary>
+    /// <summary>ディスクキャッシュのファイルから直接展開する。無い / 壊れていれば null。</summary>
+    private static Task<BitmapImage?> DecodeFromDiskAsync(string url, int width, CancellationToken ct)
+        => Task.Run(() =>
+        {
+            using var stream = ImageDiskCache.TryOpen(url);
+            if (stream is null) return null;
+            var image = Decode(stream, width);
+            if (image is null) ImageDiskCache.Delete(url); // 壊れていたので捨てて取り直させる
+            return image;
+        }, ct);
+
     private static Task<BitmapImage?> DecodeAsync(byte[] bytes, int width, CancellationToken ct)
         => Task.Run(() =>
         {
-            try
-            {
-                var img = new BitmapImage();
-                using (var ms = new MemoryStream(bytes))
-                {
-                    img.BeginInit();
-                    img.CacheOption = BitmapCacheOption.OnLoad;
-                    img.DecodePixelWidth = width;
-                    img.StreamSource = ms;
-                    img.EndInit();
-                }
-                img.Freeze();
-                return (BitmapImage?)img;
-            }
-            catch { return null; }
+            using var stream = new MemoryStream(bytes);
+            return Decode(stream, width);
         }, ct);
+
+    /// <summary>
+    /// 表示用のビットマップにする。壊れていれば null。
+    /// 展開は 1 枚あたり数ミリ秒かかるので UI スレッドの外から呼ぶこと
+    /// (Freeze 済みなので、出来上がったものは UI スレッドでそのまま使える)。
+    /// </summary>
+    private static BitmapImage? Decode(Stream stream, int width)
+    {
+        try
+        {
+            var image = new BitmapImage();
+            image.BeginInit();
+            image.CacheOption = BitmapCacheOption.OnLoad; // ここで読み切るので、あとでストリームを閉じてよい
+            image.DecodePixelWidth = width;
+            image.StreamSource = stream;
+            image.EndInit();
+            image.Freeze();
+            return image;
+        }
+        catch { return null; }
+    }
 }
