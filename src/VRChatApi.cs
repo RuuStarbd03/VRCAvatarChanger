@@ -433,17 +433,43 @@ public sealed class VRChatApi : IDisposable
 
     // ---------------- 内部 ----------------
 
+    /// <summary>
+    /// ページングして全件取得する。VRChat の API は offset (何件目から) 指定で、並びは更新日時順。
+    /// 取得している最中にどれかのアバターが更新されると並びが動くため、素直に読むと取りこぼす:
+    ///   ・数件ぶん後ろにずれた場合 → ページの境目でどのページにも現れない
+    ///   ・更新されて先頭へ動いた場合 → 読み終えたページの範囲に移動して現れない
+    /// 前者はページを少し重ねて取ることで、後者は最後にもう一度先頭のページを読むことで拾う。
+    /// 重複は ID で落とす。100 件以下 (ページングが要らない) なら取得回数は 1 回のまま。
+    /// </summary>
     private async Task<List<Avatar>> GetAllPagesAsync(string pathAndQuery, CancellationToken ct)
     {
         const int pageSize = 100;
+        const int overlap = 5;   // 後ろへずれた分を拾うための重なり
+        const int maxPages = 60; // 想定外の応答でも無限に回さないための保険 (約 5700 件)
         var all = new List<Avatar>();
-        for (var offset = 0; ; offset += pageSize)
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        var pages = 0;
+        for (var page = 0; page < maxPages; page++)
         {
-            var page = await GetJsonAsync<List<Avatar>>($"{pathAndQuery}&n={pageSize}&offset={offset}", ct);
-            all.AddRange(page);
-            if (page.Count < pageSize) break;
+            pages++;
+            var items = await GetJsonAsync<List<Avatar>>(
+                $"{pathAndQuery}&n={pageSize}&offset={page * (pageSize - overlap)}", ct);
+            var added = AddNew(items);
+            // 1 ページ埋まらなかった = 最後まで来た。新しいものが 1 件も増えなければ、それ以上は進めない
+            if (items.Count < pageSize || added == 0) break;
         }
+        // 2 ページ以上読んだ場合だけ、先頭をもう一度確認する
+        // (取得中に更新されたアバターは先頭へ動くので、ここでしか拾えない)
+        if (pages > 1) AddNew(await GetJsonAsync<List<Avatar>>($"{pathAndQuery}&n={pageSize}&offset=0", ct));
         return all;
+
+        int AddNew(List<Avatar> items)
+        {
+            var added = 0;
+            foreach (var avatar in items)
+                if (seen.Add(avatar.Id)) { all.Add(avatar); added++; }
+            return added;
+        }
     }
 
     private async Task<T> GetJsonAsync<T>(string pathAndQuery, CancellationToken ct)

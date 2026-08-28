@@ -142,8 +142,9 @@ public partial class MainWindow
         MainPanel.Visibility = Visibility.Visible;
         UpdateUserHeader();
         if (!_osc.IsListening) StartOsc();
-        await LoadAvatarsAsync();
-        await RefreshFavoriteStateAsync(); // 右クリックの「お気に入りに追加」で行き先を選べるようにする
+        // ログイン直後はキャッシュを使わず必ず取り直す (直前にアップロードしたアバターを隠さないため)。
+        // お気に入りの状態 (右クリックの「お気に入りに追加」で行き先を選ぶのに使う) もここで取れる
+        await LoadAvatarsAsync(refresh: true);
     }
 
     /// <summary>メイン画面を畳んでログイン画面に戻す。セッション切れなどでも使う。</summary>

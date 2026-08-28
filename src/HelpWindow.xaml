@@ -172,6 +172,14 @@
                     <TextBlock Style="{StaticResource Body}"
                                Text="VRChat への問い合わせを減らすため、5 分以内に読み込んだ一覧はタブを行き来しても取り直しません。アバターをアップロードした直後など、すぐ反映したいときは右上の「再読み込み」(F5)を押してください。パブリックタブの「再読み込み」も、6 時間以内に取得済みのアバターは飛ばします(何件更新したかはステータス欄に出ます)。"/>
 
+                    <TextBlock Text="アップロードしたアバターが 1 体だけ見当たらない" Style="{StaticResource Q}"/>
+                    <TextBlock Style="{StaticResource Body}"
+                               Text="まず、グループにまとまっていないか確かめてください。グループに入れたアバターは 1 枚のタイルにまとまるため、一覧には個別に並びません(ツールバーの「グループ化」をオフにすると全部が個別に並びます)。ステータス欄にも「うち ◯ 体は ◯ 個のグループにまとめて表示」と出ます。"/>
+                    <TextBlock Style="{StaticResource Body}"
+                               Text="次に、検索欄やフィルタが残っていないか、右上の「再読み込み」(F5)で取り直せないかを試してください。一覧は 5 分間キャッシュを使うため、アップロードした直後は F5 が必要なことがあります。"/>
+                    <TextBlock Style="{StaticResource Body}"
+                               Text="それでも出てこない場合、保存フォルダの cache\list-own.json に前回取得した一覧がそのまま入っています。そこに入っていなければ VRChat から届いていない、入っていれば表示側の問題、と切り分けられます。"/>
+
                     <TextBlock Text="何を保存している? 安全?" Style="{StaticResource Q}"/>
                     <TextBlock Style="{StaticResource Body}"
                                Text="パスワードは保存しません。保存するのはログイン状態・表示設定・パブリックリスト・グループだけで、すべてこの PC の %AppData%\VRCAvatarChanger にあります。ログイン状態は Windows の機能で暗号化され、通信先は VRChat のサーバーだけです。"/>

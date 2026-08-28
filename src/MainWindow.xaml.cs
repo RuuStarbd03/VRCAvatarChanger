@@ -540,14 +540,13 @@ public partial class MainWindow : Window
                 // 「再読み込み」は常に取りに行くので、新しくアップロードしたアバターもすぐ出せる
                 if (!refresh && cached is not null && DateTimeOffset.Now - cached.FetchedAt < ListCacheFreshFor)
                 {
-                    ShowAvatars(cached.Avatars, favorites, ct,
-                        $"{cached.Avatars.Count} 件 ({cached.FetchedAt:HH:mm} 時点・F5 で取り直し)");
+                    ShowAvatars(cached.Avatars, favorites, ct, $" ({cached.FetchedAt:HH:mm} 時点・F5 で取り直し)");
                     PruneImageCache();
                     return;
                 }
                 // 前回の一覧があれば先に見せる。サムネもディスクキャッシュから戻るので待たされない
                 if (cached is not null)
-                    ShowAvatars(cached.Avatars, favorites, ct, $"{cached.Avatars.Count} 件 (前回の一覧・最新を確認しています)");
+                    ShowAvatars(cached.Avatars, favorites, ct, " (前回の一覧・最新を確認しています)");
                 try
                 {
                     var avatars = favorites ? await _api.GetFavoriteAvatarsAsync(ct) : await _api.GetOwnAvatarsAsync(ct);
@@ -570,11 +569,11 @@ public partial class MainWindow : Window
             BuildFilterChips();
             ApplyFilter();
             UpdateUserHeader();
-            SetStatus(StatusKind.Info, refreshedEntries switch
+            SetStatus(StatusKind.Info, CountText() + refreshedEntries switch
             {
-                null => $"{_allItems.Count} 件",
-                0 => $"{_allItems.Count} 件 (情報は最新です)",
-                var n => $"{_allItems.Count} 件 ({n} 件の情報を更新しました)",
+                null => "",
+                0 => " (情報は最新です)",
+                var n => $" ({n} 件の情報を更新しました)",
             });
             PruneImageCache();
             QueueThumbnails(_allItems.ToList(), ct);
@@ -592,7 +591,7 @@ public partial class MainWindow : Window
     }
 
     /// <summary>アバター列を一覧に載せて表示する(取得したものでも、キャッシュから読んだものでも同じ扱い)。</summary>
-    private void ShowAvatars(List<Avatar> avatars, bool favorites, CancellationToken ct, string status)
+    private void ShowAvatars(List<Avatar> avatars, bool favorites, CancellationToken ct, string note)
     {
         _allItems.Clear();
         _allItems.AddRange(avatars.Select(a => new AvatarItem(a) { Tags = favorites ? [] : _tags.TagsOf(a.Id) }));
@@ -600,8 +599,22 @@ public partial class MainWindow : Window
         BuildFilterChips();
         ApplyFilter();
         UpdateUserHeader();
-        SetStatus(StatusKind.Info, status);
+        SetStatus(StatusKind.Info, CountText() + note);
         QueueThumbnails(_allItems.ToList(), ct);
+    }
+
+    /// <summary>
+    /// ステータスに出す件数。グループ化でタイルにまとまっているぶんは一覧に個別に並ばないので、
+    /// 「件数は合っているのに 1 体見当たらない」と思わせないよう、まとめた数も添える。
+    /// </summary>
+    private string CountText()
+    {
+        var tiles = AvatarList.Items.OfType<AvatarItem>().ToList();
+        var groups = tiles.Count(i => i.IsGroup);
+        var folded = tiles.Where(i => i.IsGroup).Sum(i => i.Count) - groups;
+        return folded > 0
+            ? $"{_allItems.Count} 件 (うち {folded} 体は {groups} 個のグループにまとめて表示)"
+            : $"{_allItems.Count} 件";
     }
 
     // ---------------- 検索と絞り込みの適用 ----------------
