@@ -68,12 +68,17 @@ public partial class MainWindow
         if (e.NewValue is AvatarItem item) RequestThumbnail(item);
     }
 
-    /// <summary>空いている枠のぶんだけ読み込みを始める。画面に出ているものがある間は、そちらを優先する。</summary>
+    /// <summary>
+    /// 空いている枠のぶんだけ読み込みを始める。画面に出ているものがある間は、そちらを優先する。
+    /// ウィンドウが閉じている (トレイ常駐中) 間は裏の埋めを進めない。誰も見ていない画像のために
+    /// ディスクと CPU を使わないためで、開いた時点で再開する。クイック着替えからの要求 (front) は常に通す。
+    /// </summary>
     private void PumpThumbnails()
     {
         while (true)
         {
             var front = _thumbFront.Count > 0;
+            if (!front && !IsVisible) return;
             if (_thumbRunning >= (front ? FrontConcurrency : FillConcurrency)) return;
             var item = front ? _thumbFront.Dequeue() : NextFillItem();
             if (item is null) return;

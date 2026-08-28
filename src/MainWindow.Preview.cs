@@ -60,6 +60,7 @@ public partial class MainWindow
         // 仮想化の自己診断: スクロールしながら実体化済みコンテナ数を VRCAC_UI_PREVIEW_REPORT のファイルに書いて終了する
         if (Environment.GetEnvironmentVariable("VRCAC_UI_PREVIEW_SCROLLTEST") == "1") _ = RunScrollTestAsync();
         if (Environment.GetEnvironmentVariable("VRCAC_UI_PREVIEW_THUMBTEST") == "1") _ = RunThumbTestAsync();
+        if (Environment.GetEnvironmentVariable("VRCAC_UI_PREVIEW_PERFTEST") == "1") _ = RunPerfTestAsync();
 
         // 見た目確認: VRCAC_UI_PREVIEW_SHOT=path でウィンドウを画面外に置いたまま PNG に描画して終了する
         // (実画面をキャプチャしないので、ゲーム中でも邪魔にならない)。SETTINGS=1 なら設定オーバーレイを開いた状態で撮る
@@ -104,6 +105,99 @@ public partial class MainWindow
         }
     }
 
+    /// <summary>
+    /// 一覧の件数が多いときの処理時間を測る (VRCAC_UI_PREVIEW_PERFTEST=1)。
+    /// 検索・並べ替え・グループ化のたびに走る処理が、何百体でも待たされない範囲に収まっているかの確認。
+    /// </summary>
+    private async Task RunPerfTestAsync()
+    {
+        Left = -4000; Top = 0;
+        var reportPath = Environment.GetEnvironmentVariable("VRCAC_UI_PREVIEW_REPORT");
+        var report = new System.Text.StringBuilder();
+        try
+        {
+            await Task.Delay(800);
+
+            // グループを作る (20 グループ × 5 体)。グループ化の負荷を実際の使い方に近づける
+            var ids = _allItems.Select(a => a.Id).ToList();
+            for (var g = 0; g + 5 <= Math.Min(ids.Count, 100); g += 5)
+            {
+                var group = _groups.Create($"グループ {g / 5}");
+                for (var i = g; i < g + 5; i++) _groups.Assign(ids[i], group);
+            }
+            report.AppendLine($"items={_allItems.Count} groups={_groups.Groups.Count}");
+
+            void Measure(string label, Action action, int n = 20)
+            {
+                action(); // ウォームアップ
+                var sw = System.Diagnostics.Stopwatch.StartNew();
+                for (var i = 0; i < n; i++) action();
+                sw.Stop();
+                report.AppendLine($"{label}: {sw.Elapsed.TotalMilliseconds / n:F2} ms/回");
+            }
+
+            GroupToggle.IsChecked = true;
+            Measure("ApplyFilter (グループ化 ON)", () => ApplyFilter());
+            Measure("ApplyFilter + レイアウト確定", () => { ApplyFilter(); AvatarList.UpdateLayout(); });
+            GroupToggle.IsChecked = false;
+            Measure("ApplyFilter (グループ化 OFF)", () => ApplyFilter());
+            GroupToggle.IsChecked = true;
+            Measure("BuildMembershipIndex", () => _groups.BuildMembershipIndex(), 200);
+            SearchBox.Text = "改変";
+            Measure("ApplyFilter (検索あり)", () => ApplyFilter());
+            SearchBox.Text = "";
+            Measure("並び替えのみ (ApplySort)", () => MainWindow.ApplySort(_allItems, "name_asc").ToList());
+
+            // 中身が変わらない再絞り込み (タグ編集や色分けの切り替えなど) は作り直しを飛ばせているか
+            Measure("ApplyFilter + レイアウト (中身が変わらない)", () => { ApplyFilter(); AvatarList.UpdateLayout(); });
+            // 検索の 1 打鍵ぶん (毎回結果が変わるので作り直しは避けられない)
+            var toggle = false;
+            Measure("ApplyFilter + レイアウト (毎回内容が変わる)", () =>
+            {
+                SearchBox.Text = (toggle = !toggle) ? "改変" : "";
+                ApplyFilter();
+                AvatarList.UpdateLayout();
+            });
+            SearchBox.Text = "";
+
+            // ボックス表示で列数スライダーを動かしている間の負荷
+            ViewGrid.IsChecked = true;
+            AvatarList.UpdateLayout();
+            var cols = 5;
+            Measure("列数変更 + レイアウト (ボックス表示)", () =>
+            {
+                cols = cols == 5 ? 6 : 5;
+                GridColumns = cols;
+                AvatarList.UpdateLayout();
+            });
+            ViewList.IsChecked = true;
+            AvatarList.UpdateLayout();
+
+            // どこが重いのかの切り分け: 同じ一覧を入れ直すだけ / テンプレートを簡素にした場合
+            var current = AvatarList.ItemsSource;
+            Measure("ItemsSource 入れ直しのみ + レイアウト", () =>
+            {
+                AvatarList.ItemsSource = null;
+                AvatarList.ItemsSource = current;
+                AvatarList.UpdateLayout();
+            });
+            var realTemplate = AvatarList.ItemTemplate;
+            AvatarList.ItemTemplate = (DataTemplate)System.Windows.Markup.XamlReader.Parse(
+                "<DataTemplate xmlns='http://schemas.microsoft.com/winfx/2006/xaml/presentation'>" +
+                "<TextBlock Text='{Binding Name}'/></DataTemplate>");
+            Measure("ApplyFilter + レイアウト (簡易テンプレート)", () => { ApplyFilter(); AvatarList.UpdateLayout(); });
+            AvatarList.ItemTemplate = realTemplate;
+
+            // 一覧キャッシュの読み書き (起動のたびに通る)
+            var avatars = _allItems.Select(a => a.Avatar).ToList();
+            Measure("一覧キャッシュ 保存", () => AvatarListCache.Save(AvatarListCache.Own, "usr_perf", avatars), 10);
+            Measure("一覧キャッシュ 読み込み", () => AvatarListCache.Load(AvatarListCache.Own, "usr_perf"), 10);
+        }
+        catch (Exception ex) { report.AppendLine("EXCEPTION: " + ex); }
+        if (!string.IsNullOrEmpty(reportPath)) File.WriteAllText(reportPath, report.ToString());
+        Application.Current.Shutdown();
+    }
+
     /// <summary>プレビュー用のダミーサムネ URL (実際には事前に入れたディスクキャッシュから読まれる)。</summary>
     internal static string PreviewThumbUrl(int index) => $"https://api.vrchat.cloud/api/1/file/file_preview{index:D4}/1/file";
 
@@ -134,8 +228,16 @@ public partial class MainWindow
             report.AppendLine("newly loaded indexes: " + string.Join(",", added));
             report.AppendLine("visible indexes: " + string.Join(",", VisibleIndexes()));
 
-            await Task.Delay(3000); // 裏の埋めが最後まで走るか
-            report.AppendLine($"after 3s more: loaded={Loaded(items).Count}/{items.Count}");
+            // ウィンドウを閉じている (トレイ常駐) 間は、裏の埋めが止まっているか
+            Hide();
+            var hiddenAt = Loaded(items).Count;
+            await Task.Delay(1200);
+            report.AppendLine($"hidden: {hiddenAt} -> {Loaded(items).Count} (増えなければ止まっている)");
+            Show();
+            Left = -4000; Top = 0;
+
+            await Task.Delay(3000); // 開き直したら最後まで走るか
+            report.AppendLine($"after showing again: loaded={Loaded(items).Count}/{items.Count}");
             report.AppendLine($"decoded widths: " + string.Join(", ",
                 items.GroupBy(i => i.ThumbnailWidth).OrderBy(g => g.Key).Select(g => $"{g.Key}px x{g.Count()}")));
 

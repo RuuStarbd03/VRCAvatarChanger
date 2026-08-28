@@ -86,6 +86,8 @@ public partial class MainWindow : Window
         Loaded += async (_, _) => { if (!_preview) await CheckForUpdateAsync(); };
         // 溜まりすぎたサムネイルのディスクキャッシュを起動時に 1 回だけ整理する (UI は待たせない)
         Loaded += (_, _) => { if (!_preview) _ = Task.Run(ImageDiskCache.Trim); };
+        // トレイから開き直したときに、止めておいたサムネイルの読み込みを再開する
+        IsVisibleChanged += (_, e) => { if (e.NewValue is true) PumpThumbnails(); };
         Closing += (_, _) => SaveWindowBounds();
         Closed += (_, _) => { _settingsSaveTimer?.Stop(); _searchTimer?.Stop(); _oscRetry?.Stop(); _thumbCts?.Cancel(); _osc.Dispose(); _api.Dispose(); };
     }
@@ -551,6 +553,14 @@ public partial class MainWindow : Window
                 {
                     var avatars = favorites ? await _api.GetFavoriteAvatarsAsync(ct) : await _api.GetOwnAvatarsAsync(ct);
                     if (_user is not null) AvatarListCache.Save(kind, _user.Id, avatars);
+                    if (cached is not null && SameAvatars(_allItems, avatars))
+                    {
+                        // 取り直したが中身は同じだった。一覧を作り直さない
+                        // (件数によらず作り直しだけで 20ms 前後かかり、スクロール位置も先頭に戻ってしまう)
+                        SetStatus(StatusKind.Info, CountText());
+                        if (refresh) _ = RefreshFavoriteStateAsync(ct);
+                        return;
+                    }
                     _allItems.Clear();
                     // 自分のアバターにはタグを載せる（お気に入りはグループ表示を優先）
                     _allItems.AddRange(avatars.Select(a => new AvatarItem(a) { Tags = favorites ? [] : _tags.TagsOf(a.Id) }));
@@ -601,6 +611,22 @@ public partial class MainWindow : Window
         UpdateUserHeader();
         SetStatus(StatusKind.Info, CountText() + note);
         QueueThumbnails(_allItems.ToList(), ct);
+    }
+
+    /// <summary>今出ている一覧と、取り直した結果が同じ内容か (表示に関わる項目だけを見る)。</summary>
+    private static bool SameAvatars(List<AvatarItem> shown, List<Avatar> fetched)
+    {
+        if (shown.Count != fetched.Count) return false;
+        for (var i = 0; i < shown.Count; i++)
+        {
+            var a = shown[i].Avatar;
+            var b = fetched[i];
+            if (a.Id != b.Id || a.Name != b.Name || a.AuthorName != b.AuthorName
+                || a.ThumbnailImageUrl != b.ThumbnailImageUrl || a.ImageUrl != b.ImageUrl
+                || a.ReleaseStatus != b.ReleaseStatus || a.FavoriteGroup != b.FavoriteGroup
+                || a.CreatedAt != b.CreatedAt || a.UpdatedAt != b.UpdatedAt) return false;
+        }
+        return true;
     }
 
     /// <summary>
@@ -677,12 +703,35 @@ public partial class MainWindow : Window
             list.AddRange(byGroup.Select(kv => new AvatarItem(kv.Key, kv.Value)));
             list = ApplySort(list, SortKey).ToList();
         }
+        // 並びも中身も今と同じなら入れ直さない。一覧の作り直しは件数によらず 20ms 前後かかるうえ、
+        // スクロール位置と選択が先頭に戻ってしまう (タグ編集や色分けの切り替えなど、見た目が変わらない場合に効く)
+        if (AvatarList.ItemsSource is List<AvatarItem> shown && SameContent(shown, list)) list = shown;
         ApplyStripes(list);
-        AvatarList.ItemsSource = list;
+        if (!ReferenceEquals(AvatarList.ItemsSource, list)) AvatarList.ItemsSource = list;
         var reselect = list.FirstOrDefault(a => a.Id == selectedId && a.IsGroup == selectedWasGroup);
         if (reselect is not null) AvatarList.SelectedItem = reselect;
         RefreshCurrentMarks();
         if (SkeletonPanel.Visibility != Visibility.Visible) UpdateEmptyState(list.Count);
+    }
+
+    /// <summary>
+    /// 表示中の並びと中身が同じか。同じアバター (同じインスタンス) が同じ順に並んでいて、
+    /// グループタイルも同じグループ・同じメンバーを指していれば「同じ」とみなす。
+    /// インスタンスまで見るのは、作り直した項目に差し替え損ねるとサムネイルの反映先がずれるため。
+    /// </summary>
+    private static bool SameContent(List<AvatarItem> shown, List<AvatarItem> list)
+    {
+        if (shown.Count != list.Count) return false;
+        for (var i = 0; i < list.Count; i++)
+        {
+            var a = shown[i];
+            var b = list[i];
+            if (ReferenceEquals(a, b)) continue;
+            // グループタイルは絞り込みのたびに作り直されるので、指している中身で見る
+            if (!a.IsGroup || !b.IsGroup || !ReferenceEquals(a.Group, b.Group)
+                || !a.Members.SequenceEqual(b.Members)) return false;
+        }
+        return true;
     }
 
     /// <summary>「現在着ているアバター」のチェックバッジを付け直す。</summary>
