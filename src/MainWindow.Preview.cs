@@ -60,13 +60,36 @@ public partial class MainWindow
         // (実画面をキャプチャしないので、ゲーム中でも邪魔にならない)。SETTINGS=1 なら設定オーバーレイを開いた状態で撮る
         var shotPath = Environment.GetEnvironmentVariable("VRCAC_UI_PREVIEW_SHOT");
         if (Environment.GetEnvironmentVariable("VRCAC_UI_PREVIEW_SETTINGS") == "1") OpenSettings();
-        if (Environment.GetEnvironmentVariable("VRCAC_UI_PREVIEW_QUICK") == "1")
+        if (Environment.GetEnvironmentVariable("VRCAC_UI_PREVIEW_TOAST") == "1")
+        {
+            // ホットキーでの着替え結果を出す通知を画面外で撮る
+            Left = -4000; Top = 0;
+            var toast = new ToastWindow();
+            toast.ShowMessage("Selestia に着替えました",
+                new Win32.NativeRect { Left = -4400, Top = 0, Right = -4000, Bottom = 400 }, 1.0, error: false);
+            if (!string.IsNullOrEmpty(shotPath)) _ = CaptureWindowAsync(toast, shotPath);
+        }
+        else if (Environment.GetEnvironmentVariable("VRCAC_UI_PREVIEW_HOTKEYS") == "1")
+        {
+            // ホットキー割り当て画面を画面外に開いて撮る
+            Left = -4000; Top = 0;
+            var hotkeys = new HotkeyWindow(_settings, () => { })
+            {
+                Owner = this,
+                WindowStartupLocation = WindowStartupLocation.Manual,
+                Left = -4400,
+                Top = 0,
+            };
+            hotkeys.Show();
+            if (!string.IsNullOrEmpty(shotPath)) _ = CaptureWindowAsync(hotkeys, shotPath);
+        }
+        else if (Environment.GetEnvironmentVariable("VRCAC_UI_PREVIEW_QUICK") == "1")
         {
             // クイック着替えオーバーレイを画面外に開いて撮る
             Left = -4000; Top = 0;
             _quick = new QuickPickWindow(QuickChangeAsync, () => { }, SaveQuickSortKey);
             _quick.OpenAt(new Win32.NativeRect { Left = -4400, Top = 0, Right = -4000, Bottom = 760 }, 1.0,
-                FlatAvatarItems(), _settings.RecentAvatars, _settings.QuickSortKey);
+                FlatAvatarItems(), _settings.RecentAvatars, _settings.QuickSortKey, Hotkey.Parse(_settings.QuickHotkey));
             if (!string.IsNullOrEmpty(shotPath)) _ = CaptureWindowAsync(_quick, shotPath);
         }
         else if (!string.IsNullOrEmpty(shotPath))

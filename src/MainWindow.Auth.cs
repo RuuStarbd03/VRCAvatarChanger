@@ -125,6 +125,11 @@ public partial class MainWindow
     {
         await _api.LogoutAsync();
         BrowserLoginWindow.DeleteBrowserProfile();
+        // アカウントに紐づくキャッシュもセッションと一緒に消す
+        AvatarListCache.Invalidate(AvatarListCache.Own);
+        AvatarListCache.Invalidate(AvatarListCache.Favorites);
+        _favoriteGroups = [];
+        _favoriteRecords.Clear();
         ReturnToLogin("ログアウトしました。");
     }
 
@@ -138,6 +143,7 @@ public partial class MainWindow
         UpdateUserHeader();
         if (!_osc.IsListening) StartOsc();
         await LoadAvatarsAsync();
+        await RefreshFavoriteStateAsync(); // 右クリックの「お気に入りに追加」で行き先を選べるようにする
     }
 
     /// <summary>メイン画面を畳んでログイン画面に戻す。セッション切れなどでも使う。</summary>

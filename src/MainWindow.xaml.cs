@@ -84,6 +84,8 @@ public partial class MainWindow : Window
         SourceInitialized += (_, _) => App.ApplyTitleBarTheme(this);
         Loaded += async (_, _) => { if (!_preview) await TryRestoreSessionAsync(); };
         Loaded += async (_, _) => { if (!_preview) await CheckForUpdateAsync(); };
+        // 溜まりすぎたサムネイルのディスクキャッシュを起動時に 1 回だけ整理する (UI は待たせない)
+        Loaded += (_, _) => { if (!_preview) _ = Task.Run(ImageDiskCache.Trim); };
         Closing += (_, _) => SaveWindowBounds();
         Closed += (_, _) => { _settingsSaveTimer?.Stop(); _searchTimer?.Stop(); _oscRetry?.Stop(); _thumbCts?.Cancel(); _osc.Dispose(); _api.Dispose(); };
     }
@@ -212,6 +214,8 @@ public partial class MainWindow : Window
         MenuEditTags.Visibility = pub || SourceOwn.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
         MenuEditTags.Header = isGroup ? "全員のタグを編集..." : "タグを編集...";
         MenuCopyId.Visibility = isGroup ? Visibility.Collapsed : Visibility.Visible;
+        MenuAssignHotkey.Visibility = isGroup ? Visibility.Collapsed : Visibility.Visible;
+        BuildFavoriteMenu(item);
 
         // 隠し機能が有効なときだけ出す
         MenuStripeExclude.Visibility = _settings.StripeColors ? Visibility.Visible : Visibility.Collapsed;
@@ -300,6 +304,7 @@ public partial class MainWindow : Window
     private void UpdateUserHeader()
     {
         RefreshCurrentMarks();
+        UpdatePreviousButton();
         if (_user is null) return;
         UserNameText.Text = _user.DisplayName;
         var current = _allItems.FirstOrDefault(a => a.Id == _user.CurrentAvatar)?.Avatar;
@@ -335,7 +340,7 @@ public partial class MainWindow : Window
         if (_user is not null) CurrentAvatarImage.Source = img;
     }
 
-    private async void RefreshButton_Click(object sender, RoutedEventArgs e) => await LoadAvatarsAsync(refreshPublic: true);
+    private async void RefreshButton_Click(object sender, RoutedEventArgs e) => await LoadAvatarsAsync(refresh: true);
 
     // ---------------- ウィンドウ位置の記憶 ----------------
 
@@ -501,8 +506,8 @@ public partial class MainWindow : Window
 
     private bool IsPublicTab => SourcePublic.IsChecked == true;
 
-    /// <param name="refreshPublic">パブリックタブで、キャッシュ済みのアバター情報を API から取り直すか(「再読み込み」時のみ)</param>
-    private async Task LoadAvatarsAsync(bool refreshPublic = false)
+    /// <param name="refresh">「再読み込み」から呼ばれたか(パブリックのアバター情報とお気に入りの状態も取り直す)</param>
+    private async Task LoadAvatarsAsync(bool refresh = false)
     {
         RefreshButton.IsEnabled = false;
         var favorites = SourceFavorites.IsChecked == true;
@@ -517,14 +522,33 @@ public partial class MainWindow : Window
             _allItems.Clear();
             if (pub)
             {
-                if (refreshPublic) await RefreshPublicEntriesAsync(ct);
+                if (refresh) await RefreshPublicEntriesAsync(ct);
                 _allItems.AddRange(_public.Entries.Select(e => new AvatarItem(e.Avatar) { AddedAt = e.AddedAt, Tags = _tags.TagsOf(e.Avatar.Id) }));
             }
             else
             {
-                var avatars = favorites ? await _api.GetFavoriteAvatarsAsync(ct) : await _api.GetOwnAvatarsAsync(ct);
-                // 自分のアバターにはタグを載せる（お気に入りはグループ表示を優先）
-                _allItems.AddRange(avatars.Select(a => new AvatarItem(a) { Tags = favorites ? [] : _tags.TagsOf(a.Id) }));
+                var kind = favorites ? AvatarListCache.Favorites : AvatarListCache.Own;
+                var cached = _user is null ? null : AvatarListCache.Load(kind, _user.Id);
+                // 前回の一覧があれば先に見せる。サムネもディスクキャッシュから戻るので待たされない
+                if (cached is not null)
+                    ShowAvatars(cached.Avatars, favorites, ct, $"{cached.Avatars.Count} 件 (前回の一覧・最新を確認しています)");
+                try
+                {
+                    var avatars = favorites ? await _api.GetFavoriteAvatarsAsync(ct) : await _api.GetOwnAvatarsAsync(ct);
+                    if (_user is not null) AvatarListCache.Save(kind, _user.Id, avatars);
+                    _allItems.Clear();
+                    // 自分のアバターにはタグを載せる（お気に入りはグループ表示を優先）
+                    _allItems.AddRange(avatars.Select(a => new AvatarItem(a) { Tags = favorites ? [] : _tags.TagsOf(a.Id) }));
+                }
+                catch (Exception ex) when (cached is not null
+                                           && ex is not OperationCanceledException
+                                           && ex is not VRChatApiException { IsUnauthorized: true })
+                {
+                    // 出せる一覧はもう出してある。最新に追いつけなかったことだけ伝える
+                    SetStatus(StatusKind.Error,
+                        $"最新の一覧を取得できませんでした ({FriendlyError.Of(ex)}) {cached.FetchedAt:M/d HH:mm} 時点の一覧を表示しています。");
+                    return;
+                }
             }
             ShowListState(loading: false);
             BuildFilterChips();
@@ -533,6 +557,7 @@ public partial class MainWindow : Window
             SetStatus(StatusKind.Info, $"{_allItems.Count} 件");
             PruneImageCache();
             _ = LoadThumbnailsAsync(_allItems.ToList(), ct);
+            if (refresh) _ = RefreshFavoriteStateAsync(ct);
         }
         catch (OperationCanceledException) { }
         catch (Exception ex)
@@ -543,6 +568,19 @@ public partial class MainWindow : Window
             SetStatus(StatusKind.Error, "読み込めませんでした: " + FriendlyError.Of(ex));
         }
         finally { RefreshButton.IsEnabled = true; }
+    }
+
+    /// <summary>アバター列を一覧に載せて表示する(取得したものでも、キャッシュから読んだものでも同じ扱い)。</summary>
+    private void ShowAvatars(List<Avatar> avatars, bool favorites, CancellationToken ct, string status)
+    {
+        _allItems.Clear();
+        _allItems.AddRange(avatars.Select(a => new AvatarItem(a) { Tags = favorites ? [] : _tags.TagsOf(a.Id) }));
+        ShowListState(loading: false);
+        BuildFilterChips();
+        ApplyFilter();
+        UpdateUserHeader();
+        SetStatus(StatusKind.Info, status);
+        _ = LoadThumbnailsAsync(_allItems.ToList(), ct);
     }
 
     // ---------------- 検索と絞り込みの適用 ----------------

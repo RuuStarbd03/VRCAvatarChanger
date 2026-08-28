@@ -3,7 +3,8 @@ using System.Windows.Media.Imaging;
 
 namespace VRCAvatarChanger;
 
-// 画像: サムネイルのダウンロード・デコードとキャッシュ。
+// 画像: サムネイルの取得・デコードと、メモリ / ディスクの二段キャッシュ。
+// ディスクキャッシュ (ImageDiskCache) があるので、二回目以降の起動では通信せずに一覧が埋まる。
 public partial class MainWindow
 {
     private async Task LoadThumbnailsAsync(List<AvatarItem> items, CancellationToken ct)
@@ -49,25 +50,44 @@ public partial class MainWindow
     {
         try
         {
-            var bytes = await _api.DownloadImageAsync(url, ct); // 失敗・キャンセル時は null (例外は投げない)
-            if (bytes is null) return null;
-            try
+            // まずディスクキャッシュを見て、無ければ VRChat から取って保存する
+            var bytes = await ImageDiskCache.TryReadAsync(url, ct);
+            var fromDisk = bytes is not null;
+            bytes ??= await _api.DownloadImageAsync(url, ct); // 失敗・キャンセル時は null (例外は投げない)
+            var img = bytes is null ? null : Decode(bytes);
+            if (img is null && fromDisk)
             {
-                var img = new BitmapImage();
-                using (var ms = new MemoryStream(bytes))
-                {
-                    img.BeginInit();
-                    img.CacheOption = BitmapCacheOption.OnLoad;
-                    img.DecodePixelWidth = 320; // ボックス表示 3 列でも粗くならない幅
-                    img.StreamSource = ms;
-                    img.EndInit();
-                }
-                img.Freeze();
-                _imageCache[url] = img;
-                return img;
+                // キャッシュが壊れていた: 捨てて取り直す
+                ImageDiskCache.Delete(url);
+                fromDisk = false;
+                bytes = await _api.DownloadImageAsync(url, ct);
+                img = bytes is null ? null : Decode(bytes);
             }
-            catch { return null; }
+            if (img is null) return null;
+            if (!fromDisk) _ = ImageDiskCache.WriteAsync(url, bytes!);
+            _imageCache[url] = img;
+            return img;
         }
         finally { _imageLoads.Remove(url); } // 失敗・キャンセル分を台帳に残さない(次の要求で再試行できる)
+    }
+
+    /// <summary>受信したバイト列を表示用のビットマップにする。壊れていれば null。</summary>
+    private static BitmapImage? Decode(byte[] bytes)
+    {
+        try
+        {
+            var img = new BitmapImage();
+            using (var ms = new MemoryStream(bytes))
+            {
+                img.BeginInit();
+                img.CacheOption = BitmapCacheOption.OnLoad;
+                img.DecodePixelWidth = 320; // ボックス表示 3 列でも粗くならない幅
+                img.StreamSource = ms;
+                img.EndInit();
+            }
+            img.Freeze();
+            return img;
+        }
+        catch { return null; }
     }
 }

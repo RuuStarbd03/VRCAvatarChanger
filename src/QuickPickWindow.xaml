@@ -60,7 +60,7 @@
                     <ComboBoxItem Tag="name_asc"     Content="名前 (A → Z)"/>
                     <ComboBoxItem Tag="name_desc"    Content="名前 (Z → A)"/>
                 </ComboBox>
-                <TextBlock Grid.Column="1" Text="Shift+1 / Esc で閉じる" Style="{StaticResource CaptionText}" Foreground="{DynamicResource FaintTextBrush}"
+                <TextBlock Grid.Column="1" x:Name="CloseHint" Text="Esc で閉じる" Style="{StaticResource CaptionText}" Foreground="{DynamicResource FaintTextBrush}"
                            VerticalAlignment="Center" Margin="10,0,8,0" TextTrimming="CharacterEllipsis"/>
                 <Button Grid.Column="2" Style="{StaticResource GhostButton}" Click="Close_Click" AutomationProperties.Name="閉じる"
                         ToolTip="閉じる (Esc)" Width="28" Height="28" Padding="0" VerticalAlignment="Center">

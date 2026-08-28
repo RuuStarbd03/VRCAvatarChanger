@@ -1,18 +1,17 @@
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Windows;
+using System.Windows.Input;
 using System.Windows.Media;
 
 namespace VRCAvatarChanger;
 
-// クイック着替え: VRChat がフォアグラウンドのとき Shift+1 で画面右にアバター選択オーバーレイを出す。
-// キーボードフックは「Shift+1 が押されたか」の判定だけに使い、それ以外のキーは素通しする。
+// VRChat のプレイ中に効くホットキー (既定: Shift+1 でクイック着替えのオーバーレイ)。
+// キーボードフックは「割り当てたキーの組み合わせが押されたか」の判定だけに使い、それ以外のキーは素通しする。
 // 入力内容の記録・送信は一切しない。反応するのは VRChat (またはこのオーバーレイ) が手前のときだけ。
+// 何のキーに何を割り当てるかは MainWindow.Hotkeys.cs にある。
 public partial class MainWindow
 {
-    private const int VkShift = 0x10;
-    private const int Vk1 = 0x31;
-
     private nint _kbHook;
     private Win32.LowLevelKeyboardProc? _kbProc; // GC に回収されないよう保持する
     private QuickPickWindow? _quick;
@@ -21,8 +20,9 @@ public partial class MainWindow
     /// <summary>ctor から一度だけ呼ぶ。設定が ON ならフックを張る (プレビューでは張らない)。</summary>
     private void InitQuickOverlay()
     {
+        RebuildHotkeys();
         if (_settings.QuickOverlay && !_preview) InstallKeyHook();
-        Closed += (_, _) => { UninstallKeyHook(); _quick?.Close(); };
+        Closed += (_, _) => { UninstallKeyHook(); _quick?.Close(); _toast?.Close(); };
     }
 
     /// <summary>設定からの切り替えを適用する (保存・フックの張り替え)。</summary>
@@ -34,13 +34,16 @@ public partial class MainWindow
         if (enabled)
         {
             InstallKeyHook();
-            SetStatus(StatusKind.Info, "クイック着替え: オン。VRChat のプレイ中に Shift+1 で開きます");
+            var quick = Hotkey.Parse(_settings.QuickHotkey);
+            SetStatus(StatusKind.Info, quick.IsSet
+                ? $"ホットキー: オン。VRChat のプレイ中に {quick.Display} でクイック着替えを開きます"
+                : "ホットキー: オン。割り当ては設定の「ホットキー」から行えます");
         }
         else
         {
             UninstallKeyHook();
             _quick?.CloseOverlay(refocus: false);
-            SetStatus(StatusKind.Info, "クイック着替え: オフ");
+            SetStatus(StatusKind.Info, "ホットキー: オフ");
         }
     }
 
@@ -62,18 +65,20 @@ public partial class MainWindow
 
     private nint KeyHookProc(int nCode, nint wParam, nint lParam)
     {
-        if (nCode >= 0 && wParam == Win32.WmKeydown
-            && Marshal.ReadInt32(lParam) == Vk1
-            && (Win32.GetKeyState(VkShift) & 0x8000) != 0
-            && ShouldHandleQuickKey())
+        // Alt を含む組み合わせは WM_SYSKEYDOWN で来る
+        if (nCode >= 0 && (wParam == Win32.WmKeydown || wParam == Win32.WmSysKeydown) && _hotkeys.Count > 0)
         {
-            Dispatcher.BeginInvoke(ToggleQuickOverlay);
-            return 1; // VRChat 側に「!」を入力させない
+            var pressed = new Hotkey(Win32.CurrentModifiers(), Hotkey.FromVirtualKey(Marshal.ReadInt32(lParam)));
+            if (pressed.IsSet && !Hotkey.IsModifierKey(pressed.Key) && FindHotkey(pressed) is { } hit && ShouldHandleQuickKey())
+            {
+                Dispatcher.BeginInvoke(() => RunHotkey(hit));
+                return 1; // 割り当てたキーは VRChat 側に渡さない
+            }
         }
         return Win32.CallNextHookEx(_kbHook, nCode, wParam, lParam);
     }
 
-    /// <summary>VRChat かこのオーバーレイが手前のときだけ Shift+1 に反応する。</summary>
+    /// <summary>VRChat かこのオーバーレイが手前のときだけホットキーに反応する。</summary>
     private bool ShouldHandleQuickKey()
     {
         var fg = Win32.GetForegroundWindow();
@@ -106,7 +111,7 @@ public partial class MainWindow
         // メインウィンドウと VRChat が別モニターだと座標がずれる。
         // そのため位置は物理ピクセルのまま渡し、倍率は VRChat のいるモニターの DPI から取る
         _quick.OpenAt(QuickOverlayAreaPx(), Win32.ScaleOf(_vrchatHwnd), FlatAvatarItems(),
-            _settings.RecentAvatars, _settings.QuickSortKey);
+            _settings.RecentAvatars, _settings.QuickSortKey, Hotkey.Parse(_settings.QuickHotkey));
     }
 
     private void SaveQuickSortKey(string key)
@@ -152,11 +157,27 @@ public partial class MainWindow
     private async Task<bool> QuickChangeAsync(AvatarItem item) => await ChangeAvatarAsync(item.Id, item.Name);
 }
 
-/// <summary>クイック着替えで使う Win32 API。</summary>
+/// <summary>クイック着替え・ホットキーで使う Win32 API。</summary>
 internal static class Win32
 {
     public const int WhKeyboardLl = 13;
     public const nint WmKeydown = 0x0100;
+    public const nint WmSysKeydown = 0x0104; // Alt を押しながらのキー
+
+    private const int VkShift = 0x10, VkControl = 0x11, VkMenu = 0x12, VkLWin = 0x5B, VkRWin = 0x5C;
+
+    /// <summary>今押されている修飾キー。フックはキー 1 つ分しか届かないので、修飾キーはここで見る。</summary>
+    public static ModifierKeys CurrentModifiers()
+    {
+        var modifiers = ModifierKeys.None;
+        if (IsDown(VkControl)) modifiers |= ModifierKeys.Control;
+        if (IsDown(VkShift)) modifiers |= ModifierKeys.Shift;
+        if (IsDown(VkMenu)) modifiers |= ModifierKeys.Alt;
+        if (IsDown(VkLWin) || IsDown(VkRWin)) modifiers |= ModifierKeys.Windows;
+        return modifiers;
+
+        static bool IsDown(int vk) => (GetKeyState(vk) & 0x8000) != 0;
+    }
 
     public delegate nint LowLevelKeyboardProc(int nCode, nint wParam, nint lParam);
 
@@ -230,6 +251,21 @@ internal static class Win32
     }
 
     [DllImport("user32.dll")] private static extern bool SetWindowPos(nint hWnd, nint after, int x, int y, int w, int h, uint flags);
+
+    [DllImport("user32.dll", SetLastError = true)] private static extern int GetWindowLongW(nint hWnd, int index);
+    [DllImport("user32.dll", SetLastError = true)] private static extern int SetWindowLongW(nint hWnd, int index, int value);
+
+    /// <summary>
+    /// クリックを下のウィンドウ (ゲーム) に通し、フォーカスも奪わないようにする。
+    /// ゲームの上に出す通知が操作の邪魔をしないために使う。
+    /// </summary>
+    public static void MakeClickThrough(nint hwnd)
+    {
+        const int GwlExStyle = -20;
+        const int WsExTransparent = 0x00000020, WsExNoActivate = 0x08000000, WsExToolWindow = 0x00000080;
+        var ex = GetWindowLongW(hwnd, GwlExStyle);
+        SetWindowLongW(hwnd, GwlExStyle, ex | WsExTransparent | WsExNoActivate | WsExToolWindow);
+    }
 
     /// <summary>物理ピクセル指定でウィンドウを移動・リサイズする (Z オーダー・表示状態は変えない)。</summary>
     public static void SetWindowPosPx(nint hwnd, int x, int y, int w, int h)

@@ -146,12 +146,11 @@ public sealed class VRChatApi : IDisposable
     public async Task<CurrentUser?> TryGetCurrentUserAsync(CancellationToken ct = default)
     {
         if (!HasSavedSession) return null;
-        using var res = await _http.GetAsync($"{BaseUrl}/auth/user", ct);
-        if (res.StatusCode == HttpStatusCode.Unauthorized) return null;
-        var body = await res.Content.ReadAsStringAsync(ct);
-        if (!res.IsSuccessStatusCode) throw new VRChatApiException(ExtractError(body, res.StatusCode), res.StatusCode);
-        if (body.Contains("requiresTwoFactorAuth")) return null;
-        return JsonSerializer.Deserialize<CurrentUser>(body, JsonOptions);
+        var res = await SendAsync(() => new HttpRequestMessage(HttpMethod.Get, $"{BaseUrl}/auth/user"), ct);
+        if (res.Status == HttpStatusCode.Unauthorized) return null;
+        if (!res.IsSuccess) throw new VRChatApiException(ExtractError(res.Body, res.Status), res.Status);
+        if (res.Body.Contains("requiresTwoFactorAuth")) return null;
+        return JsonSerializer.Deserialize<CurrentUser>(res.Body, JsonOptions);
     }
 
     /// <summary>ユーザー名/パスワードでログイン。2FA が必要なら TwoFactorRequiredException。</summary>
@@ -159,20 +158,22 @@ public sealed class VRChatApi : IDisposable
     {
         var token = Convert.ToBase64String(Encoding.UTF8.GetBytes(
             $"{Uri.EscapeDataString(username)}:{Uri.EscapeDataString(password)}"));
-        using var req = new HttpRequestMessage(HttpMethod.Get, $"{BaseUrl}/auth/user");
-        req.Headers.Authorization = new AuthenticationHeaderValue("Basic", token);
-        using var res = await _http.SendAsync(req, ct);
-        var body = await res.Content.ReadAsStringAsync(ct);
-        if (!res.IsSuccessStatusCode) throw new VRChatApiException(ExtractError(body, res.StatusCode), res.StatusCode);
+        var res = await SendAsync(() =>
+        {
+            var req = new HttpRequestMessage(HttpMethod.Get, $"{BaseUrl}/auth/user");
+            req.Headers.Authorization = new AuthenticationHeaderValue("Basic", token);
+            return req;
+        }, ct);
+        if (!res.IsSuccess) throw new VRChatApiException(ExtractError(res.Body, res.Status), res.Status);
 
-        using var doc = JsonDocument.Parse(body);
+        using var doc = JsonDocument.Parse(res.Body);
         if (doc.RootElement.TryGetProperty("requiresTwoFactorAuth", out var methods))
         {
             SaveCookies();
             throw new TwoFactorRequiredException(methods.EnumerateArray().Select(m => m.GetString() ?? "").ToList());
         }
         SaveCookies();
-        return JsonSerializer.Deserialize<CurrentUser>(body, JsonOptions)!;
+        return JsonSerializer.Deserialize<CurrentUser>(res.Body, JsonOptions)!;
     }
 
     /// <summary>2FA コードを検証。method は "totp" / "otp" / "emailOtp"。</summary>
@@ -186,12 +187,13 @@ public sealed class VRChatApi : IDisposable
             _ => throw new ArgumentOutOfRangeException(nameof(method)),
         };
         var payload = JsonSerializer.Serialize(new { code = code.Trim() });
-        using var res = await _http.PostAsync($"{BaseUrl}/auth/twofactorauth/{path}/verify",
-            new StringContent(payload, Encoding.UTF8, "application/json"), ct);
-        var body = await res.Content.ReadAsStringAsync(ct);
-        if (!res.IsSuccessStatusCode) throw new VRChatApiException(ExtractError(body, res.StatusCode), res.StatusCode);
+        var res = await SendAsync(() => new HttpRequestMessage(HttpMethod.Post, $"{BaseUrl}/auth/twofactorauth/{path}/verify")
+        {
+            Content = new StringContent(payload, Encoding.UTF8, "application/json"),
+        }, ct);
+        if (!res.IsSuccess) throw new VRChatApiException(ExtractError(res.Body, res.Status), res.Status);
 
-        using var doc = JsonDocument.Parse(body);
+        using var doc = JsonDocument.Parse(res.Body);
         if (!(doc.RootElement.TryGetProperty("verified", out var v) && v.GetBoolean()))
             throw new VRChatApiException("認証コードが正しくありません。");
 
@@ -237,7 +239,7 @@ public sealed class VRChatApi : IDisposable
     }
 
     /// <summary>表示用のグループ名。ユーザーが名前を付けていなければ「お気に入り 1」のように番号で。</summary>
-    private static string FriendlyGroupName(FavoriteGroup g)
+    public static string FriendlyGroupName(FavoriteGroup g)
     {
         var d = g.DisplayName?.Trim() ?? "";
         if (d.Length > 0 && !string.Equals(d, g.Name, StringComparison.OrdinalIgnoreCase)) return d;
@@ -256,6 +258,49 @@ public sealed class VRChatApi : IDisposable
         catch (VRChatApiException) { return []; }
     }
 
+    /// <summary>
+    /// お気に入り登録レコード(アバター)。アバター ID → 登録 ID (fvrt_...) と所属グループの対応に使う。
+    /// お気に入りから外すには、アバター ID ではなくこの登録 ID が要る。
+    /// </summary>
+    public async Task<List<Favorite>> GetFavoriteRecordsAsync(CancellationToken ct = default)
+    {
+        const int pageSize = 100;
+        var all = new List<Favorite>();
+        for (var offset = 0; ; offset += pageSize)
+        {
+            var page = await GetJsonAsync<List<Favorite>>($"/favorites?type=avatar&n={pageSize}&offset={offset}", ct);
+            all.AddRange(page);
+            if (page.Count < pageSize) break;
+        }
+        return all;
+    }
+
+    /// <summary>アバターをお気に入りに登録する。group は FavoriteGroup.Name ("avatars1" など)。</summary>
+    public async Task<Favorite> AddFavoriteAsync(string avatarId, string group, CancellationToken ct = default)
+    {
+        var payload = JsonSerializer.Serialize(new
+        {
+            type = "avatar",
+            favoriteId = RequireAvatarId(avatarId),
+            tags = new[] { RequireToken(group) },
+        });
+        var res = await SendAsync(() => new HttpRequestMessage(HttpMethod.Post, $"{BaseUrl}/favorites")
+        {
+            Content = new StringContent(payload, Encoding.UTF8, "application/json"),
+        }, ct);
+        if (!res.IsSuccess) throw new VRChatApiException(ExtractError(res.Body, res.Status), res.Status);
+        return JsonSerializer.Deserialize<Favorite>(res.Body, JsonOptions)
+               ?? throw new VRChatApiException("API の応答を解釈できませんでした。");
+    }
+
+    /// <summary>お気に入りから外す。favoriteId は GetFavoriteRecordsAsync が返す登録 ID (fvrt_...)。</summary>
+    public async Task RemoveFavoriteAsync(string favoriteId, CancellationToken ct = default)
+    {
+        var id = RequireToken(favoriteId);
+        var res = await SendAsync(() => new HttpRequestMessage(HttpMethod.Delete, $"{BaseUrl}/favorites/{id}"), ct);
+        if (!res.IsSuccess) throw new VRChatApiException(ExtractError(res.Body, res.Status), res.Status);
+    }
+
     private static readonly Regex AvatarIdPattern = new(
         @"^avtr_[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
@@ -266,16 +311,22 @@ public sealed class VRChatApi : IDisposable
     private static string RequireAvatarId(string id)
         => IsValidAvatarId(id) ? id : throw new VRChatApiException("アバター ID の形式が不正です。");
 
+    // お気に入り ID (fvrt_...) やグループ名 (avatars1) 用。記号を含まないことだけを確かめる
+    private static readonly Regex SafeTokenPattern = new(@"^[A-Za-z0-9_-]{1,64}$", RegexOptions.CultureInvariant);
+
+    private static string RequireToken(string value)
+        => SafeTokenPattern.IsMatch(value) ? value : throw new VRChatApiException("ID の形式が不正です。");
+
     public async Task<Avatar> GetAvatarAsync(string avatarId, CancellationToken ct = default)
         => await GetJsonAsync<Avatar>($"/avatars/{RequireAvatarId(avatarId)}", ct);
 
     /// <summary>アバターを切り替える。VRChat 起動中ならゲーム内にも即反映される。</summary>
     public async Task<CurrentUser> SelectAvatarAsync(string avatarId, CancellationToken ct = default)
     {
-        using var res = await _http.PutAsync($"{BaseUrl}/avatars/{RequireAvatarId(avatarId)}/select", null, ct);
-        var body = await res.Content.ReadAsStringAsync(ct);
-        if (!res.IsSuccessStatusCode) throw new VRChatApiException(ExtractError(body, res.StatusCode), res.StatusCode);
-        return JsonSerializer.Deserialize<CurrentUser>(body, JsonOptions)!;
+        var id = RequireAvatarId(avatarId);
+        var res = await SendAsync(() => new HttpRequestMessage(HttpMethod.Put, $"{BaseUrl}/avatars/{id}/select"), ct);
+        if (!res.IsSuccess) throw new VRChatApiException(ExtractError(res.Body, res.Status), res.Status);
+        return JsonSerializer.Deserialize<CurrentUser>(res.Body, JsonOptions)!;
     }
 
     // 画像 URL は API 応答由来。VRChat のホスト以外・https 以外には一切リクエストを出さない
@@ -291,9 +342,16 @@ public sealed class VRChatApi : IDisposable
         if (!IsAllowedImageUrl(url)) return null;
         try
         {
+            await WaitCooldownAsync(ct);
             // ヘッダだけ先に読み、本文はサイズ上限を確かめながら受信する
             // (Content-Length を返さない応答でも 10MB で打ち切る)
             using var res = await _http.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, ct);
+            if (res.StatusCode == HttpStatusCode.TooManyRequests)
+            {
+                // 画像も同じレート制限の対象。次の API 呼び出しまで間を空ける
+                _cooldownUntil = DateTimeOffset.UtcNow + RetryWait(res, 0);
+                return null;
+            }
             if (!res.IsSuccessStatusCode) return null;
             if (res.Content.Headers.ContentLength > MaxImageBytes) return null;
             await using var stream = await res.Content.ReadAsStreamAsync(ct);
@@ -308,6 +366,69 @@ public sealed class VRChatApi : IDisposable
             return ms.ToArray();
         }
         catch { return null; }
+    }
+
+    // ---------------- 送信 (レート制限のリトライつき) ----------------
+
+    /// <summary>1 回の送信結果。本文まで読み終えているので HttpResponseMessage は持ち回らない。</summary>
+    private readonly record struct ApiResponse(HttpStatusCode Status, string Body)
+    {
+        public bool IsSuccess => (int)Status is >= 200 and < 300;
+    }
+
+    private const int MaxRetries = 2;
+    private static readonly TimeSpan MaxRetryWait = TimeSpan.FromSeconds(30);
+
+    /// <summary>429 を受けたら、この時刻まで次のリクエストを送らない (並行している他のリクエストもここで待つ)。</summary>
+    private DateTimeOffset _cooldownUntil;
+
+    private async Task WaitCooldownAsync(CancellationToken ct)
+    {
+        var wait = _cooldownUntil - DateTimeOffset.UtcNow;
+        if (wait > TimeSpan.Zero) await Task.Delay(wait > MaxRetryWait ? MaxRetryWait : wait, ct);
+    }
+
+    /// <summary>
+    /// リクエストを送り、本文まで読んで返す。レート制限 (429) と GET の一時的なサーバーエラーは、
+    /// Retry-After (無ければ 2 秒 → 4 秒) だけ待って数回まで再試行する。
+    /// HttpRequestMessage は再送できないので、呼び出し側は「作る関数」を渡す。
+    /// </summary>
+    private async Task<ApiResponse> SendAsync(Func<HttpRequestMessage> makeRequest, CancellationToken ct)
+    {
+        for (var attempt = 0; ; attempt++)
+        {
+            await WaitCooldownAsync(ct);
+            using var req = makeRequest();
+            using var res = await _http.SendAsync(req, ct);
+            var body = await res.Content.ReadAsStringAsync(ct);
+            var limited = res.StatusCode == HttpStatusCode.TooManyRequests;
+            if (limited || ShouldRetry(res.StatusCode, req.Method))
+            {
+                var wait = RetryWait(res, attempt);
+                // レート制限は接続全体にかかるので、他のリクエストにも待ってもらう
+                if (limited) _cooldownUntil = DateTimeOffset.UtcNow + wait;
+                if (attempt < MaxRetries)
+                {
+                    await Task.Delay(wait, ct);
+                    continue;
+                }
+            }
+            return new ApiResponse(res.StatusCode, body);
+        }
+    }
+
+    /// <summary>再試行してよい失敗か。取得 (GET) 以外は、二重に実行されないよう再試行しない。</summary>
+    private static bool ShouldRetry(HttpStatusCode status, HttpMethod method)
+        => method == HttpMethod.Get
+           && status is HttpStatusCode.BadGateway or HttpStatusCode.ServiceUnavailable or HttpStatusCode.GatewayTimeout;
+
+    /// <summary>次の試行までの待ち時間。サーバーが Retry-After を返していればそれに従う。</summary>
+    private static TimeSpan RetryWait(HttpResponseMessage res, int attempt)
+    {
+        var ra = res.Headers.RetryAfter;
+        var hinted = ra?.Delta ?? (ra?.Date is { } date ? date - DateTimeOffset.UtcNow : null);
+        var wait = hinted is { } h && h > TimeSpan.Zero ? h : TimeSpan.FromSeconds(2 * Math.Pow(2, attempt));
+        return wait > MaxRetryWait ? MaxRetryWait : wait;
     }
 
     // ---------------- 内部 ----------------
@@ -327,10 +448,9 @@ public sealed class VRChatApi : IDisposable
 
     private async Task<T> GetJsonAsync<T>(string pathAndQuery, CancellationToken ct)
     {
-        using var res = await _http.GetAsync(BaseUrl + pathAndQuery, ct);
-        var body = await res.Content.ReadAsStringAsync(ct);
-        if (!res.IsSuccessStatusCode) throw new VRChatApiException(ExtractError(body, res.StatusCode), res.StatusCode);
-        return JsonSerializer.Deserialize<T>(body, JsonOptions)
+        var res = await SendAsync(() => new HttpRequestMessage(HttpMethod.Get, BaseUrl + pathAndQuery), ct);
+        if (!res.IsSuccess) throw new VRChatApiException(ExtractError(res.Body, res.Status), res.Status);
+        return JsonSerializer.Deserialize<T>(res.Body, JsonOptions)
                ?? throw new VRChatApiException("API の応答を解釈できませんでした。");
     }
 
@@ -361,6 +481,10 @@ public sealed class VRChatApi : IDisposable
                 return "そのアバターは見つかりませんでした(削除されたか、ID が違う可能性があります)。";
             if (s.Contains("not public") || s.Contains("private"))
                 return "このアバターは非公開のため使用できません。";
+            if (s.Contains("too many favorites") || s.Contains("maximum number of favorites"))
+                return "そのお気に入りグループは上限に達しています。別のグループを選ぶか、いらないものを外してください。";
+            if (s.Contains("already") && s.Contains("favorite"))
+                return "そのアバターはすでにお気に入りに登録されています。";
             if (s.Contains("too many") || s.Contains("rate limit"))
                 return "VRChat へのアクセスが多すぎます。1 分ほど待ってからもう一度お試しください。";
             if (s.Contains("banned") || s.Contains("suspended"))
@@ -406,6 +530,15 @@ public sealed class Avatar
     public string? FavoriteGroup { get; set; }
     [JsonPropertyName("created_at")] public DateTimeOffset? CreatedAt { get; set; }
     [JsonPropertyName("updated_at")] public DateTimeOffset? UpdatedAt { get; set; }
+}
+
+/// <summary>お気に入りの登録レコード。Id が登録そのものの ID、FavoriteId が対象 (アバター) の ID。</summary>
+public sealed class Favorite
+{
+    public string Id { get; set; } = "";
+    public string Type { get; set; } = "";
+    public string FavoriteId { get; set; } = "";
+    public List<string> Tags { get; set; } = [];
 }
 
 public sealed class FavoriteGroup

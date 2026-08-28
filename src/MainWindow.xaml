@@ -345,6 +345,14 @@
                                 <TextBlock x:Name="UpdateButtonText" Text="更新があります" Foreground="{DynamicResource AccentBrush}"/>
                             </StackPanel>
                         </Button>
+                        <Button x:Name="PreviousButton" Style="{StaticResource GhostButton}" Click="PreviousButton_Click"
+                                AutomationProperties.Name="直前のアバターに戻す" IsEnabled="False"
+                                ToolTip="1 つ前に着ていたアバターに戻します" Height="30" Padding="10,0" Margin="0,0,4,0">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="&#xE7A7;" Style="{StaticResource Icon}" Margin="0,0,8,0"/>
+                                <TextBlock Text="直前に戻す"/>
+                            </StackPanel>
+                        </Button>
                         <Button Style="{StaticResource GhostButton}" Click="SettingsButton_Click" AutomationProperties.Name="設定"
                                 ToolTip="設定 (VRChat 連動・ログアウトなど)" Height="30" Padding="10,0" Margin="0,0,4,0">
                             <StackPanel Orientation="Horizontal">
@@ -521,6 +529,10 @@
                                 <MenuItem x:Name="MenuChange" Header="このアバターに着替える" Click="MenuChange_Click"/>
                                 <MenuItem x:Name="MenuOpenGroup" Header="グループを開く" Click="MenuOpenGroup_Click"/>
                                 <Separator/>
+                                <!-- お気に入り: 追加は「どのグループに入れるか」を選ばせるので、項目は開くときに作る -->
+                                <MenuItem x:Name="MenuAddFavorite" Header="お気に入りに追加"/>
+                                <MenuItem x:Name="MenuRemoveFavorite" Header="お気に入りから外す" Click="MenuRemoveFavorite_Click"/>
+                                <Separator/>
                                 <MenuItem x:Name="MenuAssignGroup" Header="グループに入れる..." Click="MenuAssignGroup_Click"/>
                                 <MenuItem x:Name="MenuUnassignGroup" Header="グループから外す" Click="MenuUnassignGroup_Click"/>
                                 <MenuItem x:Name="MenuRenameGroup" Header="グループ名を変更..." Click="MenuRenameGroup_Click"/>
@@ -530,6 +542,7 @@
                                 <MenuItem x:Name="MenuRemovePublic" Header="パブリックから削除" Click="MenuRemovePublic_Click"/>
                                 <MenuItem x:Name="MenuEditTags" Header="タグを編集..." Click="MenuEditTags_Click"/>
                                 <Separator/>
+                                <MenuItem x:Name="MenuAssignHotkey" Header="ホットキーに割り当てる..." Click="MenuAssignHotkey_Click"/>
                                 <MenuItem x:Name="MenuCopyId" Header="アバター ID をコピー" Click="MenuCopyId_Click"/>
                                 <MenuItem x:Name="MenuStripeExclude" Header="カウントから除外" Click="MenuStripeExclude_Click" Visibility="Collapsed"/>
                             </ContextMenu>
@@ -642,13 +655,29 @@
                                 <ColumnDefinition Width="Auto"/>
                             </Grid.ColumnDefinitions>
                             <StackPanel>
-                                <TextBlock Text="クイック着替え (Shift+1)" Style="{StaticResource SettingTitle}"/>
+                                <TextBlock Text="クイック着替え / ホットキー" Style="{StaticResource SettingTitle}"/>
                                 <TextBlock Style="{StaticResource SettingDesc}"
-                                           Text="VRChat をデスクトップモードでプレイ中に Shift+1 を押すと、画面の右にアバター選択を重ねて表示します。VRChat (またはこのオーバーレイ) が手前にあるときだけ反応します。"/>
+                                           Text="VRChat をデスクトップモードでプレイ中にホットキーを使えるようにします。既定では Shift+1 で画面の右にアバター選択を重ねて表示します。VRChat (またはこのオーバーレイ) が手前にあるときだけ反応します。"/>
                             </StackPanel>
                             <ToggleButton Grid.Column="1" x:Name="QuickToggle" Style="{StaticResource OnOffToggle}"
                                           Checked="QuickToggle_Changed" Unchecked="QuickToggle_Changed"
                                           VerticalAlignment="Top" Margin="14,0,0,0" AutomationProperties.Name="クイック着替え"/>
+                        </Grid>
+                    </Border>
+
+                    <Border Style="{StaticResource SettingRow}">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <StackPanel>
+                                <TextBlock Text="ホットキーの割り当て" Style="{StaticResource SettingTitle}"/>
+                                <TextBlock Style="{StaticResource SettingDesc}"
+                                           Text="クイック着替えを開く、直前のアバターに戻す、グループ内の次のアバターへ送る、特定のアバターを直接呼び出す — それぞれにキーを割り当てられます。"/>
+                            </StackPanel>
+                            <Button Grid.Column="1" Content="設定..." Style="{StaticResource SecondaryButton}" Click="HotkeySettings_Click"
+                                    MinWidth="80" Height="32" VerticalAlignment="Top" Margin="14,0,0,0"/>
                         </Grid>
                     </Border>
 
