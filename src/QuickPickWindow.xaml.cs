@@ -4,6 +4,7 @@ using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
+using System.Windows.Threading;
 
 namespace VRCAvatarChanger;
 
@@ -21,6 +22,13 @@ public partial class QuickPickWindow : Window
     private bool _busy;
     private bool _ready; // 初期化中の SelectionChanged を無視する
     private int _gen; // 閉じアニメ完了時、その後に開き直されていたら Hide しないための世代番号
+    private Win32.NativeRect _wantPx; // 置きたい位置とサイズ (物理ピクセル)
+
+    /// <summary>
+    /// 設計上の幅 (DIP)。DPI をまたいで移動すると WPF が Width を書き換えてしまうため、
+    /// 幅の基準は Width ではなくこの定数から取る。XAML の Width と同じ値にすること。
+    /// </summary>
+    internal const double DesignWidthDip = 380;
 
     public QuickPickWindow(Func<AvatarItem, Task<bool>> change, Action refocusGame, Action<string> saveSortKey)
     {
@@ -29,6 +37,21 @@ public partial class QuickPickWindow : Window
         _saveSortKey = saveSortKey;
         InitializeComponent();
         Deactivated += (_, _) => { if (!_busy) CloseOverlay(refocus: false); };
+        // 初回表示では別の DPI のモニターでウィンドウが作られてから移動するため、移動時に
+        // WM_DPICHANGED が起きる。Windows はこのとき DPI 比でサイズを作り直し、直前の
+        // SetWindowPos の指定を上書きしてしまう (VRChat の画面外にはみ出す)。置き直して打ち消す。
+        DpiChanged += (_, _) =>
+        {
+            if (IsVisible) Dispatcher.BeginInvoke(ApplyWantedPlacement, DispatcherPriority.Render);
+        };
+    }
+
+    /// <summary>_wantPx のとおりに実際のウィンドウを置き直す。</summary>
+    private void ApplyWantedPlacement()
+    {
+        if (_wantPx.Right - _wantPx.Left <= 0) return;
+        Win32.SetWindowPosPx(Hwnd, _wantPx.Left, _wantPx.Top,
+            _wantPx.Right - _wantPx.Left, _wantPx.Bottom - _wantPx.Top);
     }
 
     public nint Hwnd => new WindowInteropHelper(this).Handle;
@@ -52,15 +75,20 @@ public partial class QuickPickWindow : Window
         ApplyFilter();
         StatusText.Text = _all.Count == 0 ? "一覧が空です。AvatarChanger でログインして一覧を読み込んでください。" : "";
 
-        var wPx = (int)Math.Round(Width * scale);
+        var wPx = (int)Math.Round(DesignWidthDip * scale);
         var hPx = areaPx.Bottom - areaPx.Top;
         var xPx = areaPx.Right - wPx;
+        _wantPx = new Win32.NativeRect
+        {
+            Left = xPx, Top = areaPx.Top, Right = xPx + wPx, Bottom = areaPx.Top + hPx,
+        };
+        Width = DesignWidthDip; // 前回の DPI 変更で書き換わっていることがあるので戻す
         Height = hPx / scale; // WPF のレイアウト用 (物理位置は SetWindowPos が正)
 
-        Slide.X = Width;
+        Slide.X = DesignWidthDip;
         Root.Opacity = 0; // 見えない状態で出してから正しい位置に置く (位置合わせのチラつき防止)
         Show();
-        Win32.SetWindowPosPx(Hwnd, xPx, areaPx.Top, wPx, hPx);
+        ApplyWantedPlacement();
 
         var x = new DoubleAnimation(0, TimeSpan.FromMilliseconds(240)) { EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut } };
         Slide.BeginAnimation(TranslateTransform.XProperty, x);
@@ -74,7 +102,7 @@ public partial class QuickPickWindow : Window
     {
         if (!IsVisible) return;
         var gen = _gen;
-        var x = new DoubleAnimation(Width, TimeSpan.FromMilliseconds(170)) { EasingFunction = new CubicEase { EasingMode = EasingMode.EaseIn } };
+        var x = new DoubleAnimation(DesignWidthDip, TimeSpan.FromMilliseconds(170)) { EasingFunction = new CubicEase { EasingMode = EasingMode.EaseIn } };
         x.Completed += (_, _) => { if (_gen == gen) Hide(); };
         Slide.BeginAnimation(TranslateTransform.XProperty, x);
         Root.BeginAnimation(OpacityProperty, new DoubleAnimation(0, TimeSpan.FromMilliseconds(170)));

@@ -185,7 +185,8 @@ public partial class MainWindow
             _quick = new QuickPickWindow(QuickChangeAsync, () => { }, SaveQuickSortKey);
             _quick.OpenAt(area, scale, FlatAvatarItems(), _settings.RecentAvatars, _settings.QuickSortKey,
                 Hotkey.Parse(_settings.QuickHotkey));
-            sb.AppendLine($"want px     = x {area.Right - (int)Math.Round(_quick.Width * scale)} w {(int)Math.Round(_quick.Width * scale)}");
+            var wantW = (int)Math.Round(QuickPickWindow.DesignWidthDip * scale);
+            sb.AppendLine($"want px     = x {area.Right - wantW} w {wantW} h {area.Bottom - area.Top}");
 
             foreach (var wait in new[] { 200, 800, 1500 })
             {
