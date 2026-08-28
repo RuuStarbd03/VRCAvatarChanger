@@ -425,7 +425,7 @@ public partial class MainWindow : Window
         KeepLoginToggle.IsChecked = _settings.KeepBrowserLogin;
         (_settings.Theme switch { "light" => ThemeLight, "dark" => ThemeDark, _ => ThemeSystem }).IsChecked = true;
         AccountDesc.Text = (string.IsNullOrEmpty(_user?.DisplayName) ? "" : $"{_user.DisplayName} としてログイン中。")
-            + "保存したログイン状態を消してログイン画面に戻ります。";
+            + "ログイン状態を消して戻ります。";
         if (SettingsOverlay.Visibility != Visibility.Visible)
         {
             SettingsOverlay.Opacity = 0;

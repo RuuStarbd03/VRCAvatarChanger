@@ -50,6 +50,63 @@
             <Setter Property="TextWrapping" Value="Wrap"/>
             <Setter Property="Margin" Value="0,10,0,2"/>
         </Style>
+
+        <!--
+            よくある質問の 1 項目。質問だけを並べ、押したときに答えを開く。
+            全文を出しっぱなしにすると目的の質問を探すまでが長いため。
+        -->
+        <Style x:Key="Faq" TargetType="Expander">
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Expander">
+                        <Border BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,0,0,1">
+                            <StackPanel>
+                                <ToggleButton IsChecked="{Binding IsExpanded, RelativeSource={RelativeSource TemplatedParent}}"
+                                              Cursor="Hand" FocusVisualStyle="{x:Null}">
+                                    <ToggleButton.Template>
+                                        <ControlTemplate TargetType="ToggleButton">
+                                            <Border x:Name="bd" Background="Transparent" Padding="8,11" CornerRadius="{StaticResource ControlRadius}">
+                                                <Grid>
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="*"/>
+                                                        <ColumnDefinition Width="Auto"/>
+                                                    </Grid.ColumnDefinitions>
+                                                    <ContentPresenter VerticalAlignment="Center"/>
+                                                    <TextBlock x:Name="chev" Grid.Column="1" Text="&#xE70D;" FontFamily="{StaticResource IconFont}"
+                                                               FontSize="12" VerticalAlignment="Center" Margin="10,0,2,0"
+                                                               Foreground="{DynamicResource MutedTextBrush}"/>
+                                                </Grid>
+                                            </Border>
+                                            <ControlTemplate.Triggers>
+                                                <Trigger Property="IsMouseOver" Value="True">
+                                                    <Setter TargetName="bd" Property="Background" Value="{DynamicResource HoverBrush}"/>
+                                                </Trigger>
+                                                <Trigger Property="IsChecked" Value="True">
+                                                    <Setter TargetName="chev" Property="Text" Value="&#xE70E;"/>
+                                                    <Setter TargetName="chev" Property="Foreground" Value="{DynamicResource AccentBrush}"/>
+                                                </Trigger>
+                                                <Trigger Property="IsKeyboardFocused" Value="True">
+                                                    <Setter TargetName="bd" Property="Background" Value="{DynamicResource HoverBrush}"/>
+                                                </Trigger>
+                                            </ControlTemplate.Triggers>
+                                        </ControlTemplate>
+                                    </ToggleButton.Template>
+                                    <TextBlock Text="{TemplateBinding Header}" FontWeight="SemiBold" TextWrapping="Wrap"/>
+                                </ToggleButton>
+                                <ContentPresenter x:Name="body" Margin="8,0,8,12" Visibility="Collapsed"/>
+                            </StackPanel>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsExpanded" Value="True">
+                                <Setter TargetName="body" Property="Visibility" Value="Visible"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
     </Window.Resources>
 
     <Grid>
@@ -145,76 +202,97 @@
                 <!-- ===== FAQ ===== -->
                 <StackPanel x:Name="FaqPanel" MaxWidth="620" Visibility="Collapsed">
                     <TextBlock Text="よくある質問" Style="{StaticResource H1}"/>
+                    <TextBlock Style="{StaticResource Body}" Margin="0,0,0,8" Text="項目を押すと答えが開きます。"/>
 
-                    <TextBlock Text="着替えたのにゲーム内で変わらない" Style="{StaticResource Q}"/>
-                    <TextBlock Style="{StaticResource Body}"
-                               Text="通常は数秒で反映されます。変わらないときは、ゲーム内でメニューを開閉するか、ワールドを移動してみてください。"/>
+                    <Expander Style="{StaticResource Faq}" Header="着替えたのにゲーム内で変わらない">
+                        <TextBlock Style="{StaticResource Body}"
+                                   Text="通常は数秒で反映されます。変わらないときは、ゲーム内でメニューを開閉するか、ワールドを移動してみてください。"/>
+                    </Expander>
 
-                    <TextBlock Text="「非公開アバターのため使用できません」と出る" Style="{StaticResource Q}"/>
-                    <TextBlock Style="{StaticResource Body}"
-                               Text="他の人の非公開(Private)アバターには着替えられません(VRChat の仕様)。自分のアバターなら非公開でも使えます。"/>
+                    <Expander Style="{StaticResource Faq}" Header="「非公開アバターのため使用できません」と出る">
+                        <TextBlock Style="{StaticResource Body}"
+                                   Text="他の人の非公開(Private)アバターには着替えられません(VRChat の仕様)。自分のアバターなら非公開でも使えます。"/>
+                    </Expander>
 
-                    <TextBlock Text="ログインが面倒 / いつものブラウザのログインを使いたい" Style="{StaticResource Q}"/>
-                    <TextBlock Style="{StaticResource Body}"
-                               Text="「ふだん使うブラウザでログイン」を押すと、Chrome など既定のブラウザで VRChat のページが開きます。そのブラウザで VRChat にログイン済みなら token が表示されるので、コピーするだけでこのアプリが自動で続行します (貼り付けても構いません)。ログインしていない場合は「vrchat.com を開く」からログインしてから、もう一度開いてください。"/>
-                    <TextBlock Style="{StaticResource Body}"
-                               Text="このアプリが Chrome などのブラウザに保存されたパスワードやクッキーを直接読むことはありません。受け取るのは、あなたがコピーした token だけです。"/>
+                    <Expander Style="{StaticResource Faq}" Header="ログインが面倒 / いつものブラウザのログインを使いたい">
+                        <StackPanel>
+                            <TextBlock Style="{StaticResource Body}"
+                                       Text="「ふだん使うブラウザでログイン」を押すと、既定のブラウザで VRChat のページが開きます。ログイン済みなら token が表示されるので、コピーすれば自動で続行します。"/>
+                            <TextBlock Style="{StaticResource Body}"
+                                       Text="ブラウザに保存されたパスワードやクッキーを読むことはありません。受け取るのは、コピーした token だけです。"/>
+                        </StackPanel>
+                    </Expander>
 
-                    <TextBlock Text="Discord / Google でログインできない" Style="{StaticResource Q}"/>
-                    <TextBlock Style="{StaticResource Body}"
-                               Text="ログイン画面の表示に WebView2 が必要です(Windows 11 には入っています)。無い場合は案内に従ってインストールしてください。Google に拒否される場合は、VRChat でパスワードを設定してユーザー名とパスワードでログインしてください。"/>
+                    <Expander Style="{StaticResource Faq}" Header="Discord / Google でログインできない">
+                        <TextBlock Style="{StaticResource Body}"
+                                   Text="ログイン画面の表示に WebView2 が必要です(Windows 11 には入っています)。Google に拒否される場合は、VRChat でパスワードを設定してユーザー名とパスワードでログインしてください。"/>
+                    </Expander>
 
-                    <TextBlock Text="2 段階認証のコードはどこにある?" Style="{StaticResource Q}"/>
-                    <TextBlock Style="{StaticResource Body}"
-                               Text="認証アプリを設定していればそのアプリに表示される 6 桁のコード、していなければ VRChat に登録したメールアドレスに届くコードです。"/>
+                    <Expander Style="{StaticResource Faq}" Header="2 段階認証のコードはどこにある?">
+                        <TextBlock Style="{StaticResource Body}"
+                                   Text="認証アプリを設定していればそのアプリの 6 桁のコード、していなければ VRChat に登録したメールアドレスに届くコードです。"/>
+                    </Expander>
 
-                    <TextBlock Text="お気に入りの「追加日」は何の日付?" Style="{StaticResource Q}"/>
-                    <TextBlock Style="{StaticResource Body}"
-                               Text="アバターがアップロードされた日です(VRChat はお気に入りに登録した日時を返さないため)。パブリックタブの「追加日」は、このアプリに追加した日です。"/>
+                    <Expander Style="{StaticResource Faq}" Header="お気に入りの「追加日」は何の日付?">
+                        <TextBlock Style="{StaticResource Body}"
+                                   Text="アバターがアップロードされた日です(VRChat はお気に入りに登録した日時を返さないため)。パブリックタブの「追加日」は、このアプリに追加した日です。"/>
+                    </Expander>
 
-                    <TextBlock Text="一覧に「前回の一覧」と出る / オフラインでも一覧が出る" Style="{StaticResource Q}"/>
-                    <TextBlock Style="{StaticResource Body}"
-                               Text="起動を速くするため、前回読み込んだ一覧とサムネイルをこの PC に保存しておき、先に表示してから裏で最新を取りに行きます。取得できたら自動で置き換わります。VRChat につながらないときは、前回の一覧をそのまま表示し、いつ時点のものかを下に表示します。"/>
-                    <TextBlock Style="{StaticResource Body}"
-                               Text="VRChat への問い合わせを減らすため、5 分以内に読み込んだ一覧はタブを行き来しても取り直しません。アバターをアップロードした直後など、すぐ反映したいときは右上の「再読み込み」(F5)を押してください。パブリックタブの「再読み込み」も、6 時間以内に取得済みのアバターは飛ばします(何件更新したかはステータス欄に出ます)。"/>
+                    <Expander Style="{StaticResource Faq}" Header="一覧に「前回の一覧」と出る / オフラインでも一覧が出る">
+                        <StackPanel>
+                            <TextBlock Style="{StaticResource Body}"
+                                       Text="起動を速くするため、前回の一覧を先に表示してから裏で最新を取りに行きます。つながらないときは前回の一覧を、いつ時点のものかを添えて表示します。"/>
+                            <TextBlock Style="{StaticResource Body}"
+                                       Text="5 分以内に読み込んだ一覧は取り直しません。すぐ反映したいときは「再読み込み」(F5)を押してください。"/>
+                        </StackPanel>
+                    </Expander>
 
-                    <TextBlock Text="画面を明るく / 暗くしたい" Style="{StaticResource Q}"/>
-                    <TextBlock Style="{StaticResource Body}"
-                               Text="右上の「設定」→「配色」で システム / ライト / ダーク を選べます。既定の「システム」は Windows の「アプリのモード」に合わせ、Windows 側で切り替わったときも追従します。選び直すとその場で変わります(再起動は不要です)。"/>
+                    <Expander Style="{StaticResource Faq}" Header="画面を明るく / 暗くしたい">
+                        <TextBlock Style="{StaticResource Body}"
+                                   Text="「設定」→「配色」で システム / ライト / ダーク を選べます。「システム」は Windows の設定に追従します。"/>
+                    </Expander>
 
-                    <TextBlock Text="アップロードしたアバターが 1 体だけ見当たらない" Style="{StaticResource Q}"/>
-                    <TextBlock Style="{StaticResource Body}"
-                               Text="まず、グループにまとまっていないか確かめてください。グループに入れたアバターは 1 枚のタイルにまとまるため、一覧には個別に並びません(ツールバーの「グループ化」をオフにすると全部が個別に並びます)。ステータス欄にも「うち ◯ 体は ◯ 個のグループにまとめて表示」と出ます。"/>
-                    <TextBlock Style="{StaticResource Body}"
-                               Text="次に、検索欄やフィルタが残っていないか、右上の「再読み込み」(F5)で取り直せないかを試してください。一覧は 5 分間キャッシュを使うため、アップロードした直後は F5 が必要なことがあります。"/>
-                    <TextBlock Style="{StaticResource Body}"
-                               Text="それでも出てこない場合、保存フォルダの cache\list-own.json に前回取得した一覧がそのまま入っています。そこに入っていなければ VRChat から届いていない、入っていれば表示側の問題、と切り分けられます。"/>
+                    <Expander Style="{StaticResource Faq}" Header="アップロードしたアバターが 1 体だけ見当たらない">
+                        <StackPanel>
+                            <TextBlock Style="{StaticResource Body}"
+                                       Text="グループにまとまっていないか確かめてください。グループに入れたアバターは 1 枚のタイルにまとまります(ツールバーのグループ化をオフにすると個別に並びます)。"/>
+                            <TextBlock Style="{StaticResource Body}"
+                                       Text="次に、検索欄やフィルタが残っていないか確かめ、「再読み込み」(F5)を試してください。アップロード直後は F5 が必要なことがあります。"/>
+                        </StackPanel>
+                    </Expander>
 
-                    <TextBlock Text="何を保存している? 安全?" Style="{StaticResource Q}"/>
-                    <TextBlock Style="{StaticResource Body}"
-                               Text="パスワードは保存しません。保存するのはログイン状態・表示設定・パブリックリスト・グループだけで、すべてこの PC の %AppData%\VRCAvatarChanger にあります。ログイン状態は Windows の機能で暗号化され、通信先は VRChat のサーバーだけです。"/>
-                    <TextBlock Style="{StaticResource Body}"
-                               Text="ブラウザログインを使った場合、既定では内蔵ブラウザに VRChat・Discord・Google のログイン状態が残り、次回のログインが数クリックで済みます (設定「ブラウザのログイン状態を保持」でオフにできます)。"/>
-                    <TextBlock Style="{StaticResource Body}"
-                               Text="ログイン状態はアカウント全体を操作できるものなので、共用 PC では「ブラウザのログイン状態を保持」をオフにし、使い終わったら「ログアウト」してください。"/>
+                    <Expander Style="{StaticResource Faq}" Header="何を保存している? 安全?">
+                        <StackPanel>
+                            <TextBlock Style="{StaticResource Body}"
+                                       Text="パスワードは保存しません。保存するのはログイン状態・表示設定・パブリックリスト・グループだけで、すべてこの PC の中です。ログイン状態は Windows の機能で暗号化され、通信先は VRChat のサーバーだけです。"/>
+                            <TextBlock Style="{StaticResource Body}"
+                                       Text="ログイン状態はアカウント全体を操作できるものなので、共用 PC では「ブラウザのログイン状態を保持」をオフにし、使い終わったら「ログアウト」してください。"/>
+                        </StackPanel>
+                    </Expander>
 
-                    <TextBlock Text="パブリックタブやグループの登録はどこに保存される?" Style="{StaticResource Q}"/>
-                    <TextBlock Style="{StaticResource Body}"
-                               Text="この PC の %AppData%\VRCAvatarChanger フォルダにある public_avatars.json(パブリック)、groups.json(グループ)、tags.json(タグ)です。VRChat 側には保存されません。別の PC に移したいときは、この 3 つのファイルをコピーしてください。フォルダは「このアプリについて」の「保存フォルダを開く」から開けます。"/>
-                    <TextBlock Style="{StaticResource Body}"
-                               Text="同じフォルダの cache フォルダは、一覧とサムネイルの控えです。消しても次回に取り直すだけで、設定やリストは失われません。"/>
+                    <Expander Style="{StaticResource Faq}" Header="パブリックタブやグループの登録はどこに保存される?">
+                        <StackPanel>
+                            <TextBlock Style="{StaticResource Body}"
+                                       Text="%AppData%\VRCAvatarChanger の public_avatars.json(パブリック)、groups.json(グループ)、tags.json(タグ)です。別の PC に移すときはこの 3 つをコピーしてください。"/>
+                            <TextBlock Style="{StaticResource Body}"
+                                       Text="同じ場所の cache フォルダは一覧とサムネイルの控えです。消しても次回に取り直すだけです。"/>
+                        </StackPanel>
+                    </Expander>
 
-                    <TextBlock Text="ログインしたままにしたくない" Style="{StaticResource Q}"/>
-                    <TextBlock Style="{StaticResource Body}"
-                               Text="右上の「設定」→「ログアウト」で保存されたログイン状態が消え、次回は再ログインになります。"/>
+                    <Expander Style="{StaticResource Faq}" Header="ログインしたままにしたくない">
+                        <TextBlock Style="{StaticResource Body}"
+                                   Text="「設定」→「ログアウト」で保存されたログイン状態が消え、次回は再ログインになります。"/>
+                    </Expander>
 
-                    <TextBlock Text="アップデートはどうやるの?" Style="{StaticResource Q}"/>
-                    <TextBlock Style="{StaticResource Body}"
-                               Text="新しいバージョンが公開されると、右上に「vX.X.X に更新」ボタンが出ます。押して「はい」を選ぶと、ダウンロードから差し替え、再起動まで自動で行われます。勝手に更新されることはありません。"/>
+                    <Expander Style="{StaticResource Faq}" Header="アップデートはどうやるの?">
+                        <TextBlock Style="{StaticResource Body}"
+                                   Text="新しいバージョンが公開されると右上に更新ボタンが出ます。押すと差し替えから再起動まで自動で行われます。勝手に更新されることはありません。"/>
+                    </Expander>
 
-                    <TextBlock Text="アンインストールするには" Style="{StaticResource Q}"/>
-                    <TextBlock Style="{StaticResource Body}"
-                               Text="exe(または解凍したフォルダ)を削除するだけです。保存データも消す場合は %AppData%\VRCAvatarChanger フォルダを削除してください。"/>
+                    <Expander Style="{StaticResource Faq}" Header="アンインストールするには">
+                        <TextBlock Style="{StaticResource Body}"
+                                   Text="exe(または解凍したフォルダ)を削除するだけです。保存データも消す場合は %AppData%\VRCAvatarChanger フォルダを削除してください。"/>
+                    </Expander>
                 </StackPanel>
 
                 <!-- ===== About ===== -->

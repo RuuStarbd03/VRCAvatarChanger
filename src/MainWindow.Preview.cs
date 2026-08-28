@@ -137,6 +137,25 @@ public partial class MainWindow
                 new Win32.NativeRect { Left = -4400, Top = 0, Right = -4000, Bottom = 400 }, 1.0, error: false);
             if (!string.IsNullOrEmpty(shotPath)) _ = CaptureWindowAsync(toast, shotPath);
         }
+        else if (Environment.GetEnvironmentVariable("VRCAC_UI_PREVIEW_HELP") is { Length: > 0 } helpTab)
+        {
+            // 使い方の画面を画面外に開いて撮る (howto / faq / about)
+            Left = -4000; Top = 0;
+            var help = new HelpWindow
+            {
+                Owner = this,
+                WindowStartupLocation = WindowStartupLocation.Manual,
+                Left = -4700,
+                Top = 0,
+            };
+            help.Show();
+            if (helpTab is "faq" or "faq-open") help.TabFaq.IsChecked = true;
+            else if (helpTab == "about") help.TabAbout.IsChecked = true;
+            // 開いた状態の確認: 先頭のいくつかを開いておく
+            if (helpTab == "faq-open")
+                foreach (var ex in help.FaqPanel.Children.OfType<Expander>().Take(3)) ex.IsExpanded = true;
+            if (!string.IsNullOrEmpty(shotPath)) _ = CaptureWindowAsync(help, shotPath);
+        }
         else if (Environment.GetEnvironmentVariable("VRCAC_UI_PREVIEW_HOTKEYS") == "1")
         {
             // ホットキー割り当て画面を画面外に開いて撮る

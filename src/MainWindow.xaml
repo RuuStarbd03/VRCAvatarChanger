@@ -770,7 +770,7 @@
                             <StackPanel>
                                 <TextBlock Text="VRChat 連動" Style="{StaticResource SettingTitle}"/>
                                 <TextBlock Style="{StaticResource SettingDesc}"
-                                           Text="Windows 起動時にタスクトレイで待機し、VRChat の起動を検知したら自動でウィンドウを開きます。オンの間はウィンドウを閉じてもトレイに残ります(完全に終了するにはトレイアイコンを右クリック →「終了」)。"/>
+                                           Text="VRChat の起動に合わせてウィンドウを開きます。オンの間はトレイに常駐します。"/>
                             </StackPanel>
                             <ToggleButton Grid.Column="1" x:Name="WatchToggle" Style="{StaticResource OnOffToggle}"
                                           Checked="WatchToggle_Changed" Unchecked="WatchToggle_Changed"
@@ -787,7 +787,7 @@
                             <StackPanel>
                                 <TextBlock Text="クイック着替え / ホットキー" Style="{StaticResource SettingTitle}"/>
                                 <TextBlock Style="{StaticResource SettingDesc}"
-                                           Text="VRChat をデスクトップモードでプレイ中にホットキーを使えるようにします。既定では Shift+1 で画面の右にアバター選択を重ねて表示します。VRChat (またはこのオーバーレイ) が手前にあるときだけ反応します。"/>
+                                           Text="VRChat が手前のとき、Shift+1 で画面の右にアバター選択を重ねて出します。"/>
                             </StackPanel>
                             <ToggleButton Grid.Column="1" x:Name="QuickToggle" Style="{StaticResource OnOffToggle}"
                                           Checked="QuickToggle_Changed" Unchecked="QuickToggle_Changed"
@@ -804,7 +804,7 @@
                             <StackPanel>
                                 <TextBlock Text="ブラウザのログイン状態を保持" Style="{StaticResource SettingTitle}"/>
                                 <TextBlock Style="{StaticResource SettingDesc}"
-                                           Text="ブラウザログイン用の内蔵ブラウザに VRChat・Discord・Google のログイン状態を残し、次回のログインを数クリックで済ませます。共用 PC ではオフ推奨です (オフにすると保存済みのブラウザデータも消去します)。"/>
+                                           Text="次回のログインが数クリックで済みます。共用 PC ではオフ推奨 (オフにすると保存済みのデータも消します)。"/>
                             </StackPanel>
                             <ToggleButton Grid.Column="1" x:Name="KeepLoginToggle" Style="{StaticResource OnOffToggle}"
                                           Checked="KeepLoginToggle_Changed" Unchecked="KeepLoginToggle_Changed"
@@ -821,7 +821,7 @@
                             <StackPanel>
                                 <TextBlock Text="ホットキーの割り当て" Style="{StaticResource SettingTitle}"/>
                                 <TextBlock Style="{StaticResource SettingDesc}"
-                                           Text="クイック着替えを開く、直前のアバターに戻す、グループ内の次のアバターへ送る、特定のアバターを直接呼び出す — それぞれにキーを割り当てられます。"/>
+                                           Text="クイック着替え、直前に戻す、グループ内の次へ、特定のアバターにキーを割り当てます。"/>
                             </StackPanel>
                             <Button Grid.Column="1" Content="設定..." Style="{StaticResource SecondaryButton}" Click="HotkeySettings_Click"
                                     MinWidth="80" Height="32" VerticalAlignment="Top" Margin="14,0,0,0"/>
@@ -837,7 +837,7 @@
                             <StackPanel>
                                 <TextBlock Text="配色" Style="{StaticResource SettingTitle}"/>
                                 <TextBlock Style="{StaticResource SettingDesc}"
-                                           Text="「システム」は Windows の「アプリのモード」に合わせ、切り替わったら追従します。選ぶとその場で変わります。"/>
+                                           Text="「システム」は Windows の設定に追従します。選ぶとその場で変わります。"/>
                             </StackPanel>
                             <Border Grid.Column="1" Background="{DynamicResource InputBrush}" BorderBrush="{DynamicResource BorderBrush}"
                                     BorderThickness="1" CornerRadius="{StaticResource ControlRadius}"
@@ -863,7 +863,7 @@
                             <StackPanel>
                                 <TextBlock Text="データの保存先" Style="{StaticResource SettingTitle}"/>
                                 <TextBlock Style="{StaticResource SettingDesc}"
-                                           Text="設定・グループ・タグ・パブリックリストの保存先フォルダ (%AppData%\VRCAvatarChanger) を開きます。"/>
+                                           Text="設定・グループ・タグ・パブリックリストの保存先を開きます。"/>
                             </StackPanel>
                             <Button Grid.Column="1" Content="開く" Style="{StaticResource SecondaryButton}" Click="OpenDataFolder_Click"
                                     MinWidth="80" Height="32" VerticalAlignment="Top" Margin="14,0,0,0"/>
