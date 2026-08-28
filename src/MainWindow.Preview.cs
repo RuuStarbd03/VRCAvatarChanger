@@ -64,7 +64,8 @@ public partial class MainWindow
         if (Environment.GetEnvironmentVariable("VRCAC_UI_PREVIEW_SOAKTEST") == "1") _ = RunSoakTestAsync();
         if (Environment.GetEnvironmentVariable("VRCAC_UI_PREVIEW_GRIDTEST") == "1") _ = RunGridTestAsync();
         if (Environment.GetEnvironmentVariable("VRCAC_UI_PREVIEW_GAPTEST") == "1") _ = RunGapTestAsync();
-        if (Environment.GetEnvironmentVariable("VRCAC_UI_PREVIEW_RETRYTEST") == "1") _ = RunRetryTestAsync();
+        // 自前で撮影まで行うので、下の共通の撮影経路 (先に終了してしまう) には進ませない
+        if (Environment.GetEnvironmentVariable("VRCAC_UI_PREVIEW_RETRYTEST") == "1") { _ = RunRetryTestAsync(); return; }
 
         // 見た目確認: VRCAC_UI_PREVIEW_SHOT=path でウィンドウを画面外に置いたまま PNG に描画して終了する
         // (実画面をキャプチャしないので、ゲーム中でも邪魔にならない)。SETTINGS=1 なら設定オーバーレイを開いた状態で撮る
@@ -226,9 +227,13 @@ public partial class MainWindow
 
             _allItems.Clear();
             _allItems.AddRange(real.Avatars.Select(a => new AvatarItem(a)));
-            ViewGrid.IsChecked = true;
-            ColumnsSlider.Value = 10;
-            GridColumns = 10;
+            ViewGrid.IsChecked = Environment.GetEnvironmentVariable("VRCAC_UI_PREVIEW_VIEW") != "list";
+            var cols = int.TryParse(Environment.GetEnvironmentVariable("VRCAC_UI_PREVIEW_COLUMNS"), out var pc) ? pc : 10;
+            ColumnsSlider.Value = cols;
+            GridColumns = cols;
+            // GROUPLATE=1 のときは「グループ化オフで読み込み → あとからオンにする」を再現する
+            var groupLate = Environment.GetEnvironmentVariable("VRCAC_TEST_GROUP_LATE") == "1";
+            if (groupLate) GroupToggle.IsChecked = false;
             ApplyFilter();
             AvatarList.UpdateLayout();
             QueueThumbnails(_allItems.ToList(), CancellationToken.None);
@@ -239,15 +244,47 @@ public partial class MainWindow
                 var shown = AvatarList.Items.OfType<AvatarItem>().ToList();
                 var visible = VisibleIndexes().Where(i => i < shown.Count).ToList();
                 var blankIdx = visible.Where(i => shown[i].Thumbnail is null && shown[i].ThumbnailUrl is not null).ToList();
+                var groups = visible.Where(i => shown[i].IsGroup).ToList();
+                var groupBlank = groups.Where(i => shown[i].Thumbnail is null).ToList();
                 report.AppendLine($"{label,-16} 一覧={shown.Count,3} 表示中={visible.Count,3} 画像なし={blankIdx.Count,3} " +
-                    (blankIdx.Count > 0 ? "-> " + string.Join(",", blankIdx.Take(12).Select(i => $"#{i}:{shown[i].Name}")) : ""));
+                    $"| グループタイル={groups.Count,2} うち画像なし={groupBlank.Count,2} " +
+                    (groupBlank.Count > 0
+                        ? "-> " + string.Join(",", groupBlank.Take(6).Select(i =>
+                            $"{shown[i].Name}(代表:{shown[i].Representative?.Avatar.Name} 画像={(shown[i].Representative?.Thumbnail is null ? "なし" : "あり")} 幅={shown[i].Representative?.ThumbnailWidth})"))
+                        : ""));
             }
 
-            foreach (var wait in new[] { 1500, 2000, 3000, 4000, 5000 })
+            foreach (var wait in new[] { 1500, 2000, 3000 })
             {
                 await Task.Delay(wait);
                 AvatarList.UpdateLayout();
                 Snap($"+{wait}ms");
+            }
+            if (groupLate)
+            {
+                GroupToggle.IsChecked = true; // ここで初めてグループタイルが作られる
+                AvatarList.UpdateLayout();
+                await Task.Delay(1500);
+                Snap("グループ化オン");
+            }
+            // グループタイルは代表 (最古のメンバー) の順に並ぶので下の方にいる。そこまで送って見る
+            var all = AvatarList.Items.OfType<AvatarItem>().ToList();
+            var firstGroup = all.FindIndex(a => a.IsGroup);
+            report.AppendLine($"グループタイルの位置: {string.Join(",", all.Select((a, i) => (a, i)).Where(t => t.a.IsGroup).Select(t => $"#{t.i}:{t.a.Name}"))}");
+            if (firstGroup >= 0)
+            {
+                AvatarList.ScrollIntoView(all[firstGroup]);
+                AvatarList.UpdateLayout();
+                await Task.Delay(2000);
+                Snap("グループ位置へ");
+                await Task.Delay(3000);
+                Snap("さらに待つ");
+            }
+            if (Environment.GetEnvironmentVariable("VRCAC_UI_PREVIEW_SHOT") is { Length: > 0 } shot)
+            {
+                if (!string.IsNullOrEmpty(reportPath)) File.WriteAllText(reportPath, report.ToString());
+                await CaptureWindowAsync(this, shot, 300); // 撮ったら終了する
+                return;
             }
         }
         catch (Exception ex) { report.AppendLine("EXCEPTION: " + ex); }
