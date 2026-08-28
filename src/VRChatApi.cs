@@ -175,6 +175,58 @@ public sealed class VRChatApi : IDisposable
         return JsonSerializer.Deserialize<CurrentUser>(body, JsonOptions)!;
     }
 
+    // auth トークン (authcookie_ + UUID) として妥当な文字だけを許す。
+    // クッキー値に入れるため、空白や区切り文字が混ざったものは弾く
+    private static readonly Regex AuthTokenPattern = new(@"^[A-Za-z0-9_\-\.]{20,500}$", RegexOptions.CultureInvariant);
+
+    /// <summary>
+    /// 外部ブラウザからコピーした文字列を auth トークンとして解釈する。
+    /// /api/1/auth の応答 ({"ok":true,"token":"authcookie_..."}) をそのまま貼っても、トークン単体でも受け付ける。
+    /// </summary>
+    public static bool TryParseAuthToken(string? input, out string token)
+    {
+        token = "";
+        var s = input?.Trim() ?? "";
+        if (s.Length == 0) return false;
+        if (s.StartsWith('{'))
+        {
+            try
+            {
+                using var doc = JsonDocument.Parse(s);
+                if (!doc.RootElement.TryGetProperty("token", out var t) || t.GetString() is not { } v) return false;
+                s = v.Trim();
+            }
+            catch { return false; }
+        }
+        s = s.Trim('"', '\'');
+        if (s.StartsWith("auth=", StringComparison.OrdinalIgnoreCase)) s = s[5..]; // クッキー形式で貼られた場合
+        if (!AuthTokenPattern.IsMatch(s)) return false;
+        token = s;
+        return true;
+    }
+
+    /// <summary>
+    /// 外部ブラウザから受け取った auth トークンでログインする。
+    /// そのブラウザで 2FA 済みならそのまま通り、必要なら TwoFactorRequiredException。
+    /// </summary>
+    public async Task<CurrentUser> LoginWithAuthTokenAsync(string authToken, CancellationToken ct = default)
+    {
+        if (!AuthTokenPattern.IsMatch(authToken)) throw new VRChatApiException("token の形式が正しくありません。");
+        SetSessionCookies(authToken, null);
+        using var res = await _http.GetAsync($"{BaseUrl}/auth/user", ct);
+        var body = await res.Content.ReadAsStringAsync(ct);
+        if (!res.IsSuccessStatusCode) throw new VRChatApiException(ExtractError(body, res.StatusCode), res.StatusCode);
+
+        using var doc = JsonDocument.Parse(body);
+        if (doc.RootElement.TryGetProperty("requiresTwoFactorAuth", out var methods))
+        {
+            SaveCookies();
+            throw new TwoFactorRequiredException(methods.EnumerateArray().Select(m => m.GetString() ?? "").ToList());
+        }
+        SaveCookies();
+        return JsonSerializer.Deserialize<CurrentUser>(body, JsonOptions)!;
+    }
+
     /// <summary>2FA コードを検証。method は "totp" / "otp" / "emailOtp"。</summary>
     public async Task<CurrentUser> VerifyTwoFactorAsync(string method, string code, CancellationToken ct = default)
     {

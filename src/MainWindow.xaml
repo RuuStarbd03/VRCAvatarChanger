@@ -286,9 +286,28 @@
                         <TextBlock Grid.Column="1" Text="または" Style="{StaticResource CaptionText}" Margin="12,0"/>
                         <Border Grid.Column="2" Height="1" Background="{DynamicResource BorderBrush}" VerticalAlignment="Center"/>
                     </Grid>
-                    <Button x:Name="BrowserLoginButton" Style="{StaticResource SecondaryButton}" Click="BrowserLoginButton_Click" Height="36"
-                            Content="Discord / Google などでログイン"
-                            ToolTip="vrchat.com のログイン画面を開きます。Discord / Google / Apple / Steam でログインできます。"/>
+                    <Button x:Name="ExternalLoginButton" Style="{StaticResource SecondaryButton}" Click="ExternalLoginButton_Click" Height="36"
+                            Content="ふだん使うブラウザでログイン"
+                            ToolTip="Chrome など既定のブラウザで VRChat を開きます。そのブラウザで VRChat にログイン済みなら、コピーするだけで完了します。"/>
+                    <Button x:Name="BrowserLoginButton" Style="{StaticResource GhostButton}" Click="BrowserLoginButton_Click" Height="32" Margin="0,8,0,0"
+                            Content="アプリ内ブラウザでログイン"
+                            ToolTip="アプリに内蔵したブラウザで vrchat.com のログイン画面を開きます。Discord / Google / Apple / Steam でログインできます。"/>
+                </StackPanel>
+
+                <!-- 外部ブラウザ(Chrome など)から token を受け取るログイン -->
+                <StackPanel x:Name="ExternalLoginPanel" Visibility="Collapsed">
+                    <TextBlock Style="{StaticResource MutedText}" TextWrapping="Wrap" Margin="0,0,0,16"
+                               Text="ブラウザで VRChat のページを開きました。表示された token をコピーしてください。コピーするとこのアプリが自動で続行します。"/>
+                    <Button Content="ブラウザをもう一度開く" Style="{StaticResource SecondaryButton}" Click="OpenAuthPage_Click" Height="34"/>
+
+                    <TextBlock Text="token を貼り付け" Style="{StaticResource FieldLabel}" Margin="0,18,0,0"/>
+                    <TextBox x:Name="AuthTokenBox" Margin="0,0,0,16" KeyDown="AuthTokenField_KeyDown" FontFamily="Cascadia Mono, Consolas"/>
+                    <Button x:Name="AuthTokenButton" Content="ログイン" Click="AuthTokenLogin_Click" Height="36"/>
+
+                    <TextBlock Style="{StaticResource CaptionText}" TextWrapping="Wrap" Margin="0,14,0,0" Foreground="{DynamicResource FaintTextBrush}"
+                               Text="「Missing Credentials」と表示された場合は、先に vrchat.com にログインしてから、もう一度開いてください。"/>
+                    <Button Content="vrchat.com を開く" Style="{StaticResource GhostButton}" Click="OpenVRChatSite_Click" Height="30" Margin="0,6,0,0"/>
+                    <Button Content="戻る" Style="{StaticResource GhostButton}" Click="BackToLogin_Click" Height="32" Margin="0,6,0,0"/>
                 </StackPanel>
 
                 <StackPanel x:Name="TwoFactorPanel" Visibility="Collapsed">
@@ -649,6 +668,23 @@
                             <ToggleButton Grid.Column="1" x:Name="QuickToggle" Style="{StaticResource OnOffToggle}"
                                           Checked="QuickToggle_Changed" Unchecked="QuickToggle_Changed"
                                           VerticalAlignment="Top" Margin="14,0,0,0" AutomationProperties.Name="クイック着替え"/>
+                        </Grid>
+                    </Border>
+
+                    <Border Style="{StaticResource SettingRow}">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <StackPanel>
+                                <TextBlock Text="ブラウザのログイン状態を保持" Style="{StaticResource SettingTitle}"/>
+                                <TextBlock Style="{StaticResource SettingDesc}"
+                                           Text="ブラウザログイン用の内蔵ブラウザに VRChat・Discord・Google のログイン状態を残し、次回のログインを数クリックで済ませます。共用 PC ではオフ推奨です (オフにすると保存済みのブラウザデータも消去します)。"/>
+                            </StackPanel>
+                            <ToggleButton Grid.Column="1" x:Name="KeepLoginToggle" Style="{StaticResource OnOffToggle}"
+                                          Checked="KeepLoginToggle_Changed" Unchecked="KeepLoginToggle_Changed"
+                                          VerticalAlignment="Top" Margin="14,0,0,0" AutomationProperties.Name="ブラウザのログイン状態を保持"/>
                         </Grid>
                     </Border>
 

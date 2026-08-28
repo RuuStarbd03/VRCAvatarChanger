@@ -84,7 +84,7 @@
                             <StackPanel Grid.Column="1">
                                 <TextBlock Text="VRChat アカウントでログイン" FontWeight="SemiBold"/>
                                 <TextBlock Style="{StaticResource Body}" Margin="0,4,0,0"
-                                           Text="ユーザー名とパスワード、または「Discord / Google などでログイン」からログインします。2 段階認証を設定している場合はコードを入力します。パスワードは保存されません。"/>
+                                           Text="ユーザー名とパスワードのほか、「ふだん使うブラウザでログイン」「アプリ内ブラウザでログイン」からもログインできます (Discord / Google / Apple / Steam 連携はこちら)。2 段階認証を設定している場合はコードを入力します。パスワードは保存されません。"/>
                             </StackPanel>
                         </Grid>
                     </Border>
@@ -144,6 +144,12 @@
                     <TextBlock Style="{StaticResource Body}"
                                Text="他の人の非公開(Private)アバターには着替えられません(VRChat の仕様)。自分のアバターなら非公開でも使えます。"/>
 
+                    <TextBlock Text="ログインが面倒 / いつものブラウザのログインを使いたい" Style="{StaticResource Q}"/>
+                    <TextBlock Style="{StaticResource Body}"
+                               Text="「ふだん使うブラウザでログイン」を押すと、Chrome など既定のブラウザで VRChat のページが開きます。そのブラウザで VRChat にログイン済みなら token が表示されるので、コピーするだけでこのアプリが自動で続行します (貼り付けても構いません)。ログインしていない場合は「vrchat.com を開く」からログインしてから、もう一度開いてください。"/>
+                    <TextBlock Style="{StaticResource Body}"
+                               Text="このアプリが Chrome などのブラウザに保存されたパスワードやクッキーを直接読むことはありません。受け取るのは、あなたがコピーした token だけです。"/>
+
                     <TextBlock Text="Discord / Google でログインできない" Style="{StaticResource Q}"/>
                     <TextBlock Style="{StaticResource Body}"
                                Text="ログイン画面の表示に WebView2 が必要です(Windows 11 には入っています)。無い場合は案内に従ってインストールしてください。Google に拒否される場合は、VRChat でパスワードを設定してユーザー名とパスワードでログインしてください。"/>
@@ -160,7 +166,9 @@
                     <TextBlock Style="{StaticResource Body}"
                                Text="パスワードは保存しません。保存するのはログイン状態・表示設定・パブリックリスト・グループだけで、すべてこの PC の %AppData%\VRCAvatarChanger にあります。ログイン状態は Windows の機能で暗号化され、通信先は VRChat のサーバーだけです。"/>
                     <TextBlock Style="{StaticResource Body}"
-                               Text="ログイン状態はアカウント全体を操作できるものなので、共用 PC では使い終わったら「ログアウト」してください。"/>
+                               Text="ブラウザログインを使った場合、既定では内蔵ブラウザに VRChat・Discord・Google のログイン状態が残り、次回のログインが数クリックで済みます (設定「ブラウザのログイン状態を保持」でオフにできます)。"/>
+                    <TextBlock Style="{StaticResource Body}"
+                               Text="ログイン状態はアカウント全体を操作できるものなので、共用 PC では「ブラウザのログイン状態を保持」をオフにし、使い終わったら「ログアウト」してください。"/>
 
                     <TextBlock Text="パブリックタブやグループの登録はどこに保存される?" Style="{StaticResource Q}"/>
                     <TextBlock Style="{StaticResource Body}"

@@ -379,10 +379,30 @@ public partial class MainWindow : Window
         SetQuickOverlay(QuickToggle.IsChecked == true);
     }
 
+    private void KeepLoginToggle_Changed(object sender, RoutedEventArgs e)
+    {
+        if (!_ready) return;
+        var enabled = KeepLoginToggle.IsChecked == true;
+        if (_settings.KeepBrowserLogin == enabled) return;
+        _settings.KeepBrowserLogin = enabled;
+        if (!_preview) _settings.Save();
+        if (!enabled)
+        {
+            // オフにした時点で、残っていたブラウザデータも消す
+            BrowserLoginWindow.DeleteBrowserProfile();
+            SetStatus(StatusKind.Info, "ブラウザのログイン状態を消去しました。今後はログイン成功のたびに消去します");
+        }
+        else
+        {
+            SetStatus(StatusKind.Info, "ブラウザのログイン状態を保持: オン。次回のブラウザログインから状態が残ります");
+        }
+    }
+
     private void OpenSettings()
     {
         WatchToggle.IsChecked = _settings.WatchVRChat;
         QuickToggle.IsChecked = _settings.QuickOverlay;
+        KeepLoginToggle.IsChecked = _settings.KeepBrowserLogin;
         AccountDesc.Text = (string.IsNullOrEmpty(_user?.DisplayName) ? "" : $"{_user.DisplayName} としてログイン中。")
             + "保存したログイン状態を消してログイン画面に戻ります。";
         if (SettingsOverlay.Visibility != Visibility.Visible)

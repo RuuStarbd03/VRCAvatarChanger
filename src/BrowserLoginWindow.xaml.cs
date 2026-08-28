@@ -15,6 +15,7 @@ public partial class BrowserLoginWindow : Window
     private static readonly string[] CookieOrigins = ["https://vrchat.com", "https://api.vrchat.cloud"];
 
     private readonly VRChatApi _api;
+    private readonly bool _keepLogin;
     private readonly DispatcherTimer _poll = new() { Interval = TimeSpan.FromSeconds(1) };
     private (string? Auth, string? TwoFactor) _lastTried;
     private bool _verifying;
@@ -22,9 +23,11 @@ public partial class BrowserLoginWindow : Window
     /// <summary>ログインに成功したときのユーザー。キャンセル時は null。</summary>
     public CurrentUser? Result { get; private set; }
 
-    public BrowserLoginWindow(VRChatApi api)
+    /// <param name="keepLogin">true ならログイン成功後もブラウザのログイン状態 (VRChat / Discord / Google) を残す。</param>
+    public BrowserLoginWindow(VRChatApi api, bool keepLogin)
     {
         _api = api;
+        _keepLogin = keepLogin;
         InitializeComponent();
         SourceInitialized += (_, _) => App.ApplyTitleBarTheme(this);
         Loaded += async (_, _) => await InitAsync();
@@ -108,8 +111,9 @@ public partial class BrowserLoginWindow : Window
             {
                 Result = user;
                 _poll.Stop();
-                // セッションはアプリ側(DPAPI 暗号化)に移したので、ブラウザ側のクッキーは残さない
-                await ClearBrowserDataAsync(Web.CoreWebView2);
+                // セッションはアプリ側 (DPAPI 暗号化) に移した。
+                // 「ログイン状態を保持」がオフのときだけ、従来どおりブラウザ側のクッキーを消す
+                if (!_keepLogin) await ClearBrowserDataAsync(Web.CoreWebView2);
                 DialogResult = true;
                 Close();
                 return;

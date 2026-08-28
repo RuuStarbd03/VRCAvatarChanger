@@ -235,6 +235,12 @@ internal static class Win32
     public static void SetWindowPosPx(nint hwnd, int x, int y, int w, int h)
         => SetWindowPos(hwnd, 0, x, y, w, h, 0x0004 | 0x0010); // SWP_NOZORDER | SWP_NOACTIVATE
 
+    [DllImport("user32.dll")] private static extern bool GetWindowRect(nint hWnd, out NativeRect r);
+
+    /// <summary>ウィンドウの外枠 (画面座標の物理ピクセル)。取れなければ null。</summary>
+    public static NativeRect? WindowRectPx(nint hwnd)
+        => GetWindowRect(hwnd, out var r) ? r : null;
+
     /// <summary>
     /// ゲームなど他プロセスが手前でも自分のウィンドウを前面化する。
     /// (通常の SetForegroundWindow はフォアグラウンド権限がないと無視されるため、

@@ -14,6 +14,11 @@ public sealed class Settings
     public bool WatchVRChat { get; set; }
     /// <summary>クイック着替え: VRChat がフォアグラウンドのとき Shift+1 で画面右にアバター選択オーバーレイを出す。</summary>
     public bool QuickOverlay { get; set; } = true;
+    /// <summary>
+    /// ブラウザログインの内蔵ブラウザに VRChat / Discord / Google のログイン状態を残す。
+    /// 残しておくと再ログインが数クリックで済む。オフにすると従来どおり毎回消去する。
+    /// </summary>
+    public bool KeepBrowserLogin { get; set; } = true;
     /// <summary>クイック着替えの並び順。"recent" (最近使用した順) か SortKey と同じキー。</summary>
     public string QuickSortKey { get; set; } = "recent";
     /// <summary>最近使用したアバター ID (先頭が最新)。「最近使用した順」の並びに使う。</summary>

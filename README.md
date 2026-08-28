@@ -140,7 +140,10 @@ Debug ビルド限定の環境変数 `VRCAC_UPDATE_REPO` / `VRCAC_UPDATE_API` �
 - `%AppData%\VRCAvatarChanger\session.json` — VRChat のセッションクッキー(`auth` / `twoFactorAuth`)。
   **Windows の DPAPI(CurrentUser)で暗号化**されており、同じ Windows ユーザーアカウントでしか復号できません。「ログアウト」で削除されます。
 - `%AppData%\VRCAvatarChanger\WebView2\` — ブラウザログイン用の埋め込みブラウザのプロファイル。
-  ログイン成功時にクッキー・閲覧データを消去し、「ログアウト」でフォルダごと削除します。
+  既定 (設定「ブラウザのログイン状態を保持」オン) では VRChat・Discord・Google のログイン状態を残し、
+  次回のブラウザログインを数クリックで済ませられるようにします (クッキーは WebView2 が DPAPI 系の暗号化で保存)。
+  設定をオフにすると、ログイン成功のたびにクッキー・閲覧データを消去し、オフにした時点とログアウトでフォルダごと削除します。
+  共用 PC ではオフを推奨します。
 - `%AppData%\VRCAvatarChanger\settings.json` — 表示形式・列数・並び順などの表示設定(機密情報は含みません)。
 - `%AppData%\VRCAvatarChanger\groups.json` — グループ(名前とアバター ID の一覧)。
 - `%AppData%\VRCAvatarChanger\public_avatars.json` — パブリックリスト(アバター ID・名前・作者・サムネ URL・追加日時)。
@@ -154,6 +157,11 @@ Debug ビルド限定の環境変数 `VRCAC_UPDATE_REPO` / `VRCAC_UPDATE_API` �
 - **画像取得は VRChat のホスト(https)に限定**。API 応答に含まれる URL でも他ホストへはリクエストしません。
 - **アバター ID は `avtr_` + UUID の形式を厳密に検証**してから URL に埋め込みます(パス操作の防止)。
 - **埋め込みブラウザは最小権限**: https 以外への遷移拒否、ポップアップは同一ウィンドウ内、パスワード保存 / 自動入力 / DevTools / ダウンロード / 権限要求(カメラ等)をすべて無効化。
+- **他アプリのブラウザデータは読みません**。「ふだん使うブラウザでログイン」は、既定のブラウザで
+  `https://api.vrchat.cloud/api/1/auth` を開き、**利用者がコピーした token を受け取るだけ**です
+  (Chrome 等のクッキー DB・保存済みパスワードには一切アクセスしません)。
+  クリップボードの監視はこのログイン画面を開いている間だけで、`authcookie_` 形式かどうかだけを見て、
+  それ以外の内容は無視します(記録・送信もしません)。
 - **ログ・テレメトリなし**。外部に送るのは VRChat API へのリクエストだけです。
 - **クイック着替え (Shift+1) のキーボードフックは判定のみ**。低レベルフックは「Shift+1 が押されたか」と
   「VRChat が手前か」の判定だけに使い、他のキーは素通しします。入力内容の記録・送信は一切しません。

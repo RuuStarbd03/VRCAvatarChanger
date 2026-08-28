@@ -58,7 +58,32 @@ public partial class MainWindow
 
         // 見た目確認: VRCAC_UI_PREVIEW_SHOT=path でウィンドウを画面外に置いたまま PNG に描画して終了する
         // (実画面をキャプチャしないので、ゲーム中でも邪魔にならない)。SETTINGS=1 なら設定オーバーレイを開いた状態で撮る
+        // 位置計算の確認: VRCAC_UI_PREVIEW_PROBE=path で、クイック着替えの計算結果をファイルに書いて終了する
+        // (画面には何も出さないので、VRChat のプレイ中でも邪魔にならない)
+        if (Environment.GetEnvironmentVariable("VRCAC_UI_PREVIEW_PROBE") is { Length: > 0 } probePath)
+        {
+            _ = WriteQuickProbeAsync(probePath);
+            return;
+        }
+
         var shotPath = Environment.GetEnvironmentVariable("VRCAC_UI_PREVIEW_SHOT");
+
+        // ログイン画面の確認: LOGIN=1 で入力画面、LOGIN=external で外部ブラウザログインのパネルを開いた状態にする
+        if (Environment.GetEnvironmentVariable("VRCAC_UI_PREVIEW_LOGIN") is { Length: > 0 } login)
+        {
+            MainPanel.Visibility = Visibility.Collapsed;
+            LoginPanel.Visibility = Visibility.Visible;
+            var external = login == "external";
+            CredentialsPanel.Visibility = external ? Visibility.Collapsed : Visibility.Visible;
+            ExternalLoginPanel.Visibility = external ? Visibility.Visible : Visibility.Collapsed;
+            if (!string.IsNullOrEmpty(shotPath))
+            {
+                Left = -4000; Top = 0;
+                _ = CaptureWindowAsync(this, shotPath);
+            }
+            return;
+        }
+
         if (Environment.GetEnvironmentVariable("VRCAC_UI_PREVIEW_SETTINGS") == "1") OpenSettings();
         if (Environment.GetEnvironmentVariable("VRCAC_UI_PREVIEW_QUICK") == "1")
         {
@@ -75,6 +100,47 @@ public partial class MainWindow
             _ = CaptureWindowAsync(this, shotPath);
         }
     }
+
+    /// <summary>
+    /// クイック着替えの位置計算を実際に走らせ、結果をテキストで書き出す。
+    /// オーバーレイは画面外に開いて実測し、すぐ終了する。
+    /// </summary>
+    private async Task WriteQuickProbeAsync(string path)
+    {
+        var sb = new System.Text.StringBuilder();
+        try
+        {
+            Left = -4000; Top = 0;
+            var vrc = System.Diagnostics.Process.GetProcessesByName("VRChat").FirstOrDefault(p => p.MainWindowHandle != 0);
+            _vrchatHwnd = vrc?.MainWindowHandle ?? 0;
+            sb.AppendLine($"vrchat hwnd = {_vrchatHwnd}");
+            sb.AppendLine($"client px   = {Fmt(Win32.ClientAreaPx(_vrchatHwnd))}");
+            sb.AppendLine($"work px     = {Fmt(Win32.WorkAreaPx(_vrchatHwnd))}");
+            var area = QuickOverlayAreaPx();
+            var scale = Win32.ScaleOf(_vrchatHwnd);
+            sb.AppendLine($"area px     = {Fmt(area)}");
+            sb.AppendLine($"vrchat scale= {scale}");
+            sb.AppendLine($"main scale  = {VisualTreeHelper.GetDpi(this).DpiScaleX}");
+
+            _quick = new QuickPickWindow(QuickChangeAsync, () => { }, SaveQuickSortKey);
+            _quick.OpenAt(area, scale, FlatAvatarItems(), _settings.RecentAvatars, _settings.QuickSortKey);
+            sb.AppendLine($"want px     = x {area.Right - (int)Math.Round(_quick.Width * scale)} w {(int)Math.Round(_quick.Width * scale)}");
+
+            foreach (var wait in new[] { 200, 800, 1500 })
+            {
+                await Task.Delay(wait);
+                sb.AppendLine($"actual +{wait}ms = {Fmt(Win32.WindowRectPx(_quick.Hwnd))} " +
+                              $"(wpf W {_quick.Width:F0} H {_quick.Height:F0}, dpi {VisualTreeHelper.GetDpi(_quick).DpiScaleX}) " +
+                              $"slideX {_quick.Slide.X:F1} opacity {_quick.Root.Opacity:F2} visible {_quick.IsVisible} active {_quick.IsActive}");
+            }
+        }
+        catch (Exception ex) { sb.AppendLine("EXCEPTION: " + ex); }
+        File.WriteAllText(path, sb.ToString());
+        Application.Current.Shutdown();
+    }
+
+    private static string Fmt(Win32.NativeRect? r)
+        => r is { } v ? $"{v.Left},{v.Top} - {v.Right},{v.Bottom} ({v.Right - v.Left}x{v.Bottom - v.Top})" : "(null)";
 
     private static async Task CaptureWindowAsync(Window w, string path)
     {
