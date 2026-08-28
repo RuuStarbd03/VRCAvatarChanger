@@ -33,7 +33,7 @@ public partial class ToastWindow : Window
     {
         Message.Text = text;
         ToastIcon.Text = error ? "\uEA39" : "\uE73E"; // Segoe Fluent Icons: ErrorBadge / CheckMark
-        ToastIcon.Foreground = (Brush)FindResource(error ? "DangerBrush" : "AccentBrush");
+        ToastIcon.SetResourceReference(ForegroundProperty, error ? "DangerBrush" : "AccentBrush");
 
         if (!IsVisible) Show();
         // 位置決めは実サイズが要るので、レイアウトを確定させてから

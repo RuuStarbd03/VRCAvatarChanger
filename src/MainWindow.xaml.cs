@@ -251,6 +251,9 @@ public partial class MainWindow : Window
 
     private enum StatusKind { Info, Success, Error }
 
+    // 色は SetResourceReference で結び付ける。ブラシを直接入れてしまうと、
+    // あとで配色を切り替えたときにそこだけ前の色のまま残る
+
     private void SetStatus(StatusKind kind, string text)
     {
         StatusText.Text = text;
@@ -258,18 +261,18 @@ public partial class MainWindow : Window
         {
             case StatusKind.Success:
                 StatusIcon.Text = "\uE73E"; // Segoe Fluent Icons: CheckMark
-                StatusIcon.Foreground = (System.Windows.Media.Brush)FindResource("SuccessBrush");
-                StatusText.Foreground = (System.Windows.Media.Brush)FindResource("TextBrush");
+                StatusIcon.SetResourceReference(ForegroundProperty, "SuccessBrush");
+                StatusText.SetResourceReference(ForegroundProperty, "TextBrush");
                 StatusIcon.Visibility = Visibility.Visible;
                 break;
             case StatusKind.Error:
                 StatusIcon.Text = "\uEA39"; // Segoe Fluent Icons: ErrorBadge
-                StatusIcon.Foreground = (System.Windows.Media.Brush)FindResource("DangerBrush");
-                StatusText.Foreground = (System.Windows.Media.Brush)FindResource("DangerBrush");
+                StatusIcon.SetResourceReference(ForegroundProperty, "DangerBrush");
+                StatusText.SetResourceReference(ForegroundProperty, "DangerBrush");
                 StatusIcon.Visibility = Visibility.Visible;
                 break;
             default:
-                StatusText.Foreground = (System.Windows.Media.Brush)FindResource("MutedTextBrush");
+                StatusText.SetResourceReference(ForegroundProperty, "MutedTextBrush");
                 StatusIcon.Visibility = Visibility.Collapsed;
                 break;
         }
@@ -400,6 +403,7 @@ public partial class MainWindow : Window
     {
         WatchToggle.IsChecked = _settings.WatchVRChat;
         QuickToggle.IsChecked = _settings.QuickOverlay;
+        (_settings.Theme switch { "light" => ThemeLight, "dark" => ThemeDark, _ => ThemeSystem }).IsChecked = true;
         AccountDesc.Text = (string.IsNullOrEmpty(_user?.DisplayName) ? "" : $"{_user.DisplayName} としてログイン中。")
             + "保存したログイン状態を消してログイン画面に戻ります。";
         if (SettingsOverlay.Visibility != Visibility.Visible)
@@ -444,6 +448,16 @@ public partial class MainWindow : Window
     {
         if (!_ready) return;
         SetWatchVRChat(WatchToggle.IsChecked == true);
+    }
+
+    private void Theme_Checked(object sender, RoutedEventArgs e)
+    {
+        if (!_ready) return;
+        var mode = (sender as RadioButton)?.Tag as string ?? "system";
+        if (_settings.Theme == mode) return; // 設定画面を開いたときの初期化では何もしない
+        _settings.Theme = mode;
+        if (!_preview) _settings.Save();
+        App.ApplyTheme(mode);
     }
 
     private void OpenDataFolder_Click(object sender, RoutedEventArgs e)

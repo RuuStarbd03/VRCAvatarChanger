@@ -702,7 +702,11 @@
             <!-- 背景クリックで閉じる -->
             <Border Background="{DynamicResource ScrimBrush}" MouseLeftButtonDown="SettingsBackdrop_MouseLeftButtonDown"/>
 
+            <!-- カードの高さの上限を測るための入れ物。画面が低いときにカードが画面外へはみ出さないようにする -->
+            <Border x:Name="SettingsBounds" Margin="0,32" IsHitTestVisible="False"/>
+
             <Border x:Name="SettingsCard" Style="{StaticResource Card}" Width="480" VerticalAlignment="Center" HorizontalAlignment="Center" Padding="20"
+                    MaxHeight="{Binding ActualHeight, ElementName=SettingsBounds}"
                     RenderTransformOrigin="0.5,0.5">
                 <Border.RenderTransform>
                     <ScaleTransform x:Name="SettingsCardScale"/>
@@ -710,7 +714,13 @@
                 <Border.Effect>
                     <DropShadowEffect BlurRadius="28" ShadowDepth="4" Opacity="0.35" Color="#000000"/>
                 </Border.Effect>
-                <StackPanel>
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+
                     <Grid Margin="0,0,0,14">
                         <TextBlock Text="設定" FontWeight="SemiBold" FontSize="16" VerticalAlignment="Center"/>
                         <Button Style="{StaticResource GhostButton}" Click="SettingsClose_Click" AutomationProperties.Name="設定を閉じる"
@@ -718,6 +728,10 @@
                             <TextBlock Text="&#xE711;" Style="{StaticResource Icon}"/>
                         </Button>
                     </Grid>
+
+                    <!-- 項目が画面に収まらないときはここだけスクロールする (見出しと閉じるは残す) -->
+                    <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" Padding="0,0,2,0">
+                    <StackPanel>
 
                     <Border Style="{StaticResource SettingRow}">
                         <Grid>
@@ -776,6 +790,32 @@
                                 <ColumnDefinition Width="Auto"/>
                             </Grid.ColumnDefinitions>
                             <StackPanel>
+                                <TextBlock Text="配色" Style="{StaticResource SettingTitle}"/>
+                                <TextBlock Style="{StaticResource SettingDesc}"
+                                           Text="「システム」は Windows の「アプリのモード」に合わせ、切り替わったら追従します。選ぶとその場で変わります。"/>
+                            </StackPanel>
+                            <Border Grid.Column="1" Background="{DynamicResource InputBrush}" BorderBrush="{DynamicResource BorderBrush}"
+                                    BorderThickness="1" CornerRadius="{StaticResource ControlRadius}"
+                                    VerticalAlignment="Top" Margin="14,0,0,0">
+                                <StackPanel Orientation="Horizontal">
+                                    <RadioButton x:Name="ThemeSystem" Content="システム" Tag="system" GroupName="Theme"
+                                                 Style="{StaticResource SegmentButton}" Checked="Theme_Checked"/>
+                                    <RadioButton x:Name="ThemeLight" Content="ライト" Tag="light" GroupName="Theme"
+                                                 Style="{StaticResource SegmentButton}" Checked="Theme_Checked"/>
+                                    <RadioButton x:Name="ThemeDark" Content="ダーク" Tag="dark" GroupName="Theme"
+                                                 Style="{StaticResource SegmentButton}" Checked="Theme_Checked"/>
+                                </StackPanel>
+                            </Border>
+                        </Grid>
+                    </Border>
+
+                    <Border Style="{StaticResource SettingRow}">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <StackPanel>
                                 <TextBlock Text="データの保存先" Style="{StaticResource SettingTitle}"/>
                                 <TextBlock Style="{StaticResource SettingDesc}"
                                            Text="設定・グループ・タグ・パブリックリストの保存先フォルダ (%AppData%\VRCAvatarChanger) を開きます。"/>
@@ -801,8 +841,12 @@
                         </Grid>
                     </Border>
 
-                    <Button Content="閉じる" Click="SettingsClose_Click" MinWidth="100" Height="34" HorizontalAlignment="Right" Margin="0,4,0,0"/>
-                </StackPanel>
+                    </StackPanel>
+                    </ScrollViewer>
+
+                    <Button Grid.Row="2" Content="閉じる" Click="SettingsClose_Click" MinWidth="100" Height="34"
+                            HorizontalAlignment="Right" Margin="0,14,0,0"/>
+                </Grid>
             </Border>
         </Grid>
     </Grid>

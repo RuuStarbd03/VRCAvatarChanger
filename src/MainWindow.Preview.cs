@@ -68,6 +68,22 @@ public partial class MainWindow
         // (実画面をキャプチャしないので、ゲーム中でも邪魔にならない)。SETTINGS=1 なら設定オーバーレイを開いた状態で撮る
         var shotPath = Environment.GetEnvironmentVariable("VRCAC_UI_PREVIEW_SHOT");
         if (Environment.GetEnvironmentVariable("VRCAC_UI_PREVIEW_SETTINGS") == "1") OpenSettings();
+        // 配色の切り替えの確認: 設定から選んだあと、その場で全体が変わっているかを撮る
+        if (Environment.GetEnvironmentVariable("VRCAC_UI_PREVIEW_THEMEPICK") is { Length: > 0 } pick)
+        {
+            Left = -4000; Top = 0;
+            OpenSettings();
+            _ = Task.Run(async () =>
+            {
+                await Task.Delay(600);
+                await Dispatcher.InvokeAsync(() =>
+                    (pick switch { "light" => ThemeLight, "dark" => ThemeDark, _ => ThemeSystem }).IsChecked = true);
+                if (!string.IsNullOrEmpty(shotPath))
+                    await Dispatcher.InvokeAsync(() => CaptureWindowAsync(this, shotPath, 400));
+            });
+            return;
+        }
+
         // スイッチの切り替えアニメーションの確認: 切り替えた直後 (滑っている最中) を撮る
         if (Environment.GetEnvironmentVariable("VRCAC_UI_PREVIEW_TOGGLEANIM") is { Length: > 0 } toggleAt)
         {

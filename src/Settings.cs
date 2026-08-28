@@ -10,6 +10,8 @@ public sealed class Settings
     public const int MaxGridColumns = 10;
 
     public string ViewMode { get; set; } = "list";   // "list" | "grid"
+    /// <summary>配色。"system" (Windows のアプリのモードに合わせる) / "light" / "dark"。</summary>
+    public string Theme { get; set; } = "system";
     /// <summary>VRChat 連動: Windows 起動時にトレイで待機し、VRChat の起動を検知したらウィンドウを開く。</summary>
     public bool WatchVRChat { get; set; }
     /// <summary>VRChat のプレイ中に使うホットキー全体のオン/オフ(オフにするとキーボードフックを外す)。</summary>
@@ -51,6 +53,7 @@ public sealed class Settings
         if (s is null) return new Settings();
         s.GridColumns = Math.Clamp(s.GridColumns, MinGridColumns, MaxGridColumns);
         if (s.ViewMode is not ("list" or "grid")) s.ViewMode = "list";
+        if (s.Theme is not ("system" or "light" or "dark")) s.Theme = "system";
         return s;
     }
 

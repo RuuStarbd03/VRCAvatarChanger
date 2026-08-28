@@ -117,7 +117,7 @@ public partial class MainWindow
     private void SetLoginStatus(string text, bool error)
     {
         LoginStatus.Text = text;
-        LoginStatus.Foreground = (System.Windows.Media.Brush)FindResource(error ? "DangerBrush" : "MutedTextBrush");
+        LoginStatus.SetResourceReference(ForegroundProperty, error ? "DangerBrush" : "MutedTextBrush");
     }
 
     /// <summary>設定ウィンドウの「ログアウト」から呼ばれる。</summary>

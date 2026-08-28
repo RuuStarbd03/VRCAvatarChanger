@@ -29,7 +29,10 @@ public partial class App : Application
         ThreadPool.RegisterWaitForSingleObject(_activateEvent, (_, _) => Dispatcher.BeginInvoke(ActivateMainWindow), null, -1, false);
 
         Updater.CleanupOldVersion();
-        ApplySystemTheme();
+        ApplyTheme(Settings.Load().Theme);
+        // 「システム」を選んでいる間は、Windows 側でモードが変わったら追従する
+        // (時間帯で自動的に切り替える設定があるので、開きっぱなしでも合っていてほしい)
+        SystemEvents.UserPreferenceChanged += OnUserPreferenceChanged;
         base.OnStartup(e);
         DispatcherUnhandledException += (_, args) =>
         {
@@ -85,31 +88,59 @@ public partial class App : Application
 
     protected override void OnExit(ExitEventArgs e)
     {
+        SystemEvents.UserPreferenceChanged -= OnUserPreferenceChanged;
         _activateEvent?.Dispose();
         _instanceMutex?.Dispose();
         base.OnExit(e);
     }
 
-    /// <summary>Windows の「アプリのモード」(ダーク/ライト)に合わせてテーマ辞書を差し替える。</summary>
-    private void ApplySystemTheme()
-    {
-        try
-        {
-            using var key = Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize");
-            IsDarkTheme = key?.GetValue("AppsUseLightTheme") is not int light || light == 0;
-        }
-        catch { IsDarkTheme = true; }
+    /// <summary>今選ばれている配色 ("system" / "light" / "dark")。</summary>
+    private static string _themeMode = "system";
 
-        // 環境変数 VRCAC_THEME=light / dark で強制できる
+    private static void OnUserPreferenceChanged(object? sender, UserPreferenceChangedEventArgs e)
+    {
+        if (e.Category == UserPreferenceCategory.General && _themeMode == "system")
+            Current?.Dispatcher.BeginInvoke(() => ApplyTheme("system"));
+    }
+
+    /// <summary>
+    /// 配色を適用する。mode は "system" (Windows のアプリのモードに合わせる) / "light" / "dark"。
+    /// 色は全て DynamicResource 経由なので、辞書を差し替えれば開いている画面もその場で変わる。
+    /// </summary>
+    public static void ApplyTheme(string mode)
+    {
+        _themeMode = mode is "light" or "dark" ? mode : "system";
+        IsDarkTheme = _themeMode switch
+        {
+            "light" => false,
+            "dark" => true,
+            _ => IsSystemDark(),
+        };
+        // 環境変数 VRCAC_THEME=light / dark で強制できる (検証用。設定より優先)
         switch (Environment.GetEnvironmentVariable("VRCAC_THEME")?.ToLowerInvariant())
         {
             case "light": IsDarkTheme = false; break;
             case "dark": IsDarkTheme = true; break;
         }
 
+        if (Current is not { } app) return;
         var dict = new ResourceDictionary { Source = new Uri(IsDarkTheme ? "Themes/Dark.xaml" : "Themes/Light.xaml", UriKind.Relative) };
-        Resources.MergedDictionaries.Clear();
-        Resources.MergedDictionaries.Add(dict);
+        // 差し替えは 1 手で行う (一度空にすると、その瞬間だけ色を引けなくなる)
+        if (app.Resources.MergedDictionaries.Count > 0) app.Resources.MergedDictionaries[0] = dict;
+        else app.Resources.MergedDictionaries.Add(dict);
+        // タイトルバーは DWM 側の設定なので、開いている分を塗り直す
+        foreach (Window window in app.Windows) ApplyTitleBarTheme(window);
+    }
+
+    /// <summary>Windows の「アプリのモード」がダークか。</summary>
+    private static bool IsSystemDark()
+    {
+        try
+        {
+            using var key = Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize");
+            return key?.GetValue("AppsUseLightTheme") is not int light || light == 0;
+        }
+        catch { return true; }
     }
 
     /// <summary>タイトルバーもテーマに合わせる (DWM の immersive dark mode)。ウィンドウの SourceInitialized 以降で呼ぶ。</summary>

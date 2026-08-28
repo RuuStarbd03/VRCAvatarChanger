@@ -117,13 +117,14 @@ public partial class HotkeyWindow : Window
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
 
         var titles = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
-        titles.Children.Add(new TextBlock
+        var title = new TextBlock
         {
             Text = row.Title,
             FontWeight = FontWeights.SemiBold,
             TextTrimming = TextTrimming.CharacterEllipsis,
-            Foreground = (Brush)FindResource("TextBrush"),
-        });
+        };
+        title.SetResourceReference(ForegroundProperty, "TextBrush"); // 配色を切り替えても追従するように
+        titles.Children.Add(title);
         titles.Children.Add(new TextBlock
         {
             Text = description,
@@ -142,8 +143,8 @@ public partial class HotkeyWindow : Window
             TextAlignment = TextAlignment.Right,
             MinWidth = 120,
             Margin = new Thickness(12, 0, 12, 0),
-            Foreground = (Brush)FindResource(row.Get().IsSet ? "TextBrush" : "MutedTextBrush"),
         };
+        row.KeyText.SetResourceReference(ForegroundProperty, row.Get().IsSet ? "TextBrush" : "MutedTextBrush");
         Grid.SetColumn(row.KeyText, 1);
         grid.Children.Add(row.KeyText);
 
@@ -186,7 +187,7 @@ public partial class HotkeyWindow : Window
         CancelCapture();
         _capturing = row;
         row.KeyText.Text = "キーを押してください...";
-        row.KeyText.Foreground = (Brush)FindResource("AccentBrush");
+        row.KeyText.SetResourceReference(ForegroundProperty, "AccentBrush");
         CaptureHint.Text = "使いたいキーの組み合わせを押してください(Esc で中止、Backspace で解除)。";
         Focus();
     }
@@ -202,7 +203,7 @@ public partial class HotkeyWindow : Window
     {
         var current = row.Get();
         row.KeyText.Text = current.Display;
-        row.KeyText.Foreground = (Brush)FindResource(current.IsSet ? "TextBrush" : "MutedTextBrush");
+        row.KeyText.SetResourceReference(ForegroundProperty, current.IsSet ? "TextBrush" : "MutedTextBrush");
     }
 
     private void Apply(HotkeyRow row, Hotkey hotkey)
