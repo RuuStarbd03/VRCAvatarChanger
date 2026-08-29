@@ -434,7 +434,6 @@ public partial class MainWindow : Window
     private void UpdateUserHeader()
     {
         RefreshCurrentMarks();
-        UpdatePreviousButton();
         if (_user is null) return;
         UserNameText.Text = _user.DisplayName;
         var current = _allItems.FirstOrDefault(a => a.Id == _user.CurrentAvatar)?.Avatar;

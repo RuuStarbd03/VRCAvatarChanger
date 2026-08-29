@@ -375,14 +375,6 @@
                                 <TextBlock x:Name="UpdateButtonText" Text="更新があります" Foreground="{DynamicResource AccentBrush}"/>
                             </StackPanel>
                         </Button>
-                        <Button x:Name="PreviousButton" Style="{StaticResource GhostButton}" Click="PreviousButton_Click"
-                                AutomationProperties.Name="直前のアバターに戻す" IsEnabled="False"
-                                ToolTip="1 つ前に着ていたアバターに戻します" Height="30" Padding="10,0" Margin="0,0,4,0">
-                            <StackPanel Orientation="Horizontal">
-                                <TextBlock Text="&#xE7A7;" Style="{StaticResource Icon}" Margin="0,0,8,0"/>
-                                <TextBlock Text="直前に戻す"/>
-                            </StackPanel>
-                        </Button>
                         <Button Style="{StaticResource GhostButton}" Click="SettingsButton_Click" AutomationProperties.Name="設定"
                                 ToolTip="設定 (VRChat 連動・ログアウトなど)" Height="30" Padding="10,0" Margin="0,0,4,0">
                             <StackPanel Orientation="Horizontal">

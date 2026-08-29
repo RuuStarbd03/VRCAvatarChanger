@@ -85,18 +85,6 @@ public partial class MainWindow
         await ChangeByHotkeyAsync(id, null, toast);
     }
 
-    private async void PreviousButton_Click(object sender, RoutedEventArgs e) => await ChangeToPreviousAsync(toast: false);
-
-    /// <summary>ツールバーの「直前に戻す」の状態を、今の履歴に合わせる。</summary>
-    private void UpdatePreviousButton()
-    {
-        var id = PreviousAvatarId();
-        PreviousButton.IsEnabled = id is not null;
-        PreviousButton.ToolTip = id is null
-            ? "1 つ前に着ていたアバターに戻します(まだ履歴がありません)"
-            : $"{NameOf(id) ?? id} に戻す";
-    }
-
     // ---------------- グループ内の送り ----------------
 
     private async Task ChangeToNextInGroupAsync()
