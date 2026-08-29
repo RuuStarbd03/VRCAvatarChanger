@@ -261,6 +261,14 @@
                 <Setter Property="Foreground" Value="{DynamicResource MutedTextBrush}"/>
             </Style>
 
+            <!--
+                ボタン: 元に戻せない操作 (ログアウトなど)。
+                塗りつぶすと設定の並びの中で悪目立ちするので、枠だけ意味色にする。
+            -->
+            <Style x:Key="DangerButton" TargetType="Button" BasedOn="{StaticResource SecondaryButton}">
+                <Setter Property="BorderBrush" Value="{DynamicResource DangerBrush}"/>
+            </Style>
+
             <!-- セグメント切り替え (RadioButton) -->
             <Style x:Key="SegmentButton" TargetType="RadioButton">
                 <Setter Property="Foreground" Value="{DynamicResource MutedTextBrush}"/>

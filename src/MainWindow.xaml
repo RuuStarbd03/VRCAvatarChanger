@@ -880,7 +880,7 @@
                                 <TextBlock Text="アカウント" Style="{StaticResource SettingTitle}"/>
                                 <TextBlock x:Name="AccountDesc" Style="{StaticResource SettingDesc}"/>
                             </StackPanel>
-                            <Button Grid.Column="1" Content="ログアウト" Style="{StaticResource SecondaryButton}" Click="SettingsLogout_Click"
+                            <Button Grid.Column="1" Content="ログアウト" Style="{StaticResource DangerButton}" Click="SettingsLogout_Click"
                                     ToolTip="保存したログイン状態を消してログイン画面に戻る"
                                     MinWidth="80" Height="32" VerticalAlignment="Top" Margin="14,0,0,0"/>
                         </Grid>

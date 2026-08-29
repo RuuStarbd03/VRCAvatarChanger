@@ -133,7 +133,7 @@
                 <StackPanel x:Name="HowToPanel" MaxWidth="620">
                     <TextBlock Text="VRChat を開かずにアバターを着替えられます" Style="{StaticResource H1}"/>
                     <TextBlock Style="{StaticResource Body}" Margin="0,0,0,14"
-                               Text="VRChat を起動中なら、すぐにゲーム内のアバターも切り替わります。起動していなければ、次に VRChat を開いたときにそのアバターになります。"/>
+                               Text="起動中ならすぐ切り替わります。起動していなければ、次に VRChat を開いたときにそのアバターになります。"/>
 
                     <Border Style="{StaticResource Step}">
                         <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
@@ -141,7 +141,7 @@
                             <StackPanel Grid.Column="1">
                                 <TextBlock Text="VRChat アカウントでログイン" FontWeight="SemiBold"/>
                                 <TextBlock Style="{StaticResource Body}" Margin="0,4,0,0"
-                                           Text="ユーザー名とパスワードのほか、「ふだん使うブラウザでログイン」「アプリ内ブラウザでログイン」からもログインできます (Discord / Google / Apple / Steam 連携はこちら)。2 段階認証を設定している場合はコードを入力します。パスワードは保存されません。"/>
+                                           Text="ユーザー名とパスワード、またはブラウザからログインします (Discord / Google / Apple / Steam 連携はこちら)。パスワードは保存されません。"/>
                             </StackPanel>
                         </Grid>
                     </Border>
@@ -152,7 +152,7 @@
                             <StackPanel Grid.Column="1">
                                 <TextBlock Text="アバターを選ぶ" FontWeight="SemiBold"/>
                                 <TextBlock Style="{StaticResource Body}" Margin="0,4,0,0"
-                                           Text="「自分のアバター」「お気に入り」「パブリック」のタブから探します。右上の検索欄で名前や作者名で絞り込めるほか、一覧の上のフィルタで、お気に入りタブはグループごと、それ以外のタブはタグごとに絞り込めます。"/>
+                                           Text="「自分のアバター」「お気に入り」「パブリック」のタブから探します。右上の検索欄や、一覧の上のフィルタで絞り込めます。"/>
                             </StackPanel>
                         </Grid>
                     </Border>
@@ -170,33 +170,27 @@
 
                     <TextBlock Text="パブリックタブ" Style="{StaticResource H2}"/>
                     <TextBlock Style="{StaticResource Body}"
-                               Text="気に入ったパブリックアバターを登録しておく、このアプリ独自のリストです。VRChat のお気に入りと違って上限はありません。アバターの ID や URL を上の欄に貼って「追加」するか、他のタブで右クリック →「パブリックに追加」します。"/>
+                               Text="気に入ったパブリックアバターを溜めておく、このアプリ独自のリストです (上限なし)。ID や URL を貼って「追加」するか、他のタブで右クリック →「パブリックに追加」。"/>
 
-                    <TextBlock Text="お気に入りの追加・解除" Style="{StaticResource H2}"/>
+                    <TextBlock Text="お気に入り・タグ" Style="{StaticResource H2}"/>
                     <TextBlock Style="{StaticResource Body}"
-                               Text="アバターを右クリック →「お気に入りに追加」で、入れたいお気に入りグループを選べます(カッコ内は今そのグループに入っている数)。登録済みのアバターは「お気に入りから外す」が出ます。VRChat の Web サイトを開かなくても、このアプリだけでお気に入りを整理できます。"/>
-
-                    <TextBlock Text="タグ" Style="{StaticResource H2}"/>
-                    <TextBlock Style="{StaticResource Body}"
-                               Text="「自分のアバター」と「パブリック」では、アバターを右クリック →「タグを編集...」で好きなタグを付けられます。付けたタグは一覧の上のフィルタに並び、ワンクリックで絞り込めます。グループを右クリック →「全員のタグを編集...」で、中のアバター全員に同じタグをまとめて付けられます。"/>
+                               Text="アバターを右クリックすると、お気に入りの追加・解除と、タグの編集ができます。付けたタグは一覧の上のフィルタに並び、ワンクリックで絞り込めます。"/>
 
                     <TextBlock Text="グループ" Style="{StaticResource H2}"/>
                     <TextBlock Style="{StaticResource Body}"
-                               Text="衣装違いなどを 1 つにまとめられます。アバターを別のアバターにドラッグ&amp;ドロップするか、右クリック →「グループに入れる...」。ツールバーの「グループ化」を ON にするとまとめて表示され、ダブルクリックで中身を開けます。名前の変更や解除はグループを右クリックします。"/>
+                               Text="衣装違いなどを 1 つにまとめられます。アバターを別のアバターにドラッグ&amp;ドロップするか、右クリック →「グループに入れる...」。ツールバーのグループ化ボタンでまとめ表示を切り替え、ダブルクリックで中身を開きます。"/>
 
                     <TextBlock Text="ゲーム中にサッと着替える (ホットキー)" Style="{StaticResource H2}"/>
                     <TextBlock Style="{StaticResource Body}"
-                               Text="VRChat をデスクトップモードでプレイ中に Shift+1 を押すと、画面の右にアバター選択が重なって表示されます。クリックで着替えて自動で閉じ、VRChat に操作が戻ります。もう一度 Shift+1 か Esc で閉じられます。設定でオフにできます。"/>
+                               Text="VRChat のプレイ中に Shift+1 を押すと、画面の右にアバター選択が出ます。クリックで着替えて閉じ、VRChat に操作が戻ります。反応するのは VRChat が手前のときだけです。"/>
                     <TextBlock Style="{StaticResource Body}"
-                               Text="設定 →「ホットキーの割り当て」で、このキーを変えたり、次のものにもキーを割り当てられます。反応するのは VRChat が手前にあるときだけで、割り当てたキーは VRChat には渡りません。"/>
+                               Text="設定 →「ホットキーの割り当て」で、このキーの変更と、次の 3 つの割り当てができます。"/>
                     <TextBlock Style="{StaticResource Body}"
-                               Text="・直前のアバターに戻す(2 着を行き来したいとき)&#x0a;・グループ内の次のアバター(衣装違いを順に送る)&#x0a;・特定のアバターを直接呼び出す(一覧で右クリック →「ホットキーに割り当てる...」)"/>
-                    <TextBlock Style="{StaticResource Body}"
-                               Text="ホットキーで着替えると、結果がゲーム画面の上に数秒だけ表示されます。「直前のアバターに戻す」はメイン画面の左上「直前に戻す」ボタンからも使えます。"/>
+                               Text="・直前のアバターに戻す&#x0a;・グループ内の次のアバター&#x0a;・特定のアバターを直接呼び出す(一覧で右クリック)"/>
 
                     <TextBlock Text="ゲーム内の着替えを反映する (OSC)" Style="{StaticResource H2}"/>
                     <TextBlock Style="{StaticResource Body}"
-                               Text="VRChat で OSC を有効にすると(アクションメニュー → Options → OSC → Enabled)、ゲーム内で着替えたときも左上の「現在:」が更新されます。つながっていると「OSC 連携中」と表示され、アプリからの着替えもローカル通信で即座に反映されます。OSC が無い場合も着替えは可能です(サーバー経由のため反映に少し時間がかかることがあります)。"/>
+                               Text="VRChat で OSC を有効にすると(アクションメニュー → Options → OSC → Enabled)、ゲーム内で着替えたときも左上の「現在:」が更新されます。無くても着替えはできます。"/>
                 </StackPanel>
 
                 <!-- ===== FAQ ===== -->

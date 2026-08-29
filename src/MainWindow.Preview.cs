@@ -98,7 +98,14 @@ public partial class MainWindow
             return;
         }
 
-        if (Environment.GetEnvironmentVariable("VRCAC_UI_PREVIEW_SETTINGS") == "1") OpenSettings();
+        if (Environment.GetEnvironmentVariable("VRCAC_UI_PREVIEW_SETTINGS") is { Length: > 0 } settingsAt)
+        {
+            OpenSettings();
+            // "bottom" なら末尾まで送る (ログアウトなど下のほうの項目を撮るため)
+            if (settingsAt == "bottom")
+                Dispatcher.BeginInvoke(() => FindDescendant<ScrollViewer>(SettingsOverlay)?.ScrollToEnd(),
+                    System.Windows.Threading.DispatcherPriority.Loaded);
+        }
         // 配色の切り替えの確認: 設定から選んだあと、その場で全体が変わっているかを撮る
         if (Environment.GetEnvironmentVariable("VRCAC_UI_PREVIEW_THEMEPICK") is { Length: > 0 } pick)
         {
