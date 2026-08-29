@@ -281,18 +281,33 @@ internal static class Win32
     public static NativeRect? WindowRectPx(nint hwnd)
         => GetWindowRect(hwnd, out var r) ? r : null;
 
+    [DllImport("user32.dll")] private static extern bool BringWindowToTop(nint hWnd);
+    [DllImport("user32.dll")] private static extern nint SetActiveWindow(nint hWnd);
+    [DllImport("user32.dll")] private static extern nint SetFocus(nint hWnd);
+    [DllImport("user32.dll")] private static extern bool ClipCursor(nint rect);
+
     /// <summary>
     /// ゲームなど他プロセスが手前でも自分のウィンドウを前面化する。
     /// (通常の SetForegroundWindow はフォアグラウンド権限がないと無視されるため、
     /// 手前スレッドに入力状態を一時的に共有してから前面化する)
+    ///
+    /// VRChat はデスクトップモードでマウスを掴んでいるので、掴みも外す。
+    /// 外さないと、前面に出ていてもマウスの動きがゲーム側の視点移動に取られる。
     /// </summary>
-    public static void FocusWindow(nint hwnd)
+    /// <returns>実際に前面になったか。</returns>
+    public static bool FocusWindow(nint hwnd)
     {
         var fg = GetForegroundWindow();
         var fgThread = fg != 0 ? GetWindowThreadProcessId(fg, out _) : 0;
         var cur = GetCurrentThreadId();
         var attached = fgThread != 0 && fgThread != cur && AttachThreadInput(cur, fgThread, true);
+        BringWindowToTop(hwnd);
         SetForegroundWindow(hwnd);
+        // 入力状態を共有している間だけ、キーボードとマウスの行き先もこちらに向けられる
+        SetActiveWindow(hwnd);
+        SetFocus(hwnd);
         if (attached) AttachThreadInput(cur, fgThread, false);
+        ClipCursor(0); // ゲームがマウスを閉じ込めていることがあるので外す
+        return GetForegroundWindow() == hwnd;
     }
 }

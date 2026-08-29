@@ -251,7 +251,8 @@ public partial class MainWindow
                 await Task.Delay(wait);
                 sb.AppendLine($"actual +{wait}ms = {Fmt(Win32.WindowRectPx(_quick.Hwnd))} " +
                               $"(wpf W {_quick.Width:F0} H {_quick.Height:F0}, dpi {VisualTreeHelper.GetDpi(_quick).DpiScaleX}) " +
-                              $"slideX {_quick.Slide.X:F1} opacity {_quick.Root.Opacity:F2} visible {_quick.IsVisible} active {_quick.IsActive}");
+                              $"slideX {_quick.Slide.X:F1} opacity {_quick.Root.Opacity:F2} visible {_quick.IsVisible} " +
+                              $"active {_quick.IsActive} 手前={(Win32.GetForegroundWindow() == _quick.Hwnd ? "オーバーレイ" : Win32.GetForegroundWindow() == _vrchatHwnd ? "VRChat" : "その他")}");
             }
         }
         catch (Exception ex) { sb.AppendLine("EXCEPTION: " + ex); }

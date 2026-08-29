@@ -93,7 +93,29 @@ public partial class QuickPickWindow : Window
         var x = new DoubleAnimation(0, TimeSpan.FromMilliseconds(240)) { EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut } };
         Slide.BeginAnimation(TranslateTransform.XProperty, x);
         Root.BeginAnimation(OpacityProperty, new DoubleAnimation(1, TimeSpan.FromMilliseconds(140)));
-        Win32.FocusWindow(Hwnd); // ゲームがフォアグラウンドでも手前に出て検索欄に入力できるように
+        TakeFocus();
+    }
+
+    /// <summary>
+    /// ゲームから入力を引き取る。1 回で前面になれないことがある (ゲームが直後に
+    /// 取り返す / フォアグラウンドの切り替えが間に合わない) ので、数回だけ試す。
+    /// 取れていないとキー入力もマウスもゲーム側のままになり、視点が動いてしまう。
+    /// </summary>
+    private async void TakeFocus()
+    {
+        var gen = _gen;
+        for (var i = 0; i < 4; i++)
+        {
+            if (Win32.FocusWindow(Hwnd))
+            {
+                Activate();
+                SearchBox.Focus();
+                return;
+            }
+            await Task.Delay(60);
+            if (_gen != gen || !IsVisible) return; // 閉じられた / 開き直された
+        }
+        // 取れなかった場合も、せめて WPF 側の入力先は検索欄にしておく
         Activate();
         SearchBox.Focus();
     }
