@@ -46,7 +46,7 @@ public partial class MainWindow
                 if (size is { } s)
                 {
                     AssetSizeCache.Set(r.FileId, r.Version, s);
-                    if (SizeWanted) item.SubText = PerformanceSubText(item);
+                    if (SizeWanted) ApplyPerformanceText(item);
                 }
                 await Task.Delay(250); // 続けざまに叩かない
             }
@@ -60,21 +60,18 @@ public partial class MainWindow
         }
     }
 
-    /// <summary>パフォーマンス順のときの 1 行。ランクと、分かっていればダウンロードサイズ。</summary>
-    private static string PerformanceSubText(AvatarItem item)
+    /// <summary>
+    /// パフォーマンス順のときの表示を入れる。サイズとランクは 1 行にすると狭い列で
+    /// 「Very Poor」が切れてしまうので、行を分けて両方読めるようにする。
+    /// </summary>
+    private static void ApplyPerformanceText(AvatarItem item)
     {
         var rank = PerformanceLabel(item.Avatar.Performance?.Windows);
         var size = item.Avatar.WindowsAssetRef is { } r && AssetSizeCache.TryGet(r.FileId, r.Version, out var b)
             ? AssetSizeCache.Format(b)
             : null;
-        // サイズを先に置く。狭い列では後ろが切れるが、ランクは並び順から分かるので
-        // 残すべきなのはサイズのほう
-        return (rank, size) switch
-        {
-            (not null, not null) => $"{size} · {rank}",
-            (not null, null) => rank,
-            (null, not null) => size,
-            _ => item.AuthorName,
-        };
+        // サイズがまだ分からないうちはランクだけを 2 行目に出す (行が増えたり減ったりしないように)
+        item.SubText = size ?? rank ?? item.AuthorName;
+        item.SubText2 = size is not null ? rank : null;
     }
 }

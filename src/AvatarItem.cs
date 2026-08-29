@@ -73,6 +73,24 @@ public sealed class AvatarItem : INotifyPropertyChanged
         get => _subText ?? AuthorName;
         set { _subText = value; OnPropertyChanged(); }
     }
+
+    private string? _subText2;
+    /// <summary>
+    /// さらにもう 1 行。1 行に収めると狭い列で切れてしまうものを分ける
+    /// (パフォーマンス順のランクなど)。空のときはその行ごと消える。
+    /// </summary>
+    public string? SubText2
+    {
+        get => _subText2;
+        set
+        {
+            _subText2 = string.IsNullOrEmpty(value) ? null : value;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(HasSubText2));
+        }
+    }
+
+    public bool HasSubText2 => _subText2 is not null;
     public string Badge => IsGroup ? "グループ"
         : Tags.Count > 0 ? string.Join(", ", Tags)
         : !string.IsNullOrEmpty(Avatar.FavoriteGroup) ? Avatar.FavoriteGroup

@@ -227,14 +227,19 @@ public partial class MainWindow : Window
         var kind = key.Replace("_desc", "").Replace("_asc", "");
         foreach (var a in items)
         {
+            a.SubText2 = null; // 3 行目はパフォーマンス順のときだけ使う
             // グループは「N 体」を出したいので触らない
             if (a.IsGroup) { a.SubText = a.AuthorName; continue; }
+            if (kind == "performance")
+            {
+                // サイズはまだ分からないことがある。取れたら行の中身だけ書き換わる
+                ApplyPerformanceText(a);
+                continue;
+            }
             a.SubText = kind switch
             {
                 "created" => Date(a.AddedAt ?? a.Avatar.CreatedAt) ?? a.AuthorName,
                 "updated" => Date(a.Avatar.UpdatedAt) ?? a.AuthorName,
-                // サイズはまだ分からないことがある。取れたらこの行だけ書き換わる
-                "performance" => PerformanceSubText(a),
                 _ => a.AuthorName,
             };
         }
@@ -242,7 +247,7 @@ public partial class MainWindow : Window
     }
 
     /// <summary>パフォーマンスランクの表示名。VRChat の画面と同じ言い方にする。</summary>
-    private static string? PerformanceLabel(string? rating) => rating switch
+    internal static string? PerformanceLabel(string? rating) => rating switch
     {
         "Excellent" => "Excellent",
         "Good" => "Good",

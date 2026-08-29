@@ -60,7 +60,8 @@ public partial class MainWindow
         ApplyFilter();
         if (withThumbs) QueueThumbnails(_allItems.ToList(), CancellationToken.None); // 実際の読み込みと同じ経路を通す
         AvatarList.SelectedIndex = 1;
-        if (Environment.GetEnvironmentVariable("VRCAC_UI_PREVIEW_VIEW") == "grid") ViewGrid.IsChecked = true;
+        if (Environment.GetEnvironmentVariable("VRCAC_UI_PREVIEW_VIEW") is { Length: > 0 } view)
+            (view == "grid" ? ViewGrid : ViewList).IsChecked = true;
         if (Environment.GetEnvironmentVariable("VRCAC_UI_PREVIEW_GROUP") is { Length: > 0 } grp) GroupToggle.IsChecked = grp != "off";
         // 並び順の見た目確認: VRCAC_UI_PREVIEW_SORT="name_asc" のようにキーを渡す
         if (Environment.GetEnvironmentVariable("VRCAC_UI_PREVIEW_SORT") is { Length: > 0 } sort) InitSortControls(sort);
@@ -281,7 +282,8 @@ public partial class MainWindow
                 var size = await _api.GetAssetSizeAsync(r.Value.FileId, r.Value.Version);
                 if (size is { } s) AssetSizeCache.Set(r.Value.FileId, r.Value.Version, s);
                 var item = new AvatarItem(a);
-                sb.AppendLine($"{a.Name,-16} 生={(size is { } b ? $"{b:N0}" : "取れず"),-12} 表示=「{PerformanceSubText(item)}」");
+                ApplyPerformanceText(item);
+                sb.AppendLine($"{a.Name,-16} 生={(size is { } b ? $"{b:N0}" : "取れず"),-12} 表示=「{item.SubText}」+「{item.SubText2}」");
             }
         }
         catch (Exception ex) { sb.AppendLine("EXCEPTION: " + ex.Message); }
