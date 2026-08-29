@@ -175,7 +175,9 @@ public partial class MainWindow
         var tried = _thumbAttempts.TryGetValue(item, out var n) ? n : 0;
         if (tried >= MaxThumbnailAttempts) return;
         _thumbAttempts[item] = tried + 1;
-        try { await Task.Delay(TimeSpan.FromSeconds(3 * (tried + 1)), ct); }
+        // 3 秒 → 12 秒 → 48 秒。1 回目は一時的な失敗をすぐ取り返せるよう短く、
+        // 以降はレート制限の解除 (数十秒かかることがある) を跨げるよう大きく空ける
+        try { await Task.Delay(TimeSpan.FromSeconds(3 * Math.Pow(4, tried)), ct); }
         catch (OperationCanceledException) { return; }
         // 待っている間に一覧が入れ替わった / 別経路で読めていたなら何もしない
         if (!NeedsThumbnail(item) || !_thumbItems.Contains(item)) return;

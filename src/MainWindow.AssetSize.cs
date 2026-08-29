@@ -27,6 +27,22 @@ public partial class MainWindow
         _ = PumpSizesAsync();
     }
 
+    /// <summary>
+    /// 画面に出ているサムネイルが読み終わるまで待つ。サイズとサムネイルは同じ通信と
+    /// レート制限を共有していて、サイズを挟むとサムネイルが遅れたり 429 で落ちたりする。
+    /// サムネイルのほうが先に見たいものなので、そちらを待たせない。
+    /// 待っている間に並びが変わったら false を返す (もう取りに行かなくてよい)。
+    /// </summary>
+    private async Task<bool> WaitForThumbnailsAsync()
+    {
+        while (_thumbFront.Count > 0 || _thumbRunning > 0)
+        {
+            if (!SizeWanted) return false;
+            await Task.Delay(300);
+        }
+        return SizeWanted;
+    }
+
     /// <summary>1 件ずつ順に引く。並列にしないのは、1 件 1 リクエストで数が多いため。</summary>
     private async Task PumpSizesAsync()
     {
@@ -42,13 +58,15 @@ public partial class MainWindow
                 if (!SizeWanted) { _sizeQueue.Clear(); _sizeQueued.Clear(); break; }
                 if (item.Avatar.WindowsAssetRef is not { } r) continue;
 
+                if (!await WaitForThumbnailsAsync()) break;
                 var size = await _api.GetAssetSizeAsync(r.FileId, r.Version);
                 if (size is { } s)
                 {
                     AssetSizeCache.Set(r.FileId, r.Version, s);
                     if (SizeWanted) ApplyPerformanceText(item);
                 }
-                await Task.Delay(250); // 続けざまに叩かない
+                // 取れなかったときはレート制限に当たっている可能性が高いので、長めに空ける
+                await Task.Delay(size is null ? 3000 : 600);
             }
         }
         catch (OperationCanceledException) { }
