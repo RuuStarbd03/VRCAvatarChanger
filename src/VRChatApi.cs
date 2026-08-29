@@ -608,6 +608,26 @@ public sealed class Avatar
     public string? FavoriteGroup { get; set; }
     [JsonPropertyName("created_at")] public DateTimeOffset? CreatedAt { get; set; }
     [JsonPropertyName("updated_at")] public DateTimeOffset? UpdatedAt { get; set; }
+    /// <summary>パフォーマンスランク。VRChat が判定したもの (プラットフォームごと)。</summary>
+    public AvatarPerformance? Performance { get; set; }
+}
+
+/// <summary>アバターのパフォーマンスランク。値は Excellent / Good / Medium / Poor / VeryPoor。</summary>
+public sealed class AvatarPerformance
+{
+    [JsonPropertyName("standalonewindows")] public string? Windows { get; set; }
+    [JsonPropertyName("android")] public string? Android { get; set; }
+
+    /// <summary>並べ替え用の順位 (0 = 軽い)。判定が無いものは末尾に寄せる。</summary>
+    public int Rank => Windows switch
+    {
+        "Excellent" => 0,
+        "Good" => 1,
+        "Medium" => 2,
+        "Poor" => 3,
+        "VeryPoor" => 4,
+        _ => 5, // None / 未判定
+    };
 }
 
 /// <summary>お気に入りの登録レコード。Id が登録そのものの ID、FavoriteId が対象 (アバター) の ID。</summary>

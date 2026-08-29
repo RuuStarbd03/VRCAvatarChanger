@@ -466,9 +466,12 @@
                     <!-- 並び順 -->
                     <!-- 並び順: 何で並べるかと、昇順 / 降順を分ける (どの項目にも両方あるため) -->
                     <ComboBox x:Name="SortBox" MinWidth="96" Margin="0,0,6,0" SelectionChanged="SortBox_SelectionChanged" ToolTip="並び順">
-                        <ComboBoxItem Tag="created" Content="追加日"/>
-                        <ComboBoxItem Tag="updated" Content="更新日"/>
-                        <ComboBoxItem Tag="name"    Content="名前"/>
+                        <ComboBoxItem Tag="created"     Content="追加日"/>
+                        <ComboBoxItem Tag="updated"     Content="更新日"/>
+                        <ComboBoxItem Tag="recent"      Content="最近使った"/>
+                        <ComboBoxItem Tag="performance" Content="パフォーマンス"/>
+                        <ComboBoxItem Tag="name"        Content="名前"/>
+                        <ComboBoxItem Tag="author"      Content="作者"/>
                     </ComboBox>
                     <ToggleButton x:Name="SortDescToggle" Style="{StaticResource SegmentToggle}" Padding="9,0" Margin="0,0,10,0"
                                   Checked="SortDesc_Changed" Unchecked="SortDesc_Changed" AutomationProperties.Name="並び順の向き">

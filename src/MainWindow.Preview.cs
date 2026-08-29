@@ -11,6 +11,9 @@ namespace VRCAvatarChanger;
 // 環境変数 VRCAC_UI_PREVIEW=1 で API を叩かずにダミーデータでメイン画面を表示する。
 public partial class MainWindow
 {
+    /// <summary>ダミーデータに順番に振るパフォーマンスランク。</summary>
+    private static readonly string[] PerfRatings = ["Excellent", "Good", "Medium", "Poor", "VeryPoor"];
+
     private void ShowUiPreview()
     {
         // 見た目の確認は両テーマで行いたいので、設定を書き換えずにここだけ切り替えられるようにする
@@ -30,11 +33,15 @@ public partial class MainWindow
                 Id = $"avtr_00000000-0000-4000-8000-{i + 1:D12}",
                 ThumbnailImageUrl = withThumbs ? PreviewThumbUrl(i) : null,
                 Name = names[i % names.Length] + (i >= names.Length ? $" {i + 1}" : "") + (i % 3 == 0 ? " (改変)" : ""),
-                AuthorName = "preview_author",
+                AuthorName = "preview_author_" + (char)('a' + i % 4),
                 ReleaseStatus = i % 2 == 0 ? "private" : "public",
                 CreatedAt = DateTimeOffset.Now.AddDays(-i * 3),
                 UpdatedAt = DateTimeOffset.Now.AddDays(-i),
+                Performance = new AvatarPerformance { Windows = PerfRatings[i % PerfRatings.Length] },
             }));
+        // 「最近使った順」の確認用に、後ろのほうのアバターを使用済みにしておく
+        _settings.RecentAvatars = Enumerable.Range(0, Math.Min(5, count))
+            .Select(i => $"avtr_00000000-0000-4000-8000-{count - i:D12}").ToList();
         ShowListState(loading: Environment.GetEnvironmentVariable("VRCAC_UI_PREVIEW_STATE") == "loading");
         if (Environment.GetEnvironmentVariable("VRCAC_UI_PREVIEW_STATE") == "empty") _allItems.Clear();
         ApplyFilter();

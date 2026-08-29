@@ -172,12 +172,16 @@ public partial class MainWindow : Window
     private void UpdateSortDirection()
     {
         var desc = SortDescToggle.IsChecked == true;
-        var byName = (string?)(SortBox.SelectedItem as ComboBoxItem)?.Tag == "name";
         SortDirIcon.Text = desc ? "↓" : "↑";
-        // 「新しい順 / 古い順」と「A → Z」では言い方が変わるので、選んでいる種別に合わせる
-        SortDescToggle.ToolTip = byName
-            ? (desc ? "名前の降順 (Z → A)" : "名前の昇順 (A → Z)")
-            : (desc ? "新しい順" : "古い順");
+        // 向きの意味は種別で変わるので、言い方もそれに合わせる
+        SortDescToggle.ToolTip = (string?)(SortBox.SelectedItem as ComboBoxItem)?.Tag switch
+        {
+            "name" => desc ? "名前の降順 (Z → A)" : "名前の昇順 (A → Z)",
+            "author" => desc ? "作者名の降順 (Z → A)" : "作者名の昇順 (A → Z)",
+            "recent" => desc ? "使っていないものから" : "最近使ったものから",
+            "performance" => desc ? "重い順" : "軽い順",
+            _ => desc ? "新しい順" : "古い順",
+        };
     }
 
     private void SortBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -213,12 +217,30 @@ public partial class MainWindow : Window
         if (!_preview) _settings.Save();
     }
 
-    internal static IEnumerable<AvatarItem> ApplySort(IEnumerable<AvatarItem> items, string key)
+    /// <param name="recent">「最近使った順」に使う使用履歴 (先頭が最新)。要らない並びでは省略できる。</param>
+    internal static IEnumerable<AvatarItem> ApplySort(IEnumerable<AvatarItem> items, string key,
+        IReadOnlyList<string>? recent = null)
     {
         var desc = key.EndsWith("_desc", StringComparison.Ordinal);
         var cmp = StringComparer.CurrentCultureIgnoreCase;
         // 「追加日」はパブリックタブではリストに追加した日時、それ以外はアバターの作成日時。日時が無いものは末尾に寄せる
         static DateTimeOffset? Added(AvatarItem a) => a.AddedAt ?? a.Avatar.CreatedAt;
+        // 使用履歴の順位。使っていないものは末尾へ。グループは中で一番新しく使ったメンバーで代表する
+        var rank = recent?.Select((id, i) => (id, i)).ToDictionary(t => t.id, t => t.i);
+        int Recent(AvatarItem a)
+        {
+            if (rank is null) return int.MaxValue;
+            if (!a.IsGroup) return rank.TryGetValue(a.Id, out var r) ? r : int.MaxValue;
+            var best = int.MaxValue;
+            foreach (var m in a.Members)
+                if (rank.TryGetValue(m.Id, out var r) && r < best) best = r;
+            return best;
+        }
+        // パフォーマンスはグループでは一番重いメンバーに合わせる (中に重いものがあると結局重い)
+        static int Perf(AvatarItem a)
+            => a.IsGroup && a.Members.Count > 0
+                ? a.Members.Max(m => m.Avatar.Performance?.Rank ?? 5)
+                : a.Avatar.Performance?.Rank ?? 5;
         return key switch
         {
             "created_asc" or "created_desc" => desc
@@ -227,6 +249,17 @@ public partial class MainWindow : Window
             "updated_asc" or "updated_desc" => desc
                 ? items.OrderByDescending(a => a.Avatar.UpdatedAt ?? DateTimeOffset.MinValue).ThenBy(a => a.Name, cmp)
                 : items.OrderBy(a => a.Avatar.UpdatedAt ?? DateTimeOffset.MaxValue).ThenBy(a => a.Name, cmp),
+            // 使用履歴は「先頭が最新」なので、昇順 (0 が先) がそのまま「最近使った順」になる
+            "recent_asc" or "recent_desc" => desc
+                ? items.OrderByDescending(Recent).ThenBy(a => a.Name, cmp)
+                : items.OrderBy(Recent).ThenBy(a => a.Name, cmp),
+            // 昇順は軽い順 (Excellent が先)、降順は重い順
+            "performance_asc" or "performance_desc" => desc
+                ? items.OrderByDescending(Perf).ThenBy(a => a.Name, cmp)
+                : items.OrderBy(Perf).ThenBy(a => a.Name, cmp),
+            "author_asc" or "author_desc" => desc
+                ? items.OrderByDescending(a => a.AuthorName, cmp).ThenBy(a => a.Name, cmp)
+                : items.OrderBy(a => a.AuthorName, cmp).ThenBy(a => a.Name, cmp),
             "name_desc" => items.OrderByDescending(a => a.Name, cmp),
             _ => items.OrderBy(a => a.Name, cmp),
         };
@@ -768,7 +801,7 @@ public partial class MainWindow : Window
                 a.Id.Contains(q, StringComparison.OrdinalIgnoreCase));
         var selectedId = (AvatarList.SelectedItem as AvatarItem)?.Id;
         var selectedWasGroup = (AvatarList.SelectedItem as AvatarItem)?.IsGroup == true;
-        var sorted = ApplySort(items, SortKey).ToList();
+        var sorted = ApplySort(items, SortKey, _settings.RecentAvatars).ToList();
 
         List<AvatarItem> list;
         if (_openGroup is not null)
@@ -797,7 +830,7 @@ public partial class MainWindow : Window
                 members.Add(a);
             }
             list.AddRange(byGroup.Select(kv => new AvatarItem(kv.Key, kv.Value)));
-            list = ApplySort(list, SortKey).ToList();
+            list = ApplySort(list, SortKey, _settings.RecentAvatars).ToList();
         }
         // 並びも中身も今と同じなら入れ直さない。一覧の作り直しは件数によらず 20ms 前後かかるうえ、
         // スクロール位置と選択が先頭に戻ってしまう (タグ編集や色分けの切り替えなど、見た目が変わらない場合に効く)
