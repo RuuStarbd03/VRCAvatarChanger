@@ -15,7 +15,7 @@
     <ApplicationIcon>app.ico</ApplicationIcon>
 
     <!-- バージョンはここだけ変える -->
-    <Version>1.1.0</Version>
+    <Version>1.1.1</Version>
     <Product>VRCAvatarChanger</Product>
     <AssemblyTitle>VRCAvatarChanger</AssemblyTitle>
     <Description>VRChat のアバターを外部から着替える Windows 用アプリ</Description>
