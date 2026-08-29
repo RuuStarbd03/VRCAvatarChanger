@@ -62,6 +62,17 @@ public sealed class AvatarItem : INotifyPropertyChanged
     public string Id => Avatar.Id;
     public string Name => Group?.Name ?? Avatar.Name;
     public string AuthorName => IsGroup ? $"{Members.Count} 体" : Avatar.AuthorName;
+
+    private string? _subText;
+    /// <summary>
+    /// 名前の下に出す 1 行。並び順に合わせて中身を変える (日付順なら日付、パフォーマンス順ならランク)。
+    /// 何も指定されていなければ作者名。
+    /// </summary>
+    public string SubText
+    {
+        get => _subText ?? AuthorName;
+        set { _subText = value; OnPropertyChanged(); }
+    }
     public string Badge => IsGroup ? "グループ"
         : Tags.Count > 0 ? string.Join(", ", Tags)
         : !string.IsNullOrEmpty(Avatar.FavoriteGroup) ? Avatar.FavoriteGroup

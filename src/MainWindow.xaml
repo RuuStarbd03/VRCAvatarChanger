@@ -111,7 +111,7 @@
                 </Grid>
                 <StackPanel Grid.Column="1" VerticalAlignment="Center">
                     <TextBlock Text="{Binding Name}" FontWeight="SemiBold" FontSize="14" TextTrimming="CharacterEllipsis"/>
-                    <TextBlock Text="{Binding AuthorName}" Style="{StaticResource MutedText}" TextTrimming="CharacterEllipsis" Margin="0,2,0,0"/>
+                    <TextBlock Text="{Binding SubText}" Style="{StaticResource MutedText}" TextTrimming="CharacterEllipsis" Margin="0,2,0,0"/>
                     <TextBlock Text="{Binding Id}" Style="{StaticResource CaptionText}" Foreground="{DynamicResource FaintTextBrush}"
                                FontFamily="Cascadia Mono, Consolas" FontSize="11" TextTrimming="CharacterEllipsis" Margin="0,4,0,0"
                                Visibility="{Binding IsAvatar, Converter={StaticResource BoolToVis}}"/>
@@ -241,7 +241,7 @@
                     </Border>
                 </Grid>
                 <TextBlock Text="{Binding Name}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" Margin="2,8,2,0"/>
-                <TextBlock Text="{Binding AuthorName}" Style="{StaticResource CaptionText}" TextTrimming="CharacterEllipsis" Margin="2,2,2,2"/>
+                <TextBlock Text="{Binding SubText}" Style="{StaticResource CaptionText}" TextTrimming="CharacterEllipsis" Margin="2,2,2,2"/>
             </StackPanel>
         </DataTemplate>
 

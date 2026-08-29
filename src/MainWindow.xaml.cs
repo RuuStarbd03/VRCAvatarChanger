@@ -217,6 +217,40 @@ public partial class MainWindow : Window
         if (!_preview) _settings.Save();
     }
 
+    /// <summary>
+    /// 名前の下の 1 行を、今の並び順に合わせて入れ替える。
+    /// 「その順で並べた根拠」がタイル上で見えるようにするため (日付順なら日付を出す)。
+    /// 手がかりが無い並び (名前 / 作者 / 最近使った) は作者名のまま。
+    /// </summary>
+    private static void ApplySubText(IEnumerable<AvatarItem> items, string key)
+    {
+        var kind = key.Replace("_desc", "").Replace("_asc", "");
+        foreach (var a in items)
+        {
+            // グループは「N 体」を出したいので触らない
+            if (a.IsGroup) { a.SubText = a.AuthorName; continue; }
+            a.SubText = kind switch
+            {
+                "created" => Date(a.AddedAt ?? a.Avatar.CreatedAt) ?? a.AuthorName,
+                "updated" => Date(a.Avatar.UpdatedAt) ?? a.AuthorName,
+                "performance" => PerformanceLabel(a.Avatar.Performance?.Windows) ?? a.AuthorName,
+                _ => a.AuthorName,
+            };
+        }
+        static string? Date(DateTimeOffset? d) => d?.ToLocalTime().ToString("yyyy/MM/dd");
+    }
+
+    /// <summary>パフォーマンスランクの表示名。VRChat の画面と同じ言い方にする。</summary>
+    private static string? PerformanceLabel(string? rating) => rating switch
+    {
+        "Excellent" => "Excellent",
+        "Good" => "Good",
+        "Medium" => "Medium",
+        "Poor" => "Poor",
+        "VeryPoor" => "Very Poor",
+        _ => null, // 未判定 (None など) は作者名に任せる
+    };
+
     /// <param name="recent">「最近使った順」に使う使用履歴 (先頭が最新)。要らない並びでは省略できる。</param>
     internal static IEnumerable<AvatarItem> ApplySort(IEnumerable<AvatarItem> items, string key,
         IReadOnlyList<string>? recent = null)
@@ -835,6 +869,7 @@ public partial class MainWindow : Window
         // 並びも中身も今と同じなら入れ直さない。一覧の作り直しは件数によらず 20ms 前後かかるうえ、
         // スクロール位置と選択が先頭に戻ってしまう (タグ編集や色分けの切り替えなど、見た目が変わらない場合に効く)
         if (AvatarList.ItemsSource is List<AvatarItem> shown && SameContent(shown, list)) list = shown;
+        ApplySubText(list, SortKey);
         ApplyStripes(list);
         if (!ReferenceEquals(AvatarList.ItemsSource, list)) AvatarList.ItemsSource = list;
         var reselect = list.FirstOrDefault(a => a.Id == selectedId && a.IsGroup == selectedWasGroup);
