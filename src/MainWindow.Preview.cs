@@ -38,7 +38,20 @@ public partial class MainWindow
                 CreatedAt = DateTimeOffset.Now.AddDays(-i * 3),
                 UpdatedAt = DateTimeOffset.Now.AddDays(-i),
                 Performance = new AvatarPerformance { Windows = PerfRatings[i % PerfRatings.Length] },
+                UnityPackages =
+                [
+                    new UnityPackage
+                    {
+                        AssetUrl = $"https://api.vrchat.cloud/api/1/file/file_preview{i:D4}/1/file",
+                        Platform = "standalonewindows",
+                        Variant = "standard",
+                    },
+                ],
             }));
+        // ダウンロードサイズの見た目確認用。プレビューでは取りに行かないので、ここで入れておく
+        // (書き出すのは実際に取得したときだけなので、この値がファイルに残ることはない)
+        for (var i = 0; i < count; i++)
+            AssetSizeCache.Set($"file_preview{i:D4}", 1, 3_000_000L + i * 9_400_000L);
         // 「最近使った順」の確認用に、後ろのほうのアバターを使用済みにしておく
         _settings.RecentAvatars = Enumerable.Range(0, Math.Min(5, count))
             .Select(i => $"avtr_00000000-0000-4000-8000-{count - i:D12}").ToList();
@@ -78,6 +91,7 @@ public partial class MainWindow
         if (Environment.GetEnvironmentVariable("VRCAC_UI_PREVIEW_GAPTEST") == "1") _ = RunGapTestAsync();
         // 自前で撮影まで行うので、下の共通の撮影経路 (先に終了してしまう) には進ませない
         if (Environment.GetEnvironmentVariable("VRCAC_UI_PREVIEW_RETRYTEST") == "1") { _ = RunRetryTestAsync(); return; }
+        if (Environment.GetEnvironmentVariable("VRCAC_UI_PREVIEW_SIZEPROBE") is { Length: > 0 } szPath) { _ = RunSizeProbeAsync(szPath); return; }
 
         // 見た目確認: VRCAC_UI_PREVIEW_SHOT=path でウィンドウを画面外に置いたまま PNG に描画して終了する
         // (実画面をキャプチャしないので、ゲーム中でも邪魔にならない)。SETTINGS=1 なら設定オーバーレイを開いた状態で撮る
@@ -244,6 +258,36 @@ public partial class MainWindow
 
     private static string Fmt(Win32.NativeRect? r)
         => r is { } v ? $"{v.Left},{v.Top} - {v.Right},{v.Bottom} ({v.Right - v.Left}x{v.Bottom - v.Top})" : "(null)";
+
+    /// <summary>
+    /// ダウンロードサイズが引けるかを確かめる (VRCAC_UI_PREVIEW_SIZEPROBE=path)。
+    /// これだけは実際の API を叩く (保存されたセッションを使う)。サイズは 1 件 1 リクエスト
+    /// なので、確認でも先頭 3 件に絞る。
+    /// </summary>
+    private async Task RunSizeProbeAsync(string path)
+    {
+        Left = -4000; Top = 0;
+        var sb = new System.Text.StringBuilder();
+        try
+        {
+            var me = await _api.TryGetCurrentUserAsync();
+            sb.AppendLine($"ログイン: {me?.DisplayName ?? "できず"}");
+            var avatars = await _api.GetOwnAvatarsAsync();
+            sb.AppendLine($"一覧: {avatars.Count} 件");
+            foreach (var a in avatars.Take(3))
+            {
+                var r = a.WindowsAssetRef;
+                if (r is null) { sb.AppendLine($"{a.Name,-16} assetRef 取れず"); continue; }
+                var size = await _api.GetAssetSizeAsync(r.Value.FileId, r.Value.Version);
+                if (size is { } s) AssetSizeCache.Set(r.Value.FileId, r.Value.Version, s);
+                var item = new AvatarItem(a);
+                sb.AppendLine($"{a.Name,-16} 生={(size is { } b ? $"{b:N0}" : "取れず"),-12} 表示=「{PerformanceSubText(item)}」");
+            }
+        }
+        catch (Exception ex) { sb.AppendLine("EXCEPTION: " + ex.Message); }
+        File.WriteAllText(path, sb.ToString());
+        Application.Current.Shutdown();
+    }
 
     /// <summary>
     /// 取れなかったサムネイルが取り直されるかを見る (VRCAC_UI_PREVIEW_RETRYTEST=1)。

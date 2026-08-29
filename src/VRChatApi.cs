@@ -262,6 +262,26 @@ public sealed class VRChatApi : IDisposable
 
     // ---------------- アバター ----------------
 
+    /// <summary>
+    /// アセットのダウンロードサイズ (バイト)。アバターの応答には入っていないので、
+    /// ファイルの情報を 1 件ずつ引く。取れなければ null。
+    /// </summary>
+    public async Task<long?> GetAssetSizeAsync(string fileId, int version, CancellationToken ct = default)
+    {
+        if (!fileId.StartsWith("file_", StringComparison.Ordinal)) return null;
+        try
+        {
+            var info = await GetJsonAsync<VRChatFile>($"/file/{Uri.EscapeDataString(fileId)}", ct);
+            // 指定のバージョンを優先し、無ければ一番新しいものを使う
+            var v = info.Versions?.FirstOrDefault(x => x.Version == version)
+                    ?? info.Versions?.OrderByDescending(x => x.Version).FirstOrDefault();
+            var size = v?.File?.SizeInBytes;
+            return size is > 0 ? size : null;
+        }
+        catch (OperationCanceledException) { throw; }
+        catch { return null; } // 消えている / 権限が無いなどは「分からない」で済ませる
+    }
+
     /// <summary>自分がアップロードしたアバター一覧。</summary>
     public async Task<List<Avatar>> GetOwnAvatarsAsync(CancellationToken ct = default)
         => await GetAllPagesAsync("/avatars?user=me&releaseStatus=all&sort=updated&order=descending", ct);
@@ -610,6 +630,58 @@ public sealed class Avatar
     [JsonPropertyName("updated_at")] public DateTimeOffset? UpdatedAt { get; set; }
     /// <summary>パフォーマンスランク。VRChat が判定したもの (プラットフォームごと)。</summary>
     public AvatarPerformance? Performance { get; set; }
+    /// <summary>アップロード済みのアセット。ダウンロードサイズを引くためのファイル ID がここにある。</summary>
+    public List<UnityPackage>? UnityPackages { get; set; }
+
+    /// <summary>
+    /// Windows 版アセットのファイル ID とバージョン。サイズはこれを使って別途問い合わせる
+    /// (アバターの応答にはサイズが入っていないため)。取れなければ null。
+    /// </summary>
+    public (string FileId, int Version)? WindowsAssetRef
+    {
+        get
+        {
+            // 同じアセットが variant 違い (standard / security) で複数並ぶので、素の standard を使う
+            var pkg = UnityPackages?.FirstOrDefault(p => p.Platform == "standalonewindows" && p.Variant == "standard")
+                      ?? UnityPackages?.FirstOrDefault(p => p.Platform == "standalonewindows");
+            return ParseFileRef(pkg?.AssetUrl);
+        }
+    }
+
+    /// <summary>".../api/1/file/file_xxx/3/file" から (file_xxx, 3) を取り出す。</summary>
+    internal static (string FileId, int Version)? ParseFileRef(string? assetUrl)
+    {
+        if (string.IsNullOrEmpty(assetUrl)) return null;
+        var parts = assetUrl.Split('/');
+        var at = Array.FindIndex(parts, p => p.StartsWith("file_", StringComparison.Ordinal));
+        if (at < 0 || at + 1 >= parts.Length || !int.TryParse(parts[at + 1], out var ver)) return null;
+        return (parts[at], ver);
+    }
+}
+
+/// <summary>ファイルの情報 (/file/{id})。ダウンロードサイズを取るためだけに使う。</summary>
+public sealed class VRChatFile
+{
+    public List<VRChatFileVersion>? Versions { get; set; }
+}
+
+public sealed class VRChatFileVersion
+{
+    public int Version { get; set; }
+    public VRChatFileData? File { get; set; }
+}
+
+public sealed class VRChatFileData
+{
+    public long? SizeInBytes { get; set; }
+}
+
+public sealed class UnityPackage
+{
+    public string? AssetUrl { get; set; }
+    public string? Platform { get; set; }
+    public string? Variant { get; set; }
+    public string? PerformanceRating { get; set; }
 }
 
 /// <summary>アバターのパフォーマンスランク。値は Excellent / Good / Medium / Poor / VeryPoor。</summary>

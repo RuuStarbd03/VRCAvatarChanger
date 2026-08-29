@@ -103,6 +103,7 @@ public partial class MainWindow
     /// <summary>タイルが画面に出た (実体化された) ときに呼ばれる。他を後回しにして先に展開する。</summary>
     private void RequestThumbnail(AvatarItem item)
     {
+        RequestAssetSize(item); // 出たタイルから順に、必要ならダウンロードサイズも取りに行く
         // グループタイルは代表メンバーの画像を映しているので、扱うのは代表のぶん
         if (item.IsGroup) item = item.Representative!;
         TouchThumbnail(item); // 「今見えている」印。手放す順番の基準になる

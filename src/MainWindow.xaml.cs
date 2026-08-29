@@ -222,7 +222,7 @@ public partial class MainWindow : Window
     /// 「その順で並べた根拠」がタイル上で見えるようにするため (日付順なら日付を出す)。
     /// 手がかりが無い並び (名前 / 作者 / 最近使った) は作者名のまま。
     /// </summary>
-    private static void ApplySubText(IEnumerable<AvatarItem> items, string key)
+    private void ApplySubText(IEnumerable<AvatarItem> items, string key)
     {
         var kind = key.Replace("_desc", "").Replace("_asc", "");
         foreach (var a in items)
@@ -233,7 +233,8 @@ public partial class MainWindow : Window
             {
                 "created" => Date(a.AddedAt ?? a.Avatar.CreatedAt) ?? a.AuthorName,
                 "updated" => Date(a.Avatar.UpdatedAt) ?? a.AuthorName,
-                "performance" => PerformanceLabel(a.Avatar.Performance?.Windows) ?? a.AuthorName,
+                // サイズはまだ分からないことがある。取れたらこの行だけ書き換わる
+                "performance" => PerformanceSubText(a),
                 _ => a.AuthorName,
             };
         }
