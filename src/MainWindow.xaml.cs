@@ -69,7 +69,7 @@ public partial class MainWindow : Window
         var savedView = _settings.ViewMode;
         var savedSort = _settings.SortKey;
         InitializeComponent();
-        SortBox.SelectedItem = SortBox.Items.OfType<ComboBoxItem>().FirstOrDefault(i => (string?)i.Tag == savedSort) ?? SortBox.Items[0];
+        InitSortControls(savedSort);
         InitWatchVRChat(); // _ready 前に呼ぶ (トグルの初期化でイベントを発火させない)
         InitQuickOverlay();
         _ready = true;
@@ -149,11 +149,53 @@ public partial class MainWindow : Window
 
     // ---------------- 並び順 ----------------
 
-    private string SortKey => (SortBox.SelectedItem as ComboBoxItem)?.Tag as string ?? "created_desc";
+    /// <summary>
+    /// 保存・並び替えに使うキー ("created_desc" など)。画面では「何で並べるか」と
+    /// 「昇順 / 降順」を別の操作に分けているので、ここで元の形に組み直す。
+    /// </summary>
+    private string SortKey
+        => ((SortBox.SelectedItem as ComboBoxItem)?.Tag as string ?? "created")
+           + (SortDescToggle.IsChecked == true ? "_desc" : "_asc");
+
+    /// <summary>保存されたキーを、種別のコンボと向きのトグルに振り分ける。</summary>
+    private void InitSortControls(string savedKey)
+    {
+        var desc = savedKey.EndsWith("_desc", StringComparison.Ordinal);
+        var kind = savedKey.Replace("_desc", "").Replace("_asc", "");
+        SortBox.SelectedItem = SortBox.Items.OfType<ComboBoxItem>().FirstOrDefault(i => (string?)i.Tag == kind)
+                               ?? SortBox.Items[0];
+        SortDescToggle.IsChecked = desc;
+        UpdateSortDirection();
+    }
+
+    /// <summary>向きの見た目 (矢印とツールチップ) を今の状態に合わせる。</summary>
+    private void UpdateSortDirection()
+    {
+        var desc = SortDescToggle.IsChecked == true;
+        var byName = (string?)(SortBox.SelectedItem as ComboBoxItem)?.Tag == "name";
+        SortDirIcon.Text = desc ? "↓" : "↑";
+        // 「新しい順 / 古い順」と「A → Z」では言い方が変わるので、選んでいる種別に合わせる
+        SortDescToggle.ToolTip = byName
+            ? (desc ? "名前の降順 (Z → A)" : "名前の昇順 (A → Z)")
+            : (desc ? "新しい順" : "古い順");
+    }
 
     private void SortBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         if (!_ready) return;
+        UpdateSortDirection();
+        SaveSortKey();
+    }
+
+    private void SortDesc_Changed(object sender, RoutedEventArgs e)
+    {
+        if (!_ready) return;
+        UpdateSortDirection();
+        SaveSortKey();
+    }
+
+    private void SaveSortKey()
+    {
         _settings.SortKey = SortKey;
         if (!_preview) _settings.Save();
         ApplyFilter();

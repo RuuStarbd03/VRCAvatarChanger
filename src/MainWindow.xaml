@@ -464,14 +464,16 @@
 
                 <StackPanel Grid.Column="4" Orientation="Horizontal" HorizontalAlignment="Right">
                     <!-- 並び順 -->
-                    <ComboBox x:Name="SortBox" MinWidth="150" Margin="0,0,10,0" SelectionChanged="SortBox_SelectionChanged" ToolTip="並び順">
-                        <ComboBoxItem Tag="created_desc" Content="追加日 (新しい順)"/>
-                        <ComboBoxItem Tag="created_asc"  Content="追加日 (古い順)"/>
-                        <ComboBoxItem Tag="updated_desc" Content="更新日 (新しい順)"/>
-                        <ComboBoxItem Tag="updated_asc"  Content="更新日 (古い順)"/>
-                        <ComboBoxItem Tag="name_asc"     Content="名前 (A → Z)"/>
-                        <ComboBoxItem Tag="name_desc"    Content="名前 (Z → A)"/>
+                    <!-- 並び順: 何で並べるかと、昇順 / 降順を分ける (どの項目にも両方あるため) -->
+                    <ComboBox x:Name="SortBox" MinWidth="96" Margin="0,0,6,0" SelectionChanged="SortBox_SelectionChanged" ToolTip="並び順">
+                        <ComboBoxItem Tag="created" Content="追加日"/>
+                        <ComboBoxItem Tag="updated" Content="更新日"/>
+                        <ComboBoxItem Tag="name"    Content="名前"/>
                     </ComboBox>
+                    <ToggleButton x:Name="SortDescToggle" Style="{StaticResource SegmentToggle}" Padding="9,0" Margin="0,0,10,0"
+                                  Checked="SortDesc_Changed" Unchecked="SortDesc_Changed" AutomationProperties.Name="並び順の向き">
+                        <TextBlock x:Name="SortDirIcon" Text="↓" FontSize="15" VerticalAlignment="Center"/>
+                    </ToggleButton>
                 <Grid Width="230">
                     <TextBox x:Name="SearchBox" TextChanged="SearchBox_TextChanged" Padding="32,7,10,7"/>
                     <TextBlock Text="&#xE721;" Style="{StaticResource Icon}" Foreground="{DynamicResource MutedTextBrush}" Margin="11,0,0,0" IsHitTestVisible="False"/>

@@ -42,6 +42,8 @@ public partial class MainWindow
         AvatarList.SelectedIndex = 1;
         if (Environment.GetEnvironmentVariable("VRCAC_UI_PREVIEW_VIEW") == "grid") ViewGrid.IsChecked = true;
         if (Environment.GetEnvironmentVariable("VRCAC_UI_PREVIEW_GROUP") is { Length: > 0 } grp) GroupToggle.IsChecked = grp != "off";
+        // 並び順の見た目確認: VRCAC_UI_PREVIEW_SORT="name_asc" のようにキーを渡す
+        if (Environment.GetEnvironmentVariable("VRCAC_UI_PREVIEW_SORT") is { Length: > 0 } sort) InitSortControls(sort);
         if (Environment.GetEnvironmentVariable("VRCAC_UI_PREVIEW_SOURCE") == "public") SourcePublic.IsChecked = true;
         if (Environment.GetEnvironmentVariable("VRCAC_UI_PREVIEW_TOPMOST") == "1") { Topmost = true; Activate(); }
         // ドロップ処理の確認: 一覧の 2 番目を 3 番目に重ね、続けて 1 番目をできたグループに重ねる
