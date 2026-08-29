@@ -207,7 +207,9 @@ public partial class MainWindow
             Left = -4000; Top = 0;
             _quick = new QuickPickWindow(QuickChangeAsync, () => { }, SaveQuickSortKey);
             _quick.OpenAt(new Win32.NativeRect { Left = -4400, Top = 0, Right = -4000, Bottom = 760 }, 1.0,
-                FlatAvatarItems(), _settings.RecentAvatars, _settings.QuickSortKey, Hotkey.Parse(_settings.QuickHotkey));
+                FlatAvatarItems(), _settings.RecentAvatars,
+                Environment.GetEnvironmentVariable("VRCAC_UI_PREVIEW_SORT") ?? _settings.QuickSortKey,
+                Hotkey.Parse(_settings.QuickHotkey));
             if (!string.IsNullOrEmpty(shotPath)) _ = CaptureWindowAsync(_quick, shotPath);
         }
         else if (!string.IsNullOrEmpty(shotPath))

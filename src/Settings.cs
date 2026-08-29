@@ -29,8 +29,11 @@ public sealed class Settings
     public string NextInGroupHotkey { get; set; } = "";
     /// <summary>特定のアバターを直接呼び出すキー割り当て。</summary>
     public List<AvatarHotkey> AvatarHotkeys { get; set; } = [];
-    /// <summary>クイック着替えの並び順。"recent" (最近使用した順) か SortKey と同じキー。</summary>
-    public string QuickSortKey { get; set; } = "recent";
+    /// <summary>
+    /// クイック着替えの並び順。SortKey と同じ形式。
+    /// 旧バージョンは向きなしの "recent" で保存していたので、読み込み時に昇順として扱う。
+    /// </summary>
+    public string QuickSortKey { get; set; } = "recent_asc";
     /// <summary>最近使用したアバター ID (先頭が最新)。「最近使用した順」の並びに使う。</summary>
     public List<string> RecentAvatars { get; set; } = [];
     public int GridColumns { get; set; } = 5;

@@ -48,21 +48,27 @@
             <Grid Grid.Row="0" Margin="0,0,0,10">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
                     <ColumnDefinition Width="*"/>
                     <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
-                <ComboBox x:Name="SortBox" MinWidth="168" SelectionChanged="SortBox_SelectionChanged" ToolTip="並び順">
-                    <ComboBoxItem Tag="recent"       Content="最近使用した順"/>
-                    <ComboBoxItem Tag="created_desc" Content="追加日 (新しい順)"/>
-                    <ComboBoxItem Tag="created_asc"  Content="追加日 (古い順)"/>
-                    <ComboBoxItem Tag="updated_desc" Content="更新日 (新しい順)"/>
-                    <ComboBoxItem Tag="updated_asc"  Content="更新日 (古い順)"/>
-                    <ComboBoxItem Tag="name_asc"     Content="名前 (A → Z)"/>
-                    <ComboBoxItem Tag="name_desc"    Content="名前 (Z → A)"/>
+                <!-- 並び順: メイン画面と同じく、種別と昇順 / 降順を分ける -->
+                <ComboBox x:Name="SortBox" MinWidth="118" SelectionChanged="SortBox_SelectionChanged" ToolTip="並び順">
+                    <ComboBoxItem Tag="recent"      Content="最近使った"/>
+                    <ComboBoxItem Tag="created"     Content="追加日"/>
+                    <ComboBoxItem Tag="updated"     Content="更新日"/>
+                    <ComboBoxItem Tag="performance" Content="パフォーマンス"/>
+                    <ComboBoxItem Tag="name"        Content="名前"/>
+                    <ComboBoxItem Tag="author"      Content="作者"/>
                 </ComboBox>
-                <TextBlock Grid.Column="1" x:Name="CloseHint" Text="Esc で閉じる" Style="{StaticResource CaptionText}" Foreground="{DynamicResource FaintTextBrush}"
+                <ToggleButton Grid.Column="1" x:Name="SortDescToggle" Style="{StaticResource SegmentToggle}" Padding="8,0"
+                              Margin="6,0,0,0" VerticalAlignment="Center" MinHeight="30"
+                              Checked="SortDesc_Changed" Unchecked="SortDesc_Changed" AutomationProperties.Name="並び順の向き">
+                    <TextBlock x:Name="SortDirIcon" Text="↑" FontSize="14" VerticalAlignment="Center"/>
+                </ToggleButton>
+                <TextBlock Grid.Column="2" x:Name="CloseHint" Text="Esc で閉じる" Style="{StaticResource CaptionText}" Foreground="{DynamicResource FaintTextBrush}"
                            VerticalAlignment="Center" Margin="10,0,8,0" TextTrimming="CharacterEllipsis"/>
-                <Button Grid.Column="2" Style="{StaticResource GhostButton}" Click="Close_Click" AutomationProperties.Name="閉じる"
+                <Button Grid.Column="3" Style="{StaticResource GhostButton}" Click="Close_Click" AutomationProperties.Name="閉じる"
                         ToolTip="閉じる (Esc)" Width="28" Height="28" Padding="0" VerticalAlignment="Center">
                     <TextBlock Text="&#xE711;" Style="{StaticResource Icon}" FontSize="12"/>
                 </Button>

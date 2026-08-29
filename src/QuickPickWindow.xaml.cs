@@ -18,7 +18,7 @@ public partial class QuickPickWindow : Window
     private readonly Action _refocusGame;
     private readonly Action<string> _saveSortKey;
     private List<AvatarItem> _all = [];
-    private Dictionary<string, int> _recentRank = [];
+    private IReadOnlyList<string> _recentAvatars = [];
     private bool _busy;
     private bool _ready; // 初期化中の SelectionChanged を無視する
     private int _gen; // 閉じアニメ完了時、その後に開き直されていたら Hide しないための世代番号
@@ -67,9 +67,9 @@ public partial class QuickPickWindow : Window
         _gen++;
         CloseHint.Text = toggleKey.IsSet ? $"{toggleKey.Display} / Esc で閉じる" : "Esc で閉じる";
         _all = items.ToList();
-        _recentRank = recentAvatars.Select((id, i) => (id, i)).ToDictionary(t => t.id, t => t.i);
+        _recentAvatars = recentAvatars;
         _ready = false;
-        SortBox.SelectedItem = SortBox.Items.OfType<ComboBoxItem>().FirstOrDefault(i => (string?)i.Tag == sortKey) ?? SortBox.Items[0];
+        InitSortControls(sortKey);
         _ready = true;
         SearchBox.Text = "";
         ApplyFilter();
@@ -109,11 +109,49 @@ public partial class QuickPickWindow : Window
         if (refocus) _refocusGame();
     }
 
-    private string SortKey => (SortBox.SelectedItem as ComboBoxItem)?.Tag as string ?? "recent";
+    /// <summary>保存・並び替えに使うキー。種別と向きを組み直す (メイン画面と同じ形)。</summary>
+    private string SortKey
+        => ((SortBox.SelectedItem as ComboBoxItem)?.Tag as string ?? "recent")
+           + (SortDescToggle.IsChecked == true ? "_desc" : "_asc");
+
+    /// <summary>保存されたキーを、種別のコンボと向きのトグルに振り分ける。</summary>
+    private void InitSortControls(string savedKey)
+    {
+        // 以前は「最近使用した順」を向きなしの "recent" で保存していた。昇順として扱う
+        var desc = savedKey.EndsWith("_desc", StringComparison.Ordinal);
+        var kind = savedKey.Replace("_desc", "").Replace("_asc", "");
+        SortBox.SelectedItem = SortBox.Items.OfType<ComboBoxItem>().FirstOrDefault(i => (string?)i.Tag == kind)
+                               ?? SortBox.Items[0];
+        SortDescToggle.IsChecked = desc;
+        UpdateSortDirection();
+    }
+
+    private void UpdateSortDirection()
+    {
+        var desc = SortDescToggle.IsChecked == true;
+        SortDirIcon.Text = desc ? "↓" : "↑";
+        SortDescToggle.ToolTip = (string?)(SortBox.SelectedItem as ComboBoxItem)?.Tag switch
+        {
+            "name" => desc ? "名前の降順 (Z → A)" : "名前の昇順 (A → Z)",
+            "author" => desc ? "作者名の降順 (Z → A)" : "作者名の昇順 (A → Z)",
+            "recent" => desc ? "使っていないものから" : "最近使ったものから",
+            "performance" => desc ? "重い順" : "軽い順",
+            _ => desc ? "新しい順" : "古い順",
+        };
+    }
 
     private void SortBox_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
     {
         if (!_ready) return;
+        UpdateSortDirection();
+        _saveSortKey(SortKey);
+        ApplyFilter();
+    }
+
+    private void SortDesc_Changed(object sender, RoutedEventArgs e)
+    {
+        if (!_ready) return;
+        UpdateSortDirection();
         _saveSortKey(SortKey);
         ApplyFilter();
     }
@@ -125,10 +163,8 @@ public partial class QuickPickWindow : Window
             ? _all
             : _all.Where(a => a.Name.Contains(q, StringComparison.OrdinalIgnoreCase)
                            || a.AuthorName.Contains(q, StringComparison.OrdinalIgnoreCase));
-        // 「最近使用した順」は使用履歴の順。未使用のものは元の並びのまま後ろに置く (OrderBy は安定ソート)
-        var sorted = SortKey == "recent"
-            ? items.OrderBy(a => _recentRank.TryGetValue(a.Id, out var r) ? r : int.MaxValue).ToList()
-            : MainWindow.ApplySort(items, SortKey).ToList();
+        // 「最近使った」も含めてメイン画面と同じ並べ方に任せる
+        var sorted = MainWindow.ApplySort(items, SortKey, _recentAvatars).ToList();
         List.ItemsSource = sorted;
         var current = sorted.FindIndex(a => a.IsCurrent);
         List.SelectedIndex = current >= 0 ? current : (sorted.Count > 0 ? 0 : -1);
