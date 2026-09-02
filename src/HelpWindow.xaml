@@ -296,6 +296,11 @@
                                    Text="「設定」→「ログアウト」で保存されたログイン状態が消え、次回は再ログインになります。"/>
                     </Expander>
 
+                    <Expander Style="{StaticResource Faq}" Header="不具合を報告したい / 何が起きたか調べたい">
+                        <TextBlock Style="{StaticResource Body}"
+                                   Text="設定 →「ログの記録」をオンにして、問題を再現してから「開く」で app.log を開いてください。着替え・一覧の取得・OSC・キャッシュなど、裏で起きたことが時刻つきで残ります。オフのときもエラーだけは記録します。ログにパスワードやログイン状態は書きません (アバターの ID と名前、通信の結果は書きます)。"/>
+                    </Expander>
+
                     <Expander Style="{StaticResource Faq}" Header="アップデートはどうやるの?">
                         <TextBlock Style="{StaticResource Body}"
                                    Text="新しいバージョンが公開されると右上に更新ボタンが出ます。押すと差し替えから再起動まで自動で行われます。勝手に更新されることはありません。"/>
@@ -339,8 +344,8 @@
                         <TextBlock Grid.Row="2" Grid.Column="1" Text="表示形式・並び順・ウィンドウ位置などの設定"/>
                         <TextBlock Grid.Row="3" Text="session.json" FontFamily="Cascadia Mono, Consolas"/>
                         <TextBlock Grid.Row="3" Grid.Column="1" Text="VRChat のログイン状態(暗号化済み。他の PC では使えない)"/>
-                        <TextBlock Grid.Row="4" Text="error.log" FontFamily="Cascadia Mono, Consolas"/>
-                        <TextBlock Grid.Row="4" Grid.Column="1" Text="予期しないエラーの記録(起きたときだけ)"/>
+                        <TextBlock Grid.Row="4" Text="app.log" FontFamily="Cascadia Mono, Consolas"/>
+                        <TextBlock Grid.Row="4" Grid.Column="1" Text="動作の記録。エラーは常に、それ以外は設定「ログの記録」がオンのとき"/>
                         <TextBlock Grid.Row="5" Text="WebView2\" FontFamily="Cascadia Mono, Consolas"/>
                         <TextBlock Grid.Row="5" Grid.Column="1" Text="Discord / Google ログイン用ブラウザの一時データ"/>
                     </Grid>

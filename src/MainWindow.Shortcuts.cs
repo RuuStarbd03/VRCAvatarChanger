@@ -103,14 +103,14 @@ public partial class MainWindow
                 {
                     e.Handled = true;
                     if (sel.IsGroup) OpenGroup(sel.Group!);
-                    else _ = ChangeFromListAsync(sel);
+                    else ChangeFromListAsync(sel).Forget();
                 }
                 return;
             case Key.Back:
                 if (_openGroup is not null) { e.Handled = true; CloseGroup(); }
                 return;
             case Key.Delete:
-                if (IsPublicTab && AvatarList.SelectedItem is AvatarItem { IsAvatar: true }) { e.Handled = true; _ = RemoveSelectedFromPublicAsync(); }
+                if (IsPublicTab && AvatarList.SelectedItem is AvatarItem { IsAvatar: true }) { e.Handled = true; RemoveSelectedFromPublicAsync().Forget(); }
                 return;
         }
     }

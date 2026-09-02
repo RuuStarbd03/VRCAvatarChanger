@@ -921,6 +921,27 @@
                                 <ColumnDefinition Width="Auto"/>
                             </Grid.ColumnDefinitions>
                             <StackPanel>
+                                <TextBlock Text="ログの記録" Style="{StaticResource SettingTitle}"/>
+                                <TextBlock Style="{StaticResource SettingDesc}"
+                                           Text="動作の記録を app.log に書きます。不具合を報告するときはオンにして再現し、「開く」で出たファイルを添えてください。オフでもエラーは記録します。"/>
+                            </StackPanel>
+                            <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Top" Margin="14,0,0,0">
+                                <Button Content="開く" Style="{StaticResource SecondaryButton}" Click="OpenLog_Click"
+                                        ToolTip="app.log をテキストエディタで開く" MinWidth="80" Height="32" Margin="0,0,14,0"/>
+                                <ToggleButton x:Name="LogToggle" Style="{StaticResource OnOffToggle}"
+                                              Checked="LogToggle_Changed" Unchecked="LogToggle_Changed"
+                                              VerticalAlignment="Center" AutomationProperties.Name="ログの記録"/>
+                            </StackPanel>
+                        </Grid>
+                    </Border>
+
+                    <Border Style="{StaticResource SettingRow}">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <StackPanel>
                                 <TextBlock Text="データの保存先" Style="{StaticResource SettingTitle}"/>
                                 <TextBlock Style="{StaticResource SettingDesc}"
                                            Text="設定・グループ・タグ・パブリックリストの保存先を開きます。"/>

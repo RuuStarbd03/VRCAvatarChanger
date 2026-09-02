@@ -44,7 +44,7 @@ public sealed class OscListener : IDisposable
         _udp = udp;
         Port = port;
         _cts = new CancellationTokenSource();
-        _ = ReceiveLoopAsync(udp, _cts.Token);
+        ReceiveLoopAsync(udp, _cts.Token).Forget();
     }
 
     public void Stop()
@@ -64,12 +64,12 @@ public sealed class OscListener : IDisposable
             {
                 var result = await udp.ReceiveAsync(ct);
                 Interlocked.Exchange(ref _lastReceiveTicks, DateTime.UtcNow.Ticks);
-                try { HandlePacket(result.Buffer); } catch { /* 壊れたパケットは無視 */ }
+                try { HandlePacket(result.Buffer); } catch (Exception ex) { Log.Debug($"OSC: 解釈できないパケット ({result.Buffer.Length} bytes)", ex); }
             }
         }
         catch (OperationCanceledException) { }
         catch (ObjectDisposedException) { }
-        catch (SocketException) { }
+        catch (SocketException ex) { Log.Warn("OSC の受信が止まりました (再試行します)", ex); }
     }
 
     private void HandlePacket(ReadOnlySpan<byte> data)
@@ -109,7 +109,7 @@ public sealed class OscListener : IDisposable
             udp.Send(msg, msg.Length, new IPEndPoint(IPAddress.Loopback, GameInPort));
             return true;
         }
-        catch { return false; }
+        catch (Exception ex) { Log.Warn("OSC で着替えを送れませんでした (API で着替えます)", ex); return false; }
     }
 
     private static byte[] BuildMessage(string address, string stringArg)

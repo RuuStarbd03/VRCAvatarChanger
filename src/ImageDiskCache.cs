@@ -44,7 +44,7 @@ public static class ImageDiskCache
                 try { File.SetLastAccessTimeUtc(path, DateTime.UtcNow); } catch { }
             return new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite, 64 * 1024);
         }
-        catch { return null; }
+        catch (Exception ex) { Log.Warn("サムネイルのキャッシュを開けませんでした (取り直します)", ex); return null; }
     }
 
     /// <summary>
@@ -70,7 +70,7 @@ public static class ImageDiskCache
                 }
             }
             catch (OperationCanceledException) { throw; }
-            catch { return urls.ToList(); } // 判定できないときは全部「無い」ものとして扱う
+            catch (Exception ex) { Log.Warn("サムネイルのキャッシュ一覧を読めませんでした (全部無いものとして扱います)", ex); return urls.ToList(); }
             return missing;
         }, ct);
 
@@ -88,10 +88,10 @@ public static class ImageDiskCache
             if (Interlocked.Add(ref _writtenSinceTrim, bytes.Length) > TrimEveryBytes)
             {
                 Interlocked.Exchange(ref _writtenSinceTrim, 0);
-                _ = Task.Run(Trim);
+                Task.Run(Trim).Forget();
             }
         }
-        catch { /* 保存できなくても次回また取りに行くだけ */ }
+        catch (Exception ex) { Log.Warn("サムネイルをキャッシュに書けませんでした (次回また取りに行きます)", ex); }
     }
 
     public static void Delete(string url)
@@ -119,9 +119,9 @@ public static class ImageDiskCache
             {
                 if (total <= MaxBytes * 8 / 10) break;
                 var size = f.Length; // Delete すると FileInfo の情報が無効になるので先に控える
-                try { f.Delete(); total -= size; } catch { }
+                try { f.Delete(); total -= size; } catch (Exception ex) { Log.Debug($"キャッシュを消せませんでした: {f.Name}", ex); }
             }
         }
-        catch { }
+        catch (Exception ex) { Log.Warn("サムネイルのキャッシュを整理できませんでした", ex); }
     }
 }

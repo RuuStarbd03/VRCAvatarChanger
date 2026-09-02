@@ -6,21 +6,37 @@ namespace VRCAvatarChanger;
 public partial class MainWindow
 {
     private System.Windows.Threading.DispatcherTimer? _oscRetry;
+    private object? _oscToolTip;      // XAML に書いてある通常時の説明 (失敗時に差し替えるので控える)
+    private bool _oscFailureShown;    // 失敗は初回だけ記録する (30 秒ごとに同じ行を書かない)
 
-    /// <summary>OSC の待ち受けを開始。ポートが取れない場合はユーザーには何も見せず、30 秒ごとに静かに再試行する。</summary>
+    /// <summary>
+    /// OSC の待ち受けを開始。ポートが取れない場合 (VRCX など他のツールが 9001 を使っている) は
+    /// その旨をヘッダーに出し、30 秒ごとに再試行する。以前は何も出さなかったため、
+    /// 「OSC を有効にしたのに連携中にならない」原因が利用者に分からなかった。
+    /// </summary>
     private void StartOsc()
     {
+        _oscToolTip ??= OscStatusText.ToolTip;
         try
         {
             _osc.Start();
             OscStatusText.Text = "OSC 連携中";
+            OscStatusText.ToolTip = _oscToolTip;
             OscStatusText.Visibility = Visibility.Visible;
+            if (_oscFailureShown) Log.Info($"OSC の待ち受けを開始できました (ポート {_osc.Port})");
+            _oscFailureShown = false;
             _oscRetry?.Stop();
             _oscRetry = null;
         }
-        catch
+        catch (Exception ex)
         {
-            OscStatusText.Visibility = Visibility.Collapsed;
+            OscStatusText.Text = "OSC 待ち受けできません";
+            OscStatusText.ToolTip = $"ポート {OscListener.DefaultPort} を開けませんでした ({ex.Message})。\n" +
+                "VRCX など他のツールが同じポートを使っている可能性があります。OSC ルーター (VOR 等) で分配するか、そのツールを閉じてください。\n" +
+                "30 秒ごとに再試行します。";
+            OscStatusText.Visibility = Visibility.Visible;
+            if (!_oscFailureShown) Log.Warn($"OSC の待ち受けを開始できません (ポート {OscListener.DefaultPort})。30 秒ごとに再試行します", ex);
+            _oscFailureShown = true;
             if (_oscRetry is null)
             {
                 _oscRetry = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(30) };

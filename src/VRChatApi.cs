@@ -30,7 +30,12 @@ public static class FriendlyError
         VRChatApiException api => api.Message,
         System.Net.Http.HttpRequestException => "VRChat に接続できませんでした。インターネット接続を確認してください。",
         TaskCanceledException or TimeoutException => "VRChat からの応答がありません。しばらくしてからもう一度お試しください。",
-        _ => ex.Message,
+        System.Net.Sockets.SocketException => "ネットワークに接続できませんでした。",
+        JsonException => "VRChat の応答を解釈できませんでした (仕様が変わった可能性があります)。",
+        IOException io => "ファイルの読み書きに失敗しました: " + io.Message,
+        UnauthorizedAccessException => "ファイルにアクセスできませんでした (権限がありません)。",
+        // 想定外のものは、何が起きたか分かるよう種類も添える (詳細はログにある)
+        _ => $"予期しないエラー ({ex.GetType().Name}): {ex.Message}",
     };
 }
 
@@ -116,7 +121,12 @@ public sealed class VRChatApi : IDisposable
             if (!string.IsNullOrEmpty(s.Auth)) _cookies.Add(uri, new Cookie("auth", s.Auth) { Domain = uri.Host, Path = "/" });
             if (!string.IsNullOrEmpty(s.TwoFactorAuth)) _cookies.Add(uri, new Cookie("twoFactorAuth", s.TwoFactorAuth) { Domain = uri.Host, Path = "/" });
         }
-        catch { /* 壊れていたら無視して再ログインしてもらう */ }
+        catch (Exception ex)
+        {
+            // 壊れた (別の Windows ユーザーで作られた等) ファイルを毎回読もうとしないよう、消してから再ログインしてもらう
+            Log.Error("保存されたセッションを読めませんでした。消して再ログインしてもらいます", ex);
+            try { File.Delete(_cookiePath); } catch (Exception del) { Log.Warn("セッションファイルを消せませんでした", del); }
+        }
     }
 
     public void SaveCookies()
@@ -255,7 +265,7 @@ public sealed class VRChatApi : IDisposable
 
     public async Task LogoutAsync()
     {
-        try { using var _ = await _http.PutAsync($"{BaseUrl}/logout", null); } catch { }
+        try { using var _ = await _http.PutAsync($"{BaseUrl}/logout", null); } catch (Exception ex) { Log.Debug("ログアウト API に失敗 (ローカルのセッションは消します)", ex); }
         foreach (Cookie c in _cookies.GetCookies(new Uri(BaseUrl))) c.Expired = true;
         if (File.Exists(_cookiePath)) File.Delete(_cookiePath);
     }
@@ -279,7 +289,7 @@ public sealed class VRChatApi : IDisposable
             return size is > 0 ? size : null;
         }
         catch (OperationCanceledException) { throw; }
-        catch { return null; } // 消えている / 権限が無いなどは「分からない」で済ませる
+        catch (Exception ex) { Log.Debug($"ファイル情報 {fileId} v{version} を取得できませんでした (サイズは不明扱い)", ex); return null; }
     }
 
     /// <summary>自分がアップロードしたアバター一覧。</summary>
@@ -322,12 +332,9 @@ public sealed class VRChatApi : IDisposable
     /// <summary>アバターのお気に入りグループ一覧(avatars1 = "Favorite Avatars 1" など)。</summary>
     public async Task<List<FavoriteGroup>> GetFavoriteGroupsAsync(CancellationToken ct = default)
     {
-        try
-        {
-            var list = await GetJsonAsync<List<FavoriteGroup>>("/favorite/groups?type=avatar&n=100", ct);
-            return list.Where(g => g.Type == "avatar" && !string.IsNullOrEmpty(g.Name)).OrderBy(g => g.Name, StringComparer.Ordinal).ToList();
-        }
-        catch (VRChatApiException) { return []; }
+        // 取れなかったときに空を返すと「お気に入りが 0 件」に見えてしまうので、失敗は失敗として呼び出し側に伝える
+        var list = await GetJsonAsync<List<FavoriteGroup>>("/favorite/groups?type=avatar&n=100", ct);
+        return list.Where(g => g.Type == "avatar" && !string.IsNullOrEmpty(g.Name)).OrderBy(g => g.Name, StringComparer.Ordinal).ToList();
     }
 
     /// <summary>
@@ -424,8 +431,8 @@ public sealed class VRChatApi : IDisposable
                 _cooldownUntil = DateTimeOffset.UtcNow + RetryWait(res, 0);
                 return null;
             }
-            if (!res.IsSuccessStatusCode) return null;
-            if (res.Content.Headers.ContentLength > MaxImageBytes) return null;
+            if (!res.IsSuccessStatusCode) { Log.Debug($"画像を取得できませんでした (HTTP {(int)res.StatusCode}): {url}"); return null; }
+            if (res.Content.Headers.ContentLength > MaxImageBytes) { Log.Warn($"画像が大きすぎるので読みません ({res.Content.Headers.ContentLength} bytes): {url}"); return null; }
             await using var stream = await res.Content.ReadAsStreamAsync(ct);
             using var ms = new MemoryStream();
             var buf = new byte[64 * 1024];
@@ -437,7 +444,8 @@ public sealed class VRChatApi : IDisposable
             }
             return ms.ToArray();
         }
-        catch { return null; }
+        catch (OperationCanceledException) { return null; }
+        catch (Exception ex) { Log.Warn($"画像を取得できませんでした: {url}", ex); return null; }
     }
 
     // ---------------- 送信 (レート制限のリトライつき) ----------------

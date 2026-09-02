@@ -206,7 +206,7 @@ public partial class QuickPickWindow : Window
         else if (e.Key == Key.Enter && List.SelectedItem is AvatarItem item)
         {
             e.Handled = true;
-            _ = ChangeAsync(item);
+            ChangeAsync(item).Forget();
         }
         else if (e.Key is Key.Down or Key.Up && SearchBox.IsKeyboardFocused && List.Items.Count > 0)
         {

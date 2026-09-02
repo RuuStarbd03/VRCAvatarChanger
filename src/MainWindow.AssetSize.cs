@@ -24,7 +24,7 @@ public partial class MainWindow
         if (AssetSizeCache.TryGet(r.FileId, r.Version, out _)) return;
         if (!_sizeQueued.Add(item.Id)) return;
         _sizeQueue.Enqueue(item);
-        _ = PumpSizesAsync();
+        PumpSizesAsync().Forget();
     }
 
     /// <summary>
@@ -70,7 +70,7 @@ public partial class MainWindow
             }
         }
         catch (OperationCanceledException) { }
-        catch { /* 取れなくてもランクだけ出せばよい */ }
+        catch (Exception ex) { Log.Warn("ダウンロードサイズの取得が止まりました (ランクだけ表示します)", ex); }
         finally
         {
             _sizePumping = false;

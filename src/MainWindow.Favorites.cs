@@ -31,7 +31,7 @@ public partial class MainWindow
                 .GroupBy(r => r.FavoriteId, StringComparer.Ordinal)
                 .ToDictionary(g => g.Key, g => g.First(), StringComparer.Ordinal);
         }
-        catch { /* 次の再読み込みでまた試す */ }
+        catch (Exception ex) { Log.Warn("お気に入りの状態を取得できませんでした (右クリックのお気に入り操作が出ないことがあります。次の再読み込みでまた試します)", ex); }
     }
 
     /// <summary>右クリックメニューのお気に入り項目を、選択中のアバターの状態に合わせて組み直す。</summary>
@@ -72,6 +72,7 @@ public partial class MainWindow
         }
         catch (Exception ex)
         {
+            Log.Warn($"お気に入りに追加できませんでした: {item.Id} → {group.Name}", ex);
             if (!HandleSessionExpired(ex)) SetStatus(StatusKind.Error, "お気に入りに追加できませんでした: " + FriendlyError.Of(ex));
         }
     }
@@ -93,6 +94,7 @@ public partial class MainWindow
         }
         catch (Exception ex)
         {
+            Log.Warn($"お気に入りから外せませんでした: {item.Id}", ex);
             if (!HandleSessionExpired(ex)) SetStatus(StatusKind.Error, "お気に入りから外せませんでした: " + FriendlyError.Of(ex));
             return;
         }

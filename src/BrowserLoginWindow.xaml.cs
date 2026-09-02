@@ -134,7 +134,7 @@ public partial class BrowserLoginWindow : Window
             core.CookieManager.DeleteAllCookies();
             await core.Profile.ClearBrowsingDataAsync();
         }
-        catch { /* 消せなくても致命的ではない */ }
+        catch (Exception ex) { Log.Debug("ブラウザのクッキーを消せませんでした", ex); }
     }
 
     /// <summary>ログアウト時など、ブラウザプロファイルをディスクごと削除する。</summary>
@@ -145,6 +145,6 @@ public partial class BrowserLoginWindow : Window
             var dir = AppPaths.In("WebView2");
             if (Directory.Exists(dir)) Directory.Delete(dir, recursive: true);
         }
-        catch { /* 使用中などで消せない場合は次回に */ }
+        catch (Exception ex) { Log.Debug("ブラウザのプロファイルを消せませんでした (使用中なら次回に)", ex); }
     }
 }

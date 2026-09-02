@@ -39,7 +39,6 @@ public partial class MainWindow : Window
     private readonly bool _ready; // InitializeComponent 中に飛ぶ Checked / ValueChanged を無視するため
     private readonly VRChatApi _api = new();
     private readonly List<AvatarItem> _allItems = [];
-    private readonly Dictionary<string, BitmapImage> _imageCache = [];
     private CurrentUser? _user;
     private IReadOnlyList<string> _twoFactorMethods = [];
     private CancellationTokenSource? _thumbCts;
@@ -82,12 +81,15 @@ public partial class MainWindow : Window
         GroupToggle.IsChecked = _settings.GroupView;
         ApplyPanels();
         _osc.AvatarChanged += id => Dispatcher.BeginInvoke(() => OnOscAvatarChanged(id));
+        // 設定やグループの読み書きに失敗したら、記録するだけでなく画面にも出す (黙って既定値に戻さない)
+        JsonFile.Failed += msg => Dispatcher.BeginInvoke(() => SetStatus(StatusKind.Error, msg));
+        JsonFile.FlushPending(); // 画面ができる前 (起動時の読み込み) に起きた失敗も出す
         RestoreWindowBounds();
         SourceInitialized += (_, _) => App.ApplyTitleBarTheme(this);
         Loaded += async (_, _) => { if (!_preview) await TryRestoreSessionAsync(); };
         Loaded += async (_, _) => { if (!_preview) await CheckForUpdateAsync(); };
         // 溜まりすぎたサムネイルのディスクキャッシュを起動時に 1 回だけ整理する (UI は待たせない)
-        Loaded += (_, _) => { if (!_preview) _ = Task.Run(ImageDiskCache.Trim); };
+        Loaded += (_, _) => { if (!_preview) Task.Run(ImageDiskCache.Trim).Forget(); };
         IsVisibleChanged += (_, e) =>
         {
             if (e.NewValue is not true) return;
@@ -95,7 +97,7 @@ public partial class MainWindow : Window
             ResumeWarming();
             // 開きっぱなし / トレイ常駐で時間が経っていることがあるので、古ければ取り直す
             // (5 分以内ならキャッシュを使い、中身が同じなら一覧も作り直さないので、開くたびの負担にはならない)
-            if (!_preview && _user is not null && MainPanel.Visibility == Visibility.Visible) _ = LoadAvatarsAsync();
+            if (!_preview && _user is not null && MainPanel.Visibility == Visibility.Visible) LoadAvatarsAsync().Forget();
         };
         Closing += (_, _) => SaveWindowBounds();
         Closed += (_, _) => { _settingsSaveTimer?.Stop(); _searchTimer?.Stop(); _oscRetry?.Stop(); _updateTimer?.Stop(); _thumbCts?.Cancel(); _osc.Dispose(); _api.Dispose(); };
@@ -371,7 +373,8 @@ public partial class MainWindow : Window
     {
         if (AvatarList.SelectedItem is AvatarItem { IsAvatar: true } item)
         {
-            try { Clipboard.SetText(item.Id); SetStatus(StatusKind.Info, "アバター ID をコピーしました"); } catch { }
+            try { Clipboard.SetText(item.Id); SetStatus(StatusKind.Info, "アバター ID をコピーしました"); }
+            catch (Exception ex) { SetStatus(StatusKind.Error, "クリップボードにコピーできませんでした (他のアプリが使用中の可能性があります)"); Log.Warn("クリップボードへのコピーに失敗", ex); }
         }
     }
 
@@ -457,8 +460,8 @@ public partial class MainWindow : Window
         CurrentAvatarText.ToolTip = current is not null ? $"{current.Name}\n{current.AuthorName}\n{current.Id}" : _user.CurrentAvatar;
         var thumb = current?.ThumbnailImageUrl ?? current?.ImageUrl;
         if (thumb is null && current is null) thumb = _user.CurrentAvatarThumbnailImageUrl;
-        _ = LoadHeaderImageAsync(thumb);
-        if (current is null && VRChatApi.IsValidAvatarId(_user.CurrentAvatar)) _ = ResolveCurrentAvatarAsync(_user.CurrentAvatar);
+        LoadHeaderImageAsync(thumb).Forget();
+        if (current is null && VRChatApi.IsValidAvatarId(_user.CurrentAvatar)) ResolveCurrentAvatarAsync(_user.CurrentAvatar).Forget();
     }
 
     private readonly HashSet<string> _resolving = [];
@@ -473,7 +476,7 @@ public partial class MainWindow : Window
             _avatarInfoCache[avatarId] = av;
             if (_user?.CurrentAvatar == avatarId) UpdateUserHeader();
         }
-        catch { /* 取れなければ ID 表示のまま */ }
+        catch (Exception ex) { Log.Warn($"現在のアバター {avatarId} の情報を取得できませんでした (ID のまま表示します)", ex); }
         finally { _resolving.Remove(avatarId); }
     }
 
@@ -547,8 +550,32 @@ public partial class MainWindow : Window
         }
     }
 
+    private void LogToggle_Changed(object sender, RoutedEventArgs e)
+    {
+        if (!_ready) return;
+        var enabled = LogToggle.IsChecked == true;
+        if (_settings.LogEnabled == enabled) return;
+        _settings.LogEnabled = enabled;
+        if (!_preview) _settings.Save();
+        if (enabled) { Log.Enabled = true; Log.Info("ログの記録: オン"); }
+        else { Log.Info("ログの記録: オフ"); Log.Enabled = false; }
+        SetStatus(StatusKind.Info, enabled ? "ログの記録: オン。app.log に動作を書きます" : "ログの記録: オフ (エラーだけ記録します)");
+    }
+
+    /// <summary>app.log を既定のテキストエディタで開く。まだ無ければ見出しだけ作ってから開く。</summary>
+    private void OpenLog_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            Log.EnsureFile();
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(Log.FilePath) { UseShellExecute = true });
+        }
+        catch (Exception ex) { SetStatus(StatusKind.Error, "ログを開けませんでした: " + Log.FilePath); Log.Warn("ログファイルを開けませんでした", ex); }
+    }
+
     private void OpenSettings()
     {
+        LogToggle.IsChecked = _settings.LogEnabled;
         WatchToggle.IsChecked = _settings.WatchVRChat;
         QuickToggle.IsChecked = _settings.QuickOverlay;
         KeepLoginToggle.IsChecked = _settings.KeepBrowserLogin;
@@ -616,7 +643,7 @@ public partial class MainWindow : Window
             System.IO.Directory.CreateDirectory(AppPaths.DataDir);
             System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(AppPaths.DataDir) { UseShellExecute = true });
         }
-        catch { }
+        catch (Exception ex) { SetStatus(StatusKind.Error, "フォルダを開けませんでした: " + AppPaths.DataDir); Log.Warn("データフォルダを開けませんでした", ex); }
     }
 
     private void SettingsLogout_Click(object sender, RoutedEventArgs e)
@@ -650,7 +677,7 @@ public partial class MainWindow : Window
         _filterValue = null; // タブを移ったらフィルタは解除
         _openGroup = null;
         GroupBar.Visibility = Visibility.Collapsed;
-        if (IsLoaded && MainPanel.Visibility == Visibility.Visible) _ = LoadAvatarsAsync();
+        if (IsLoaded && MainPanel.Visibility == Visibility.Visible) LoadAvatarsAsync().Forget();
     }
 
     private bool IsPublicTab => SourcePublic.IsChecked == true;
@@ -713,7 +740,7 @@ public partial class MainWindow : Window
                         // (件数によらず作り直しだけで 20ms 前後かかり、スクロール位置も先頭に戻ってしまう)
                         ShowListState(loading: false);
                         SetStatus(StatusKind.Info, CountText());
-                        if (refresh) _ = RefreshFavoriteStateAsync(ct);
+                        if (refresh) RefreshFavoriteStateAsync(ct).Forget();
                         return;
                     }
                     _allItems.Clear();
@@ -725,6 +752,7 @@ public partial class MainWindow : Window
                                            && ex is not VRChatApiException { IsUnauthorized: true })
                 {
                     // 出せる一覧はもう出してある。最新に追いつけなかったことだけ伝える
+                    Log.Warn($"一覧 ({kind}) を取り直せませんでした。{cached.FetchedAt:M/d HH:mm} 時点のキャッシュを表示", ex);
                     SetStatus(StatusKind.Error,
                         $"最新の一覧を取得できませんでした ({FriendlyError.Of(ex)}) {cached.FetchedAt:M/d HH:mm} 時点の一覧を表示しています。");
                     return;
@@ -734,6 +762,8 @@ public partial class MainWindow : Window
             BuildFilterChips();
             ApplyFilter();
             UpdateUserHeader();
+            Log.Info($"一覧を表示: {(pub ? "パブリック" : favorites ? "お気に入り" : "自分のアバター")} {_allItems.Count} 件"
+                     + (refreshedEntries is { } rn ? $" (パブリック {rn} 件を取り直し)" : ""));
             SetStatus(StatusKind.Info, CountText() + refreshedEntries switch
             {
                 null => "",
@@ -741,7 +771,7 @@ public partial class MainWindow : Window
                 var n => $" ({n} 件の情報を更新しました)",
             } + UnavailableNote(newlyUnavailable));
             QueueThumbnails(_allItems.ToList(), ct);
-            if (refresh) _ = RefreshFavoriteStateAsync(ct);
+            if (refresh) RefreshFavoriteStateAsync(ct).Forget();
         }
         catch (OperationCanceledException) { }
         catch (Exception ex)
@@ -749,6 +779,7 @@ public partial class MainWindow : Window
             ShowListState(loading: false);
             UpdateEmptyState(0);
             if (HandleSessionExpired(ex)) return;
+            Log.Error("一覧を読み込めませんでした", ex);
             SetStatus(StatusKind.Error, "読み込めませんでした: " + FriendlyError.Of(ex));
         }
         finally { RefreshButton.IsEnabled = true; }
@@ -943,17 +974,20 @@ public partial class MainWindow : Window
         {
             // VRChat が OSC で繋がっていればローカルで即切替 (ヘッダーはエコー受信側が更新する)。
             // ダメなら従来どおり API で切り替える (ゲーム未起動時は次回起動時のアバターとして予約される)
-            if (!await TryOscChangeAsync(avatarId))
+            var viaOsc = await TryOscChangeAsync(avatarId);
+            if (!viaOsc)
             {
                 _user = await _api.SelectAvatarAsync(avatarId);
                 UpdateUserHeader();
             }
+            Log.Info($"着替え: {name} ({avatarId}) {(viaOsc ? "OSC" : "API")}");
             SetStatus(StatusKind.Success, $"{name} に着替えました");
             TouchRecentAvatar(avatarId);
             return true;
         }
         catch (Exception ex)
         {
+            Log.Warn($"着替えに失敗: {name} ({avatarId})", ex);
             if (!HandleSessionExpired(ex)) SetStatus(StatusKind.Error, "着替えられませんでした: " + FriendlyError.Of(ex));
             return false;
         }

@@ -135,7 +135,7 @@ public partial class MainWindow
             // exe を移動しても追従するよう、連動が ON の間は毎回書き直す
             key?.SetValue(RunValueName, $"\"{Environment.ProcessPath}\" --tray");
         }
-        catch { /* 書けない環境ではトレイ常駐だけ有効 */ }
+        catch (Exception ex) { Log.Warn("Windows のスタートアップに登録できませんでした (トレイ常駐だけ有効になります)", ex); }
     }
 
     private static void UnregisterStartup()
@@ -145,6 +145,6 @@ public partial class MainWindow
             using var key = Registry.CurrentUser.OpenSubKey(RunKeyPath, writable: true);
             key?.DeleteValue(RunValueName, throwOnMissingValue: false);
         }
-        catch { }
+        catch (Exception ex) { Log.Warn("Windows のスタートアップ登録を解除できませんでした", ex); }
     }
 }

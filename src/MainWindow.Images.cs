@@ -131,7 +131,7 @@ public partial class MainWindow
             _thumbFrontSet.Remove(item);
             if (!NeedsThumbnail(item)) continue; // 先に読み終わっていた
             _thumbRunning++;
-            _ = LoadThumbnailAsync(item, _thumbCt);
+            LoadThumbnailAsync(item, _thumbCt).Forget();
         }
     }
 
@@ -258,7 +258,7 @@ public partial class MainWindow
         _warmCts?.Cancel();
         _warmCts?.Dispose();
         _warmCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-        _ = WarmDiskCacheAsync(_warmCts.Token);
+        WarmDiskCacheAsync(_warmCts.Token).Forget();
     }
 
     /// <summary>トレイから開き直したときなど、止めていた用意を再開する。</summary>
@@ -309,7 +309,7 @@ public partial class MainWindow
             if (bytes is null) return null;
             var image = await DecodeAsync(bytes, width, ct);
             if (image is null) return null;
-            _ = ImageDiskCache.WriteAsync(url, bytes);
+            ImageDiskCache.WriteAsync(url, bytes).Forget();
             return image;
         }
         catch (OperationCanceledException) { return null; }
@@ -352,6 +352,6 @@ public partial class MainWindow
             image.Freeze();
             return image;
         }
-        catch { return null; }
+        catch (Exception ex) { Log.Warn("画像を展開できませんでした (壊れていれば捨てて取り直します)", ex); return null; }
     }
 }

@@ -54,13 +54,13 @@ public partial class MainWindow
                 ToggleQuickOverlay();
                 break;
             case HotkeyAction.Previous:
-                _ = ChangeToPreviousAsync(toast: true);
+                ChangeToPreviousAsync(toast: true).Forget();
                 break;
             case HotkeyAction.NextInGroup:
-                _ = ChangeToNextInGroupAsync();
+                ChangeToNextInGroupAsync().Forget();
                 break;
             case HotkeyAction.Avatar when hit.AvatarId is not null:
-                _ = ChangeByHotkeyAsync(hit.AvatarId, hit.Name, toast: true);
+                ChangeByHotkeyAsync(hit.AvatarId, hit.Name, toast: true).Forget();
                 break;
         }
     }
@@ -136,7 +136,7 @@ public partial class MainWindow
             _toast ??= new ToastWindow();
             _toast.ShowMessage(text, QuickOverlayAreaPx(), Win32.ScaleOf(_vrchatHwnd), error);
         }
-        catch { /* 通知が出せなくても着替えそのものには影響しない */ }
+        catch (Exception ex) { Log.Warn("ゲーム上の通知を出せませんでした (着替えそのものには影響しません)", ex); }
     }
 
     // ---------------- 設定画面 ----------------

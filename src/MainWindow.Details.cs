@@ -61,9 +61,9 @@ public partial class MainWindow
         _detailCts?.Cancel();
         _detailCts = new CancellationTokenSource();
         DetailImage.Source = item.Thumbnail;
-        _ = LoadDetailImageAsync(item, _detailCts.Token);
+        LoadDetailImageAsync(item, _detailCts.Token).Forget();
         // ダウンロードサイズは 1 件 1 リクエストなので、開いたときに 1 回だけ引く
-        _ = LoadDetailSizeAsync(item, _detailCts.Token);
+        LoadDetailSizeAsync(item, _detailCts.Token).Forget();
 
         if (DetailOverlay.Visibility != Visibility.Visible)
         {
@@ -212,7 +212,8 @@ public partial class MainWindow
     private void DetailCopyId_Click(object sender, RoutedEventArgs e)
     {
         if (_detailItem is not { } item) return;
-        try { Clipboard.SetText(item.Id); SetStatus(StatusKind.Info, "アバター ID をコピーしました"); } catch { }
+        try { Clipboard.SetText(item.Id); SetStatus(StatusKind.Info, "アバター ID をコピーしました"); }
+        catch (Exception ex) { SetStatus(StatusKind.Error, "クリップボードにコピーできませんでした (他のアプリが使用中の可能性があります)"); Log.Warn("クリップボードへのコピーに失敗", ex); }
     }
 
     private void DetailOpenWeb_Click(object sender, RoutedEventArgs e)
@@ -220,6 +221,6 @@ public partial class MainWindow
         if (_detailItem is not { } item || !VRChatApi.IsValidAvatarId(item.Id)) return;
         var url = "https://vrchat.com/home/avatar/" + item.Id;
         try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(url) { UseShellExecute = true }); }
-        catch { SetStatus(StatusKind.Error, "ブラウザを開けませんでした: " + url); }
+        catch (Exception ex) { SetStatus(StatusKind.Error, "ブラウザを開けませんでした: " + url); Log.Warn("ブラウザを開けませんでした", ex); }
     }
 }

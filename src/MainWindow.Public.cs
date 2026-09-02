@@ -35,7 +35,7 @@ public partial class MainWindow
             var av = await _api.GetAvatarAsync(id);
             if (await TryAddPublicAsync(av)) PublicIdBox.Clear();
         }
-        catch (Exception ex) { SetStatus(StatusKind.Error, "アバター情報を取得できませんでした: " + FriendlyError.Of(ex)); }
+        catch (Exception ex) { Log.Warn($"パブリックに追加するアバター {id} の情報を取得できませんでした", ex); SetStatus(StatusKind.Error, "アバター情報を取得できませんでした: " + FriendlyError.Of(ex)); }
         finally { PublicAddButton.IsEnabled = true; }
     }
 
@@ -91,7 +91,9 @@ public partial class MainWindow
                 // 取れても非公開になっていれば着替えられない (自分のアバターなら非公開でも着られる)
                 if (av.ReleaseStatus != "public" && av.AuthorId != _user?.Id)
                 {
-                    if (_public.MarkFailed(e.Avatar.Id, "private")) Interlocked.Increment(ref newlyUnavailable);
+                    var confirmed = _public.MarkFailed(e.Avatar.Id, "private");
+                    Log.Info($"パブリック {e.Avatar.Id} ({e.Avatar.Name}): 非公開になっています ({e.UnavailableStrikes} 回目{(confirmed ? "、使えないと確定" : "")})");
+                    if (confirmed) Interlocked.Increment(ref newlyUnavailable);
                 }
                 else _public.Update(av);
             }
@@ -100,9 +102,15 @@ public partial class MainWindow
             {
                 // 404 は削除・非公開のどちらでも返る (他人の非公開アバターは「無いもの」として扱われる)
                 var reason = ex.Status == System.Net.HttpStatusCode.Forbidden ? "private" : "deleted";
-                if (_public.MarkFailed(e.Avatar.Id, reason)) Interlocked.Increment(ref newlyUnavailable);
+                var confirmed = _public.MarkFailed(e.Avatar.Id, reason);
+                Log.Info($"パブリック {e.Avatar.Id} ({e.Avatar.Name}): HTTP {(int)(ex.Status ?? 0)} ({e.UnavailableStrikes} 回目{(confirmed ? "、使えないと確定" : "")})");
+                if (confirmed) Interlocked.Increment(ref newlyUnavailable);
             }
-            catch { /* 通信断・レート制限など: 判断できないので前回の状態のまま */ }
+            catch (Exception ex)
+            {
+                // 通信断・レート制限など: 削除されたかどうか判断できないので、前回の状態のまま (数えない)
+                Log.Warn($"パブリック {e.Avatar.Id} ({e.Avatar.Name}) を取り直せませんでした (判定は保留)", ex);
+            }
             finally { gate.Release(); }
         });
         await Task.WhenAll(tasks);
