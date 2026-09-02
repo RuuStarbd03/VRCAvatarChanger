@@ -16,6 +16,8 @@ namespace VRCAvatarChanger;
 //   MainWindow.Images.cs  サムネイル取得・キャッシュ
 //   MainWindow.Osc.cs     OSC 連携
 //   MainWindow.Updates.cs 自動アップデート
+//   MainWindow.Details.cs アバターの詳細 (オーバーレイ)
+//   MainWindow.Shortcuts.cs メイン画面のキーボード操作
 //   MainWindow.Preview.cs UI プレビュー / 自己診断 (Debug のみ)
 public partial class MainWindow : Window
 {
@@ -637,39 +639,7 @@ public partial class MainWindow : Window
         _help.Show();
     }
 
-    private void Window_PreviewKeyDown(object sender, KeyEventArgs e)
-    {
-        if (e.Key == Key.F1) { e.Handled = true; ShowHelp(); return; }
-        if (e.Key == Key.Escape && DetailOverlay.Visibility == Visibility.Visible)
-        {
-            e.Handled = true;
-            CloseDetail();
-            return;
-        }
-        if (e.Key == Key.Escape && SettingsOverlay.Visibility == Visibility.Visible)
-        {
-            e.Handled = true;
-            CloseSettings();
-            return;
-        }
-        if (e.Key == Key.Escape && _openGroup is not null && MainPanel.Visibility == Visibility.Visible)
-        {
-            e.Handled = true;
-            CloseGroup();
-            return;
-        }
-        if (e.Key == Key.C && Keyboard.Modifiers == (ModifierKeys.Control | ModifierKeys.Shift) && MainPanel.Visibility == Visibility.Visible)
-        {
-            e.Handled = true;
-            ToggleStripeColors();
-            return;
-        }
-        if (e.Key == Key.F5 && MainPanel.Visibility == Visibility.Visible && RefreshButton.IsEnabled)
-        {
-            e.Handled = true;
-            RefreshButton_Click(sender, e);
-        }
-    }
+    // キー操作は MainWindow.Shortcuts.cs (Window_PreviewKeyDown)
 
     // ---------------- 一覧の読み込み ----------------
 

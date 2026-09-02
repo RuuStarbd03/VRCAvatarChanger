@@ -198,6 +198,12 @@
                     <TextBlock Text="ゲーム内の着替えを反映する (OSC)" Style="{StaticResource H2}"/>
                     <TextBlock Style="{StaticResource Body}"
                                Text="VRChat で OSC を有効にすると(アクションメニュー → Options → OSC → Enabled)、ゲーム内で着替えたときも左上の「現在:」が更新されます。無くても着替えはできます。"/>
+
+                    <TextBlock Text="キーボードで操作する" Style="{StaticResource H2}"/>
+                    <TextBlock Style="{StaticResource Body}"
+                               Text="このウィンドウが手前のときに使えるキーです (VRChat のプレイ中に使うホットキーとは別です)。"/>
+                    <TextBlock Style="{StaticResource Body}"
+                               Text="Enter: 選んだアバターに着替える / グループを開く&#x0a;Ctrl+I または Alt+Enter: 詳細を見る&#x0a;Ctrl+F: 検索欄へ (Enter で一覧に戻る、Esc で消す)&#x0a;Ctrl+1 / 2 / 3: 自分のアバター / お気に入り / パブリック&#x0a;Ctrl+Tab / Ctrl+Shift+Tab: 次 / 前のタブ&#x0a;Ctrl+G: グループ化のオン / オフ&#x0a;Ctrl+Shift+L: リスト表示 / ボックス表示の切り替え&#x0a;Ctrl+C: アバター ID をコピー&#x0a;Delete: パブリックから外す (確認が出ます)&#x0a;Esc / Backspace: グループから一覧に戻る&#x0a;F5: 再読み込み&#x0a;Ctrl+,: 設定&#x0a;F1: この画面"/>
                 </StackPanel>
 
                 <!-- ===== FAQ ===== -->

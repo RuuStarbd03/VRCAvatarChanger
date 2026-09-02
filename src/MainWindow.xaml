@@ -427,7 +427,7 @@
                             </StackPanel>
                         </Button>
                         <Button Style="{StaticResource GhostButton}" Click="SettingsButton_Click" AutomationProperties.Name="設定"
-                                ToolTip="設定 (VRChat 連動・ログアウトなど)" Height="30" Padding="10,0" Margin="0,0,4,0">
+                                ToolTip="設定 (Ctrl+,)" Height="30" Padding="10,0" Margin="0,0,4,0">
                             <StackPanel Orientation="Horizontal">
                                 <TextBlock Text="&#xE713;" Style="{StaticResource Icon}" Margin="0,0,8,0"/>
                                 <TextBlock Text="設定"/>
@@ -469,10 +469,10 @@
                 <Border Background="{DynamicResource InputBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"
                         CornerRadius="{StaticResource ControlRadius}" Margin="0,0,10,0" VerticalAlignment="Center">
                     <StackPanel Orientation="Horizontal">
-                        <RadioButton x:Name="SourceOwn" Content="自分のアバター" IsChecked="True" Style="{StaticResource SegmentButton}" Checked="Source_Checked"/>
-                        <RadioButton x:Name="SourceFavorites" Content="お気に入り" Style="{StaticResource SegmentButton}" Checked="Source_Checked"/>
+                        <RadioButton x:Name="SourceOwn" Content="自分のアバター" IsChecked="True" Style="{StaticResource SegmentButton}" Checked="Source_Checked" ToolTip="Ctrl+1"/>
+                        <RadioButton x:Name="SourceFavorites" Content="お気に入り" Style="{StaticResource SegmentButton}" Checked="Source_Checked" ToolTip="Ctrl+2"/>
                         <RadioButton x:Name="SourcePublic" Content="パブリック" Style="{StaticResource SegmentButton}" Checked="Source_Checked"
-                                     ToolTip="気に入ったパブリックアバターを登録する、このアプリ独自のリスト。上限なし。"/>
+                                     ToolTip="気に入ったパブリックアバターを登録する、このアプリ独自のリスト。上限なし。(Ctrl+3)"/>
                     </StackPanel>
                 </Border>
 
@@ -480,10 +480,10 @@
                 <Border Grid.Column="1" Background="{DynamicResource InputBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"
                         CornerRadius="{StaticResource ControlRadius}" Margin="0,0,10,0" VerticalAlignment="Center">
                     <StackPanel Orientation="Horizontal">
-                        <RadioButton x:Name="ViewList" Style="{StaticResource SegmentButton}" Padding="9,0" Checked="ViewMode_Checked" ToolTip="リスト表示" GroupName="ViewMode">
+                        <RadioButton x:Name="ViewList" Style="{StaticResource SegmentButton}" Padding="9,0" Checked="ViewMode_Checked" ToolTip="リスト表示 (Ctrl+Shift+L で切り替え)" GroupName="ViewMode">
                             <TextBlock Text="&#xE8FD;" Style="{StaticResource Icon}"/>
                         </RadioButton>
-                        <RadioButton x:Name="ViewGrid" Style="{StaticResource SegmentButton}" Padding="9,0" Checked="ViewMode_Checked" ToolTip="ボックス表示" GroupName="ViewMode">
+                        <RadioButton x:Name="ViewGrid" Style="{StaticResource SegmentButton}" Padding="9,0" Checked="ViewMode_Checked" ToolTip="ボックス表示 (Ctrl+Shift+L で切り替え)" GroupName="ViewMode">
                             <TextBlock Text="&#xF0E2;" Style="{StaticResource Icon}"/>
                         </RadioButton>
                     </StackPanel>
@@ -494,7 +494,7 @@
                 <ToggleButton x:Name="GroupToggle" Grid.Column="2" Style="{StaticResource SegmentToggle}" Padding="9,0"
                               Margin="0,0,10,0" VerticalAlignment="Center" IsChecked="True"
                               Checked="GroupToggle_Changed" Unchecked="GroupToggle_Changed" AutomationProperties.Name="グループ化"
-                              ToolTip="グループ化 — オン: 同じグループのアバターを 1 枚にまとめて表示 / オフ: すべて個別に表示">
+                              ToolTip="グループ化 (Ctrl+G) — オン: 同じグループのアバターを 1 枚にまとめて表示 / オフ: すべて個別に表示">
                     <!-- 文字が無いぶん、オンはアクセント色で示す (設定のスイッチと同じ「オン = 青」に合わせる) -->
                     <TextBlock Text="&#xE8B7;">
                         <TextBlock.Style>
@@ -533,7 +533,7 @@
                 <Grid Width="230">
                     <TextBox x:Name="SearchBox" TextChanged="SearchBox_TextChanged" Padding="32,7,10,7"/>
                     <TextBlock Text="&#xE721;" Style="{StaticResource Icon}" Foreground="{DynamicResource MutedTextBrush}" Margin="11,0,0,0" IsHitTestVisible="False"/>
-                    <TextBlock x:Name="SearchPlaceholder" Text="名前・作者・ID で絞り込み" Style="{StaticResource MutedText}" Margin="33,0,0,0"
+                    <TextBlock x:Name="SearchPlaceholder" Text="名前・作者・ID で絞り込み (Ctrl+F)" Style="{StaticResource MutedText}" Margin="33,0,0,0"
                                VerticalAlignment="Center" IsHitTestVisible="False"/>
                 </Grid>
                 </StackPanel>
@@ -574,7 +574,7 @@
                     <!-- グループを開いているときのバー -->
                     <Border x:Name="GroupBar" Visibility="Collapsed" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,0,0,1" Padding="10,6" Margin="0,-4,0,4">
                         <StackPanel Orientation="Horizontal">
-                            <Button Style="{StaticResource GhostButton}" Click="GroupBack_Click" Height="30" Padding="8,0" ToolTip="一覧に戻る (Esc)">
+                            <Button Style="{StaticResource GhostButton}" Click="GroupBack_Click" Height="30" Padding="8,0" ToolTip="一覧に戻る (Esc / Backspace)">
                                 <StackPanel Orientation="Horizontal">
                                     <TextBlock Text="&#xE72B;" Style="{StaticResource Icon}" Margin="0,0,8,0"/>
                                     <TextBlock Text="戻る"/>
@@ -615,9 +615,9 @@
                               local:SmoothScroll.IsEnabled="True">
                         <ListView.ContextMenu>
                             <ContextMenu>
-                                <MenuItem x:Name="MenuChange" Header="このアバターに着替える" Click="MenuChange_Click"/>
-                                <MenuItem x:Name="MenuOpenGroup" Header="グループを開く" Click="MenuOpenGroup_Click"/>
-                                <MenuItem x:Name="MenuDetails" Header="詳細を見る..." Click="MenuDetails_Click"/>
+                                <MenuItem x:Name="MenuChange" Header="このアバターに着替える" InputGestureText="Enter" Click="MenuChange_Click"/>
+                                <MenuItem x:Name="MenuOpenGroup" Header="グループを開く" InputGestureText="Enter" Click="MenuOpenGroup_Click"/>
+                                <MenuItem x:Name="MenuDetails" Header="詳細を見る..." InputGestureText="Ctrl+I" Click="MenuDetails_Click"/>
                                 <Separator/>
                                 <!-- お気に入り: 追加は「どのグループに入れるか」を選ばせるので、項目は開くときに作る -->
                                 <MenuItem x:Name="MenuAddFavorite" Header="お気に入りに追加"/>
@@ -629,12 +629,12 @@
                                 <MenuItem x:Name="MenuDissolveGroup" Header="グループを解除" Click="MenuDissolveGroup_Click"/>
                                 <Separator/>
                                 <MenuItem x:Name="MenuAddPublic" Header="パブリックに追加" Click="MenuAddPublic_Click"/>
-                                <MenuItem x:Name="MenuRemovePublic" Header="パブリックから削除" Click="MenuRemovePublic_Click"/>
+                                <MenuItem x:Name="MenuRemovePublic" Header="パブリックから削除" InputGestureText="Delete" Click="MenuRemovePublic_Click"/>
                                 <MenuItem x:Name="MenuRemoveUnavailable" Header="使えなくなったものをまとめて外す..." Click="MenuRemoveUnavailable_Click"/>
                                 <MenuItem x:Name="MenuEditTags" Header="タグを編集..." Click="MenuEditTags_Click"/>
                                 <Separator/>
                                 <MenuItem x:Name="MenuAssignHotkey" Header="ホットキーに割り当てる..." Click="MenuAssignHotkey_Click"/>
-                                <MenuItem x:Name="MenuCopyId" Header="アバター ID をコピー" Click="MenuCopyId_Click"/>
+                                <MenuItem x:Name="MenuCopyId" Header="アバター ID をコピー" InputGestureText="Ctrl+C" Click="MenuCopyId_Click"/>
                                 <MenuItem x:Name="MenuStripeExclude" Header="カウントから除外" Click="MenuStripeExclude_Click" Visibility="Collapsed"/>
                             </ContextMenu>
                         </ListView.ContextMenu>
@@ -665,7 +665,7 @@
                 </StackPanel>
                 <Button Grid.Column="1" x:Name="ChangeButton" Content="選択したアバターに着替える" Click="ChangeSelected_Click"
                         Height="34" MinWidth="220" IsEnabled="False"
-                        ToolTip="一覧のダブルクリックでも着替えられます"/>
+                        ToolTip="一覧のダブルクリック、または Enter でも着替えられます"/>
             </Grid>
             </Grid>
         </Grid>
