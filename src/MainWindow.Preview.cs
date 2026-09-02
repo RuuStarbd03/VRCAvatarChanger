@@ -21,6 +21,8 @@ public partial class MainWindow
         _user = new CurrentUser { DisplayName = "Preview User", CurrentAvatar = "avtr_00000000-0000-4000-8000-000000000001" };
         LoginPanel.Visibility = Visibility.Collapsed;
         MainPanel.Visibility = Visibility.Visible;
+        // タブはダミーを入れる前に切り替える (切り替えると読み込みが走って一覧が入れ直されるため)
+        if (Environment.GetEnvironmentVariable("VRCAC_UI_PREVIEW_SOURCE") == "public") SourcePublic.IsChecked = true;
         _allItems.Clear();
         string[] names = ["Kikyo", "Selestia", "Manuka", "Shinano", "Rurune", "Moe", "Lime", "Mizuki"];
         // VRCAC_UI_PREVIEW_COUNT=500 のように件数を増やして、仮想化やスクロールの負荷を確認できる
@@ -55,8 +57,19 @@ public partial class MainWindow
         // 「最近使った順」の確認用に、後ろのほうのアバターを使用済みにしておく
         _settings.RecentAvatars = Enumerable.Range(0, Math.Min(5, count))
             .Select(i => $"avtr_00000000-0000-4000-8000-{count - i:D12}").ToList();
+        // 使えなくなったアバターの見た目確認: VRCAC_UI_PREVIEW_UNAVAILABLE=1 で 5 体に 1 体をそう扱う
+        // (パブリックタブでの表示を見るためのもの。理由は削除 / 非公開を交互に)
+        if (Environment.GetEnvironmentVariable("VRCAC_UI_PREVIEW_UNAVAILABLE") == "1")
+            for (var i = 0; i < _allItems.Count; i++)
+                if (i % 5 == 2)
+                {
+                    _allItems[i].UnavailableSince = DateTimeOffset.Now.AddHours(-3 - i);
+                    _allItems[i].UnavailableReason = i % 10 == 2 ? "deleted" : "private";
+                    _allItems[i].IsUnavailable = true;
+                }
         ShowListState(loading: Environment.GetEnvironmentVariable("VRCAC_UI_PREVIEW_STATE") == "loading");
         if (Environment.GetEnvironmentVariable("VRCAC_UI_PREVIEW_STATE") == "empty") _allItems.Clear();
+        BuildFilterChips(); // 「使えなくなったもの」のチップなど、一覧の中身で決まるフィルタを出す
         ApplyFilter();
         if (withThumbs) QueueThumbnails(_allItems.ToList(), CancellationToken.None); // 実際の読み込みと同じ経路を通す
         AvatarList.SelectedIndex = 1;
@@ -65,7 +78,6 @@ public partial class MainWindow
         if (Environment.GetEnvironmentVariable("VRCAC_UI_PREVIEW_GROUP") is { Length: > 0 } grp) GroupToggle.IsChecked = grp != "off";
         // 並び順の見た目確認: VRCAC_UI_PREVIEW_SORT="name_asc" のようにキーを渡す
         if (Environment.GetEnvironmentVariable("VRCAC_UI_PREVIEW_SORT") is { Length: > 0 } sort) InitSortControls(sort);
-        if (Environment.GetEnvironmentVariable("VRCAC_UI_PREVIEW_SOURCE") == "public") SourcePublic.IsChecked = true;
         if (Environment.GetEnvironmentVariable("VRCAC_UI_PREVIEW_TOPMOST") == "1") { Topmost = true; Activate(); }
         // ドロップ処理の確認: 一覧の 2 番目を 3 番目に重ね、続けて 1 番目をできたグループに重ねる
         if (Environment.GetEnvironmentVariable("VRCAC_UI_PREVIEW_DROP") == "1")
@@ -122,6 +134,16 @@ public partial class MainWindow
             return;
         }
 
+        // 詳細画面の確認: VRCAC_UI_PREVIEW_DETAIL=n で n 番目 (表示中の並び) の詳細を開いた状態で撮る
+        if (int.TryParse(Environment.GetEnvironmentVariable("VRCAC_UI_PREVIEW_DETAIL"), out var detailAt))
+        {
+            var shown = AvatarList.Items.OfType<AvatarItem>().Where(a => a.IsAvatar).ToList();
+            if (detailAt >= 0 && detailAt < shown.Count)
+            {
+                shown[detailAt].Avatar.Description = "プレビュー用の説明文です。\nPhysBone 対応 / 表情メニュー付き。\n改変・再配布は規約に従ってください。";
+                OpenDetail(shown[detailAt]);
+            }
+        }
         if (Environment.GetEnvironmentVariable("VRCAC_UI_PREVIEW_SETTINGS") is { Length: > 0 } settingsAt)
         {
             OpenSettings();

@@ -172,6 +172,13 @@
                     <TextBlock Style="{StaticResource Body}"
                                Text="気に入ったパブリックアバターを溜めておく、このアプリ独自のリストです (上限なし)。ID や URL を貼って「追加」するか、他のタブで右クリック →「パブリックに追加」。"/>
 
+                    <TextBlock Style="{StaticResource Body}"
+                               Text="再読み込みのたびに登録したアバターを確かめ、削除されたり非公開になったりして着替えられなくなったものには「使えません」の印を付けます (一覧の末尾に寄せます)。自動では外さないので、右クリック →「使えなくなったものをまとめて外す...」か、詳細画面から外してください。"/>
+
+                    <TextBlock Text="アバターの詳細" Style="{StaticResource H2}"/>
+                    <TextBlock Style="{StaticResource Body}"
+                               Text="アバターを右クリック →「詳細を見る...」で、大きい画像・説明文・対応プラットフォーム・パフォーマンスランク・ダウンロードサイズ・日付をまとめて確認できます。似た衣装違いの見分けや、着替える前の確認に。"/>
+
                     <TextBlock Text="お気に入り・タグ" Style="{StaticResource H2}"/>
                     <TextBlock Style="{StaticResource Body}"
                                Text="アバターを右クリックすると、お気に入りの追加・解除と、タグの編集ができます。付けたタグは一覧の上のフィルタに並び、ワンクリックで絞り込めます。"/>
@@ -206,6 +213,11 @@
                     <Expander Style="{StaticResource Faq}" Header="「非公開アバターのため使用できません」と出る">
                         <TextBlock Style="{StaticResource Body}"
                                    Text="他の人の非公開(Private)アバターには着替えられません(VRChat の仕様)。自分のアバターなら非公開でも使えます。"/>
+                    </Expander>
+
+                    <Expander Style="{StaticResource Faq}" Header="パブリックタブに「使えません」と出るものがある">
+                        <TextBlock Style="{StaticResource Body}"
+                                   Text="そのアバターが削除されたか、作者が非公開にしたため、着替えられなくなっています。誤検出を避けるため、時間を空けて 2 回続けて確認できなかったものだけをこう表示し、自動では外しません。非公開が一時的なら、次の再読み込みで印は消えます。外すときは右クリック →「使えなくなったものをまとめて外す...」。"/>
                     </Expander>
 
                     <Expander Style="{StaticResource Faq}" Header="ログインが面倒 / いつものブラウザのログインを使いたい">

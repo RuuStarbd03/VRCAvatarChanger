@@ -281,6 +281,14 @@ public partial class MainWindow : Window
             => a.IsGroup && a.Members.Count > 0
                 ? a.Members.Max(m => m.Avatar.Performance?.Rank ?? 5)
                 : a.Avatar.Performance?.Rank ?? 5;
+        // 使えなくなったものは、どの並びでも末尾へ (探すときに目に入らず、それでいて消えてもいない)
+        var sorted = SortByKey(items, key, desc, cmp, Added, Recent, Perf);
+        return sorted.OrderBy(a => a.IsUnavailable ? 1 : 0); // OrderBy は安定ソートなので、中の並びは保たれる
+    }
+
+    private static IEnumerable<AvatarItem> SortByKey(IEnumerable<AvatarItem> items, string key, bool desc, StringComparer cmp,
+        Func<AvatarItem, DateTimeOffset?> Added, Func<AvatarItem, int> Recent, Func<AvatarItem, int> Perf)
+    {
         return key switch
         {
             "created_asc" or "created_desc" => desc
@@ -325,6 +333,9 @@ public partial class MainWindow : Window
 
         MenuChange.Visibility = isGroup ? Visibility.Collapsed : Visibility.Visible;
         MenuOpenGroup.Visibility = isGroup ? Visibility.Visible : Visibility.Collapsed;
+        MenuDetails.Visibility = isGroup ? Visibility.Collapsed : Visibility.Visible;
+        // 使えなくなったものがあるときだけ、まとめて外す項目を出す (パブリックタブのみ)
+        MenuRemoveUnavailable.Visibility = pub && _public.Unavailable.Any() ? Visibility.Visible : Visibility.Collapsed;
 
         MenuAssignGroup.Visibility = isGroup ? Visibility.Collapsed : Visibility.Visible;
         MenuAssignGroup.Header = _openGroup is null ? "グループに入れる..." : "別のグループに移す...";
@@ -351,7 +362,7 @@ public partial class MainWindow : Window
 
     private async void MenuChange_Click(object sender, RoutedEventArgs e)
     {
-        if (AvatarList.SelectedItem is AvatarItem { IsAvatar: true } item) await ChangeAvatarAsync(item.Id, item.Name);
+        if (AvatarList.SelectedItem is AvatarItem { IsAvatar: true } item) await ChangeFromListAsync(item);
     }
 
     private void MenuCopyId_Click(object sender, RoutedEventArgs e)
@@ -407,7 +418,9 @@ public partial class MainWindow : Window
         if (filtering)
         {
             EmptyTitle.Text = "一致するアバターがありません";
-            EmptyHint.Text = _filterValue is not null
+            EmptyHint.Text = _filterValue == UnavailableFilter
+                ? "使えなくなったアバターはありません。"
+                : _filterValue is not null
                 ? $"「{_filterValue}」に一致するアバターがありません。「すべて」に戻すか、別のフィルタを試してください。"
                 : "別の名前や作者名、ID で試してください。";
         }
@@ -627,6 +640,12 @@ public partial class MainWindow : Window
     private void Window_PreviewKeyDown(object sender, KeyEventArgs e)
     {
         if (e.Key == Key.F1) { e.Handled = true; ShowHelp(); return; }
+        if (e.Key == Key.Escape && DetailOverlay.Visibility == Visibility.Visible)
+        {
+            e.Handled = true;
+            CloseDetail();
+            return;
+        }
         if (e.Key == Key.Escape && SettingsOverlay.Visibility == Visibility.Visible)
         {
             e.Handled = true;
@@ -683,11 +702,12 @@ public partial class MainWindow : Window
         try
         {
             int? refreshedEntries = null;
+            var newlyUnavailable = 0;
             if (pub)
             {
-                if (refresh) refreshedEntries = await RefreshPublicEntriesAsync(ct);
+                if (refresh) (refreshedEntries, newlyUnavailable) = await RefreshPublicEntriesAsync(ct);
                 _allItems.Clear();
-                _allItems.AddRange(_public.Entries.Select(e => new AvatarItem(e.Avatar) { AddedAt = e.AddedAt, Tags = _tags.TagsOf(e.Avatar.Id) }));
+                _allItems.AddRange(_public.Entries.Select(e => PublicItemOf(e, _tags.TagsOf(e.Avatar.Id))));
             }
             else
             {
@@ -749,7 +769,7 @@ public partial class MainWindow : Window
                 null => "",
                 0 => " (情報は最新です)",
                 var n => $" ({n} 件の情報を更新しました)",
-            });
+            } + UnavailableNote(newlyUnavailable));
             QueueThumbnails(_allItems.ToList(), ct);
             if (refresh) _ = RefreshFavoriteStateAsync(ct);
         }
@@ -795,6 +815,19 @@ public partial class MainWindow : Window
                 || a.CreatedAt != b.CreatedAt || a.UpdatedAt != b.UpdatedAt) return false;
         }
         return true;
+    }
+
+    /// <summary>
+    /// パブリックの「使えなくなった」件数をステータスに添える。今回新たに確定したものがあればそれも言う。
+    /// </summary>
+    private string UnavailableNote(int newly)
+    {
+        if (!IsPublicTab) return "";
+        var total = _public.Unavailable.Count();
+        if (total == 0) return "";
+        return newly > 0
+            ? $" ・使えなくなったものが {total} 件 (新たに {newly} 件)"
+            : $" ・使えなくなったものが {total} 件";
     }
 
     /// <summary>
@@ -919,7 +952,7 @@ public partial class MainWindow : Window
 
     private async void ChangeSelected_Click(object sender, RoutedEventArgs e)
     {
-        if (AvatarList.SelectedItem is AvatarItem { IsAvatar: true } item) await ChangeAvatarAsync(item.Id, item.Name);
+        if (AvatarList.SelectedItem is AvatarItem { IsAvatar: true } item) await ChangeFromListAsync(item);
         else SetStatus(StatusKind.Info, "一覧からアバターを選んでください");
     }
 
@@ -928,7 +961,7 @@ public partial class MainWindow : Window
         // タイル以外(余白)のダブルクリックは無視
         if (ItemAt(AvatarList, e.OriginalSource as DependencyObject) is not { } item) return;
         if (item.IsGroup) OpenGroup(item.Group!);
-        else await ChangeAvatarAsync(item.Id, item.Name);
+        else await ChangeFromListAsync(item);
     }
 
     /// <summary>着替える。成功したら true (クイック着替えオーバーレイが結果表示に使う)。</summary>

@@ -8,6 +8,33 @@
         WindowStartupLocation="CenterScreen" PreviewKeyDown="Window_PreviewKeyDown">
     <Window.Resources>
         <BooleanToVisibilityConverter x:Key="BoolToVis"/>
+
+        <!-- 使えなくなったアバターの印。赤い縁取りの小さな札。意味色 (エラー = 赤) 以外は増やさない -->
+        <Style x:Key="UnavailablePill" TargetType="Border">
+            <Setter Property="Background" Value="{DynamicResource PanelBrush}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource DangerBrush}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="CornerRadius" Value="4"/>
+            <Setter Property="Padding" Value="6,2"/>
+        </Style>
+        <!-- 使えなくなったアバターのサムネイルは薄く。印が主で、これは補助 -->
+        <Style x:Key="DimIfUnavailable" TargetType="Image">
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding IsUnavailable}" Value="True">
+                    <Setter Property="Opacity" Value="0.45"/>
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+        <!-- 詳細画面の項目名 / 値 -->
+        <Style x:Key="DetailLabel" TargetType="TextBlock" BasedOn="{StaticResource CaptionText}">
+            <Setter Property="Margin" Value="0,0,14,0"/>
+            <Setter Property="VerticalAlignment" Value="Top"/>
+            <Setter Property="Width" Value="120"/>
+        </Style>
+        <Style x:Key="DetailValue" TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
+            <Setter Property="TextWrapping" Value="Wrap"/>
+            <Setter Property="VerticalAlignment" Value="Top"/>
+        </Style>
         <!-- 一覧の行 -->
         <Style x:Key="AvatarRow" TargetType="ListViewItem">
             <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
@@ -94,7 +121,11 @@
                             <RectangleGeometry Rect="0,0,96,72" RadiusX="6" RadiusY="6"/>
                         </Border.Clip>
                         <Grid>
-                            <Image Source="{Binding Thumbnail}" Stretch="UniformToFill"/>
+                            <Image Source="{Binding Thumbnail}" Stretch="UniformToFill" Style="{StaticResource DimIfUnavailable}"/>
+                            <!-- 使えなくなったアバター: サムネイルに印を重ねる (色だけに頼らない) -->
+                            <TextBlock Text="&#xE733;" FontFamily="{StaticResource IconFont}" FontSize="22" Foreground="{DynamicResource DangerBrush}"
+                                       HorizontalAlignment="Center" VerticalAlignment="Center"
+                                       Visibility="{Binding IsUnavailable, Converter={StaticResource BoolToVis}}"/>
                             <Border HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="0,0,4,4" CornerRadius="4" Padding="6,1"
                                     Background="#CC141416" Visibility="{Binding IsGroup, Converter={StaticResource BoolToVis}}">
                                 <TextBlock Text="{Binding Count}" FontSize="11" FontWeight="SemiBold" Foreground="#FFECECEF"/>
@@ -123,7 +154,16 @@
                                FontFamily="Cascadia Mono, Consolas" FontSize="11" TextTrimming="CharacterEllipsis" Margin="0,4,0,0"
                                Visibility="{Binding IsAvatar, Converter={StaticResource BoolToVis}}"/>
                 </StackPanel>
-                <TextBlock Grid.Column="2" Text="{Binding Badge}" Style="{StaticResource CaptionText}" VerticalAlignment="Center" Margin="12,0,4,0"/>
+                <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center" Margin="12,0,4,0">
+                    <Border Style="{StaticResource UnavailablePill}" Margin="0,0,10,0" ToolTip="{Binding UnavailableText}"
+                            Visibility="{Binding IsUnavailable, Converter={StaticResource BoolToVis}}">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="&#xE733;" Style="{StaticResource Icon}" FontSize="11" Foreground="{DynamicResource DangerBrush}" Margin="0,0,5,0"/>
+                            <TextBlock Text="使えません" FontSize="11" FontWeight="SemiBold" Foreground="{DynamicResource DangerBrush}"/>
+                        </StackPanel>
+                    </Border>
+                    <TextBlock Text="{Binding Badge}" Style="{StaticResource CaptionText}" VerticalAlignment="Center"/>
+                </StackPanel>
             </Grid>
         </DataTemplate>
 
@@ -219,6 +259,8 @@
                         <TextBlock Text="{Binding AuthorName}"/>
                         <TextBlock Text="{Binding Id}" FontFamily="Cascadia Mono, Consolas" FontSize="11" Style="{StaticResource CaptionText}"
                                    Visibility="{Binding IsAvatar, Converter={StaticResource BoolToVis}}"/>
+                        <TextBlock Text="{Binding UnavailableText}" Foreground="{DynamicResource DangerBrush}" Margin="0,4,0,0"
+                                   Visibility="{Binding IsUnavailable, Converter={StaticResource BoolToVis}}"/>
                     </StackPanel>
                 </StackPanel.ToolTip>
                 <Grid>
@@ -235,7 +277,16 @@
                             </MultiBinding>
                         </Border.Clip>
                         <Grid>
-                            <Image Source="{Binding Thumbnail}" Stretch="UniformToFill"/>
+                            <Image Source="{Binding Thumbnail}" Stretch="UniformToFill" Style="{StaticResource DimIfUnavailable}"/>
+                            <!-- 使えなくなったアバター: 左上に印と文字。サムネイルは薄くする (補助) -->
+                            <Border Style="{StaticResource UnavailablePill}" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="6,6,0,0"
+                                    ToolTip="{Binding UnavailableText}"
+                                    Visibility="{Binding IsUnavailable, Converter={StaticResource BoolToVis}}">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="&#xE733;" Style="{StaticResource Icon}" FontSize="11" Foreground="{DynamicResource DangerBrush}" Margin="0,0,5,0"/>
+                                    <TextBlock Text="使えません" FontSize="11" FontWeight="SemiBold" Foreground="{DynamicResource DangerBrush}"/>
+                                </StackPanel>
+                            </Border>
                             <!-- グループ: 枚数バッジ -->
                             <Border HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="0,0,6,6" CornerRadius="4" Padding="7,2"
                                     Background="#CC141416" Visibility="{Binding IsGroup, Converter={StaticResource BoolToVis}}">
@@ -566,6 +617,7 @@
                             <ContextMenu>
                                 <MenuItem x:Name="MenuChange" Header="このアバターに着替える" Click="MenuChange_Click"/>
                                 <MenuItem x:Name="MenuOpenGroup" Header="グループを開く" Click="MenuOpenGroup_Click"/>
+                                <MenuItem x:Name="MenuDetails" Header="詳細を見る..." Click="MenuDetails_Click"/>
                                 <Separator/>
                                 <!-- お気に入り: 追加は「どのグループに入れるか」を選ばせるので、項目は開くときに作る -->
                                 <MenuItem x:Name="MenuAddFavorite" Header="お気に入りに追加"/>
@@ -578,6 +630,7 @@
                                 <Separator/>
                                 <MenuItem x:Name="MenuAddPublic" Header="パブリックに追加" Click="MenuAddPublic_Click"/>
                                 <MenuItem x:Name="MenuRemovePublic" Header="パブリックから削除" Click="MenuRemovePublic_Click"/>
+                                <MenuItem x:Name="MenuRemoveUnavailable" Header="使えなくなったものをまとめて外す..." Click="MenuRemoveUnavailable_Click"/>
                                 <MenuItem x:Name="MenuEditTags" Header="タグを編集..." Click="MenuEditTags_Click"/>
                                 <Separator/>
                                 <MenuItem x:Name="MenuAssignHotkey" Header="ホットキーに割り当てる..." Click="MenuAssignHotkey_Click"/>
@@ -898,6 +951,139 @@
 
                     <Button Grid.Row="2" Content="閉じる" Click="SettingsClose_Click" MinWidth="100" Height="34"
                             HorizontalAlignment="Right" Margin="0,14,0,0"/>
+                </Grid>
+            </Border>
+        </Grid>
+        <!-- ================= アバターの詳細 (アプリ内オーバーレイ) ================= -->
+        <Grid x:Name="DetailOverlay" Visibility="Collapsed">
+            <Border Background="{DynamicResource ScrimBrush}" MouseLeftButtonDown="DetailBackdrop_MouseLeftButtonDown"/>
+            <Border x:Name="DetailBounds" Margin="0,32" IsHitTestVisible="False"/>
+
+            <Border x:Name="DetailCard" Style="{StaticResource Card}" Width="780" VerticalAlignment="Center" HorizontalAlignment="Center" Padding="20"
+                    MaxHeight="{Binding ActualHeight, ElementName=DetailBounds}" RenderTransformOrigin="0.5,0.5">
+                <Border.RenderTransform>
+                    <ScaleTransform x:Name="DetailCardScale"/>
+                </Border.RenderTransform>
+                <Border.Effect>
+                    <DropShadowEffect BlurRadius="28" ShadowDepth="4" Opacity="0.35" Color="#000000"/>
+                </Border.Effect>
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+
+                    <!-- 見出し: 名前と作者。右に閉じる -->
+                    <Grid Margin="0,0,0,14">
+                        <StackPanel Margin="0,0,40,0">
+                            <TextBlock x:Name="DetailName" FontWeight="SemiBold" FontSize="18" TextTrimming="CharacterEllipsis"/>
+                            <StackPanel Orientation="Horizontal" Margin="0,2,0,0">
+                                <TextBlock x:Name="DetailAuthor" Style="{StaticResource MutedText}" TextTrimming="CharacterEllipsis"/>
+                                <TextBlock x:Name="DetailStatus" Style="{StaticResource CaptionText}" VerticalAlignment="Center" Margin="10,0,0,0"/>
+                            </StackPanel>
+                            <!-- ID は長いので、項目の表ではなく見出しの下に 1 行で (折り返さずに読める) -->
+                            <TextBlock x:Name="DetailId" Style="{StaticResource CaptionText}" Foreground="{DynamicResource FaintTextBrush}"
+                                       FontFamily="Cascadia Mono, Consolas" FontSize="11" Margin="0,4,0,0"/>
+                        </StackPanel>
+                        <Button Style="{StaticResource GhostButton}" Click="DetailClose_Click" AutomationProperties.Name="詳細を閉じる"
+                                ToolTip="閉じる (Esc)" HorizontalAlignment="Right" VerticalAlignment="Top" Width="30" Height="30" Padding="0">
+                            <TextBlock Text="&#xE711;" Style="{StaticResource Icon}"/>
+                        </Button>
+                    </Grid>
+
+                    <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" Padding="0,0,2,0">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+
+                            <!-- 左: 画像と、使えなくなった場合の説明 -->
+                            <StackPanel Width="336" Margin="0,0,20,0">
+                                <Border Width="336" Height="252" CornerRadius="{StaticResource ControlRadius}" Background="{DynamicResource ThumbBackBrush}">
+                                    <Border.Clip>
+                                        <RectangleGeometry Rect="0,0,336,252" RadiusX="6" RadiusY="6"/>
+                                    </Border.Clip>
+                                    <Grid>
+                                        <Image x:Name="DetailImage" Stretch="UniformToFill"/>
+                                        <Border x:Name="DetailCurrentBadge" CornerRadius="4" Padding="7,2" Background="{DynamicResource AccentBrush}"
+                                                HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,8,8,0" Visibility="Collapsed">
+                                            <StackPanel Orientation="Horizontal">
+                                                <TextBlock Text="&#xE73E;" Style="{StaticResource Icon}" FontSize="11" Foreground="{DynamicResource OnAccentBrush}" Margin="0,0,5,0"/>
+                                                <TextBlock Text="現在のアバター" FontSize="11" FontWeight="SemiBold" Foreground="{DynamicResource OnAccentBrush}"/>
+                                            </StackPanel>
+                                        </Border>
+                                    </Grid>
+                                </Border>
+                                <Border x:Name="DetailUnavailable" Visibility="Collapsed" Margin="0,10,0,0"
+                                        Background="{DynamicResource WindowBrush}" BorderBrush="{DynamicResource DangerBrush}" BorderThickness="1"
+                                        CornerRadius="{StaticResource ControlRadius}" Padding="12,10">
+                                    <StackPanel>
+                                        <StackPanel Orientation="Horizontal">
+                                            <TextBlock Text="&#xE733;" Style="{StaticResource Icon}" Foreground="{DynamicResource DangerBrush}" Margin="0,0,8,0"/>
+                                            <TextBlock Text="このアバターは使えなくなっています" FontWeight="SemiBold" Foreground="{DynamicResource DangerBrush}"/>
+                                        </StackPanel>
+                                        <TextBlock x:Name="DetailUnavailableText" Style="{StaticResource CaptionText}" TextWrapping="Wrap" Margin="0,6,0,0"/>
+                                        <TextBlock Style="{StaticResource CaptionText}" TextWrapping="Wrap" Margin="0,4,0,0" Foreground="{DynamicResource FaintTextBrush}"
+                                                   Text="再読み込みのたびに確認し、時間を空けて 2 回続けて取れなかったものだけをこう表示します。自動では外しません。"/>
+                                        <Button x:Name="DetailRemoveButton" Content="パブリックから外す" Style="{StaticResource DangerButton}" Click="DetailRemove_Click"
+                                                Height="30" HorizontalAlignment="Left" Margin="0,10,0,0"/>
+                                    </StackPanel>
+                                </Border>
+                            </StackPanel>
+
+                            <!-- 右: 説明と項目 -->
+                            <StackPanel Grid.Column="1">
+                                <TextBlock Text="説明" Style="{StaticResource FieldLabel}"/>
+                                <Border Background="{DynamicResource WindowBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"
+                                        CornerRadius="{StaticResource ControlRadius}" Padding="12,10" MaxHeight="160" Margin="0,0,0,14">
+                                    <ScrollViewer VerticalScrollBarVisibility="Auto">
+                                        <TextBox x:Name="DetailDescription" IsReadOnly="True" TextWrapping="Wrap" BorderThickness="0" Padding="0"
+                                                 Background="Transparent" AcceptsReturn="True"/>
+                                    </ScrollViewer>
+                                </Border>
+                                <ItemsControl x:Name="DetailRows">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate DataType="{x:Type local:DetailRow}">
+                                            <Grid Margin="0,0,0,8">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="Auto"/>
+                                                    <ColumnDefinition Width="*"/>
+                                                </Grid.ColumnDefinitions>
+                                                <TextBlock Text="{Binding Label}" Style="{StaticResource DetailLabel}"/>
+                                                <TextBlock Grid.Column="1" Text="{Binding Value}" Style="{StaticResource DetailValue}"
+                                                           FontFamily="{Binding FontFamily}"/>
+                                            </Grid>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </StackPanel>
+                        </Grid>
+                    </ScrollViewer>
+
+                    <!-- 操作 -->
+                    <Grid Grid.Row="2" Margin="0,14,0,0">
+                        <StackPanel Orientation="Horizontal">
+                            <Button Style="{StaticResource SecondaryButton}" Click="DetailOpenWeb_Click" Height="34" Padding="12,0"
+                                    ToolTip="ブラウザで vrchat.com のアバターページを開きます">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="&#xE774;" Style="{StaticResource Icon}" Margin="0,0,8,0"/>
+                                    <TextBlock Text="VRChat で開く"/>
+                                </StackPanel>
+                            </Button>
+                            <Button Style="{StaticResource GhostButton}" Click="DetailCopyId_Click" Height="34" Padding="12,0" Margin="6,0,0,0">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="&#xE8C8;" Style="{StaticResource Icon}" Margin="0,0,8,0"/>
+                                    <TextBlock Text="ID をコピー"/>
+                                </StackPanel>
+                            </Button>
+                        </StackPanel>
+                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                            <Button Content="閉じる" Style="{StaticResource SecondaryButton}" Click="DetailClose_Click" MinWidth="90" Height="34" Margin="0,0,8,0"/>
+                            <Button x:Name="DetailChangeButton" Content="このアバターに着替える" Click="DetailChange_Click" MinWidth="180" Height="34"/>
+                        </StackPanel>
+                    </Grid>
                 </Grid>
             </Border>
         </Grid>

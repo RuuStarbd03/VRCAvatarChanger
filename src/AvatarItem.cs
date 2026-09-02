@@ -114,6 +114,39 @@ public sealed class AvatarItem : INotifyPropertyChanged
         set { if (!ReferenceEquals(_stripeBrush, value)) { _stripeBrush = value; OnPropertyChanged(); } }
     }
 
+    private bool _isUnavailable;
+    /// <summary>
+    /// 使えなくなったアバター (削除された / 非公開になった)。パブリックリストで、取り直しに続けて失敗して確定したもの。
+    /// グループなら「中の全員が使えない」とき。
+    /// </summary>
+    public bool IsUnavailable
+    {
+        get => IsGroup ? Members.Count > 0 && Members.All(m => m.IsUnavailable) : _isUnavailable;
+        set
+        {
+            if (_isUnavailable == value) return;
+            _isUnavailable = value;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(UnavailableText));
+        }
+    }
+
+    /// <summary>「使えない」と確定した日時 (表示用)。</summary>
+    public DateTimeOffset? UnavailableSince { get; set; }
+    /// <summary>使えない理由。"deleted" / "private"。</summary>
+    public string? UnavailableReason { get; set; }
+
+    /// <summary>ツールチップや詳細に出す 1 行。「2026/09/01 に確認: 削除されたか非公開になりました」。</summary>
+    public string UnavailableText
+    {
+        get
+        {
+            if (!IsUnavailable) return "";
+            var what = UnavailableReason == "private" ? "非公開になりました" : "削除されたか非公開になりました";
+            return UnavailableSince is { } at ? $"{at.ToLocalTime():yyyy/MM/dd HH:mm} に確認: {what}" : what;
+        }
+    }
+
     private bool _isCurrent;
     /// <summary>現在着ているアバター(グループの場合は中に現在のアバターがいる)。チェックバッジの表示に使う。</summary>
     public bool IsCurrent
