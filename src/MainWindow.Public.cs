@@ -35,7 +35,7 @@ public partial class MainWindow
             var av = await _api.GetAvatarAsync(id);
             if (await TryAddPublicAsync(av)) PublicIdBox.Clear();
         }
-        catch (Exception ex) { SetStatus(StatusKind.Error, "アバター情報を取得できませんでした: " + FriendlyError.Of(ex)); }
+        catch (Exception ex) { Log.Warn($"パブリックに追加するアバター {id} の情報を取得できませんでした", ex); SetStatus(StatusKind.Error, "アバター情報を取得できませんでした: " + FriendlyError.Of(ex)); }
         finally { PublicAddButton.IsEnabled = true; }
     }
 
@@ -57,29 +57,116 @@ public partial class MainWindow
     private static readonly TimeSpan PublicEntryFreshFor = TimeSpan.FromHours(6);
 
     /// <summary>
+    /// 取り直しの対象か。前回うまく取れてから 6 時間、失敗してから 1 時間は空ける
+    /// (失敗の直後に何度も叩いても同じ結果で、「使えない」の確定も時間を空けた 2 回目で行うため)。
+    /// </summary>
+    private static bool IsStaleEntry(PublicAvatarEntry e, DateTimeOffset now)
+    {
+        if (e.LastFailedAt is { } failed && now - failed < PublicAvatarStore.StrikeInterval) return false;
+        return e.RefreshedAt is not { } at || now - at > PublicEntryFreshFor;
+    }
+
+    /// <summary>
     /// パブリックリストのアバター情報を API から取り直す。「再読み込み」のときだけ呼ぶ。
     /// 1 件につき 1 リクエストなので、しばらく前に取ったものだけを対象にする。
+    /// 「見つからない」「非公開」が返ったものは失敗として数え、時間を空けて 2 回続いたら「使えない」と確定する
+    /// (通信断やレート制限などそれ以外の失敗は数えない。VRChat 側の不調を削除と取り違えないため)。
     /// </summary>
-    /// <returns>実際に取り直した件数。</returns>
-    private async Task<int> RefreshPublicEntriesAsync(CancellationToken ct)
+    /// <returns>実際に取り直した件数と、この回で新たに「使えない」と確定した件数。</returns>
+    private async Task<(int Refreshed, int NewlyUnavailable)> RefreshPublicEntriesAsync(CancellationToken ct)
     {
         var now = DateTimeOffset.Now;
-        var stale = _public.Entries.Where(e => e.RefreshedAt is not { } at || now - at > PublicEntryFreshFor).ToList();
-        if (stale.Count == 0) return 0;
+        var stale = _public.Entries.Where(e => IsStaleEntry(e, now)).ToList();
+        if (stale.Count == 0) return (0, 0);
 
+        var newlyUnavailable = 0;
         // 件数が多くてもレート制限にかからないよう、同時 2 本まで
         using var gate = new SemaphoreSlim(2);
         var tasks = stale.Select(async e =>
         {
             await gate.WaitAsync(ct);
-            try { _public.Update(await _api.GetAvatarAsync(e.Avatar.Id, ct)); }
+            try
+            {
+                var av = await _api.GetAvatarAsync(e.Avatar.Id, ct);
+                // 取れても非公開になっていれば着替えられない (自分のアバターなら非公開でも着られる)
+                if (av.ReleaseStatus != "public" && av.AuthorId != _user?.Id)
+                {
+                    var confirmed = _public.MarkFailed(e.Avatar.Id, "private");
+                    Log.Info($"パブリック {e.Avatar.Id} ({e.Avatar.Name}): 非公開になっています ({e.UnavailableStrikes} 回目{(confirmed ? "、使えないと確定" : "")})");
+                    if (confirmed) Interlocked.Increment(ref newlyUnavailable);
+                }
+                else _public.Update(av);
+            }
             catch (OperationCanceledException) { throw; }
-            catch { /* 削除された・非公開になったアバターはそのまま残す */ }
+            catch (VRChatApiException ex) when (ex.Status is System.Net.HttpStatusCode.NotFound or System.Net.HttpStatusCode.Forbidden)
+            {
+                // 404 は削除・非公開のどちらでも返る (他人の非公開アバターは「無いもの」として扱われる)
+                var reason = ex.Status == System.Net.HttpStatusCode.Forbidden ? "private" : "deleted";
+                var confirmed = _public.MarkFailed(e.Avatar.Id, reason);
+                Log.Info($"パブリック {e.Avatar.Id} ({e.Avatar.Name}): HTTP {(int)(ex.Status ?? 0)} ({e.UnavailableStrikes} 回目{(confirmed ? "、使えないと確定" : "")})");
+                if (confirmed) Interlocked.Increment(ref newlyUnavailable);
+            }
+            catch (Exception ex)
+            {
+                // 通信断・レート制限など: 削除されたかどうか判断できないので、前回の状態のまま (数えない)
+                Log.Warn($"パブリック {e.Avatar.Id} ({e.Avatar.Name}) を取り直せませんでした (判定は保留)", ex);
+            }
             finally { gate.Release(); }
         });
         await Task.WhenAll(tasks);
         _public.Save();
-        return stale.Count;
+        return (stale.Count, newlyUnavailable);
+    }
+
+    /// <summary>「使えない」と確定した項目の見た目 (バッジなど) を、リストの項目に写す。</summary>
+    private static AvatarItem PublicItemOf(PublicAvatarEntry e, IReadOnlyList<string> tags)
+        => new(e.Avatar)
+        {
+            AddedAt = e.AddedAt,
+            Tags = tags,
+            IsUnavailable = e.IsUnavailable,
+            UnavailableSince = e.UnavailableSince,
+            UnavailableReason = e.UnavailableReason,
+        };
+
+    /// <summary>
+    /// 一覧から着替えるときの入口。使えなくなったアバターなら、そのまま失敗させずに先に確かめる
+    /// (外すか、それでも試すか)。
+    /// </summary>
+    private async Task ChangeFromListAsync(AvatarItem item)
+    {
+        if (item.IsUnavailable && IsPublicTab)
+        {
+            var r = MessageBox.Show(this,
+                $"{item.Name} は使えなくなっています。\n{item.UnavailableText}\n\n" +
+                "パブリックから外しますか?\n(「いいえ」でそのまま着替えを試します)",
+                "VRCAvatarChanger", MessageBoxButton.YesNoCancel, MessageBoxImage.Warning);
+            if (r == MessageBoxResult.Cancel) return;
+            if (r == MessageBoxResult.Yes)
+            {
+                _public.Remove(item.Id);
+                SetStatus(StatusKind.Info, $"{item.Name} をパブリックから外しました");
+                await LoadAvatarsAsync();
+                return;
+            }
+        }
+        await ChangeAvatarAsync(item.Id, item.Name);
+    }
+
+    private async void MenuRemoveUnavailable_Click(object sender, RoutedEventArgs e)
+    {
+        var targets = _public.Unavailable.ToList();
+        if (targets.Count == 0) return;
+        var names = string.Join("\n", targets.Take(8).Select(t => "・" + t.Avatar.Name));
+        if (targets.Count > 8) names += $"\n・ほか {targets.Count - 8} 件";
+        var r = MessageBox.Show(this,
+            $"使えなくなった {targets.Count} 件をパブリックから外します。\n\n{names}\n\n" +
+            "外したあとは、もう一度 ID か URL で追加すれば戻せます。",
+            "VRCAvatarChanger", MessageBoxButton.OKCancel, MessageBoxImage.Question);
+        if (r != MessageBoxResult.OK) return;
+        var n = _public.RemoveUnavailable();
+        SetStatus(StatusKind.Info, $"使えなくなった {n} 件をパブリックから外しました");
+        await LoadAvatarsAsync();
     }
 
     private async void MenuAddPublic_Click(object sender, RoutedEventArgs e)

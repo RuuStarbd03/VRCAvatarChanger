@@ -29,7 +29,10 @@ public partial class App : Application
         ThreadPool.RegisterWaitForSingleObject(_activateEvent, (_, _) => Dispatcher.BeginInvoke(ActivateMainWindow), null, -1, false);
 
         Updater.CleanupOldVersion();
-        ApplyTheme(Settings.Load().Theme);
+        var settings = Settings.Load();
+        Log.Enabled = settings.LogEnabled;
+        Log.Info($"起動: v{Updater.CurrentVersion.ToString(3)} 引数=[{string.Join(" ", e.Args)}]");
+        ApplyTheme(settings.Theme);
         // 「システム」を選んでいる間は、Windows 側でモードが変わったら追従する
         // (時間帯で自動的に切り替える設定があるので、開きっぱなしでも合っていてほしい)
         SystemEvents.UserPreferenceChanged += OnUserPreferenceChanged;
@@ -44,7 +47,7 @@ public partial class App : Application
             {
                 MessageBox.Show(
                     "予期しないエラーが起きました。操作をやり直しても直らない場合は、アプリを再起動してください。\n\n" +
-                    "詳細: " + args.Exception.Message + "\n\n記録先: " + ErrorLogPath,
+                    "詳細: " + args.Exception.Message + "\n\n記録先: " + Log.FilePath,
                     "VRCAvatarChanger", MessageBoxButton.OK, MessageBoxImage.Error);
             }
             finally { _showingError = false; }
@@ -60,20 +63,10 @@ public partial class App : Application
 
     private static bool _showingError;
 
-    public static readonly string ErrorLogPath = AppPaths.In("error.log");
-
-    /// <summary>予期しない例外を %AppData%\VRCAvatarChanger\error.log に追記する(問い合わせ対応用。個人情報は含めない)。</summary>
+    /// <summary>予期しない例外を app.log に残す (問い合わせ対応用。個人情報は含めない)。</summary>
     public static void LogError(Exception? ex)
     {
-        if (ex is null) return;
-        try
-        {
-            System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(ErrorLogPath)!);
-            // 肥大化防止: 512KB を超えたら作り直す
-            if (System.IO.File.Exists(ErrorLogPath) && new System.IO.FileInfo(ErrorLogPath).Length > 512 * 1024) System.IO.File.Delete(ErrorLogPath);
-            System.IO.File.AppendAllText(ErrorLogPath, $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] {ex}\r\n\r\n");
-        }
-        catch { }
+        if (ex is not null) Log.Error("予期しないエラー", ex);
     }
 
     private void ActivateMainWindow()
@@ -88,6 +81,7 @@ public partial class App : Application
 
     protected override void OnExit(ExitEventArgs e)
     {
+        Log.Info("終了");
         SystemEvents.UserPreferenceChanged -= OnUserPreferenceChanged;
         _activateEvent?.Dispose();
         _instanceMutex?.Dispose();
@@ -140,7 +134,7 @@ public partial class App : Application
             using var key = Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize");
             return key?.GetValue("AppsUseLightTheme") is not int light || light == 0;
         }
-        catch { return true; }
+        catch (Exception ex) { Log.Debug("Windows のアプリのモードを読めませんでした (ダーク扱い)", ex); return true; }
     }
 
     /// <summary>タイトルバーもテーマに合わせる (DWM の immersive dark mode)。ウィンドウの SourceInitialized 以降で呼ぶ。</summary>
@@ -153,7 +147,7 @@ public partial class App : Application
             int dark = IsDarkTheme ? 1 : 0;
             DwmSetWindowAttribute(hwnd, DwmwaUseImmersiveDarkMode, ref dark, sizeof(int));
         }
-        catch { /* 古い Windows では未対応。無視 */ }
+        catch (Exception ex) { Log.Debug("タイトルバーの配色を設定できませんでした (古い Windows では未対応)", ex); }
     }
 
     private const int DwmwaUseImmersiveDarkMode = 20;

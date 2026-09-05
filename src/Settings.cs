@@ -51,6 +51,9 @@ public sealed class Settings
     public double? WindowHeight { get; set; }
     public bool WindowMaximized { get; set; }
 
+    /// <summary>動作の記録 (app.log) に警告・情報も書くか。オフでもエラーは書く。</summary>
+    public bool LogEnabled { get; set; }
+
     private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
 
     private static string PathOf() => AppPaths.In("settings.json");

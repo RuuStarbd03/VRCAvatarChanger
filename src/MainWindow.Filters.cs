@@ -9,6 +9,9 @@ public partial class MainWindow
 {
     /// <summary>現在のフィルタ値。null = すべて。</summary>
     private string? _filterValue;
+
+    /// <summary>「使えなくなったもの」だけを出すフィルタの値 (タグ名とぶつからないよう記号を含める)。</summary>
+    private static readonly string UnavailableFilter = (char)1 + "unavailable"; // 先頭に制御文字 (タグ名には入らない)
     private bool _buildingChips;
 
     /// <summary>タブに応じてフィルタチップを作り直す。候補が 1 つも無ければバーごと隠す。</summary>
@@ -24,16 +27,20 @@ public partial class MainWindow
                 : _allItems.SelectMany(a => a.Tags)
                     .Distinct(StringComparer.CurrentCultureIgnoreCase)
                     .OrderBy(t => t, StringComparer.CurrentCultureIgnoreCase).ToList();
-            if (values.Count == 0)
+            // パブリック: 使えなくなったものがあれば、それだけを見るチップを末尾に足す
+            var unavailable = IsPublicTab ? _allItems.Count(a => a.IsUnavailable) : 0;
+            if (values.Count == 0 && unavailable == 0)
             {
                 FilterBar.Visibility = Visibility.Collapsed;
                 _filterValue = null;
                 return;
             }
-            if (_filterValue is not null && !values.Contains(_filterValue)) _filterValue = null;
+            if (_filterValue is not null && !values.Contains(_filterValue)
+                && !(_filterValue == UnavailableFilter && unavailable > 0)) _filterValue = null;
 
             AddChip("すべて", null);
             foreach (var v in values) AddChip(v, v);
+            if (unavailable > 0) AddChip($"使えなくなったもの ({unavailable})", UnavailableFilter);
             FilterBar.Visibility = Visibility.Visible;
             // チップ数が変わってもサイズが変わらない場合があるので、レイアウト後にあふれ判定を行う
             Dispatcher.BeginInvoke(UpdateFilterOverflow, System.Windows.Threading.DispatcherPriority.Loaded);
@@ -92,6 +99,8 @@ public partial class MainWindow
     private IEnumerable<AvatarItem> ApplyChipFilter(IEnumerable<AvatarItem> items)
     {
         if (_filterValue is null) return items;
+        if (_filterValue == UnavailableFilter)
+            return items.Where(a => a.IsGroup ? a.Members.Any(m => m.IsUnavailable) : a.IsUnavailable);
         if (SourceFavorites.IsChecked == true) return items.Where(a => a.Avatar.FavoriteGroup == _filterValue);
         // タグは、グループタイルの場合「中に 1 体でも該当がいれば」表示する
         return items.Where(a => a.IsGroup

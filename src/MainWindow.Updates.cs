@@ -52,6 +52,7 @@ public partial class MainWindow
         }
         catch (Exception ex)
         {
+            Log.Error($"更新 (v{_update.Version.ToString(3)}) に失敗", ex);
             UpdateButton.IsEnabled = true;
             UpdateButtonText.Text = $"v{_update.Version.ToString(3)} に更新";
             SetStatus(StatusKind.Error, "更新できませんでした: " + FriendlyError.Of(ex));

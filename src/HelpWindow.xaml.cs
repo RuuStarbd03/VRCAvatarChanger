@@ -35,6 +35,6 @@ public partial class HelpWindow : Window
             Directory.CreateDirectory(DataDir);
             Process.Start(new ProcessStartInfo("explorer.exe", DataDir) { UseShellExecute = true });
         }
-        catch { }
+        catch (Exception ex) { Log.Warn("データフォルダを開けませんでした", ex); }
     }
 }

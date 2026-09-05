@@ -95,7 +95,7 @@ public partial class MainWindow
             using var p = Process.GetProcessById((int)pid);
             if (!p.ProcessName.Equals(QuickTargetProcess, StringComparison.OrdinalIgnoreCase)) return false;
         }
-        catch { return false; }
+        catch (Exception ex) { Log.Debug($"前面ウィンドウのプロセス ({pid}) を確認できませんでした (ホットキーは効きません)", ex); return false; }
         _vrchatHwnd = fg; // 表示位置の基準と、閉じたときにフォーカスを返す先
         return true;
     }
@@ -237,7 +237,18 @@ internal static class Win32
     {
         var mi = new MonitorInfo { Size = Marshal.SizeOf<MonitorInfo>() };
         if (GetMonitorInfoW(MonitorOf(hwnd), ref mi)) return mi.Work;
-        return new NativeRect { Left = 0, Top = 0, Right = 1920, Bottom = 1080 }; // ここまで来ることは実質ない
+        // モニター情報が取れない (ウィンドウが消えた直後など)。プライマリモニターの作業領域を
+        // WPF から取り、物理ピクセルに直して使う (解像度の決め打ちはしない)
+        Log.Warn("モニターの作業領域を取得できませんでした。プライマリモニターの値で代用します");
+        var wa = System.Windows.SystemParameters.WorkArea;
+        var scale = ScaleOf(0);
+        return new NativeRect
+        {
+            Left = (int)Math.Round(wa.Left * scale),
+            Top = (int)Math.Round(wa.Top * scale),
+            Right = (int)Math.Round(wa.Right * scale),
+            Bottom = (int)Math.Round(wa.Bottom * scale),
+        };
     }
 
     [DllImport("shcore.dll")] private static extern int GetDpiForMonitor(nint hMonitor, int type, out uint dpiX, out uint dpiY);
@@ -250,7 +261,7 @@ internal static class Win32
             if (GetDpiForMonitor(MonitorOf(hwnd), 0 /* MDT_EFFECTIVE_DPI */, out var dx, out _) == 0 && dx > 0)
                 return dx / 96.0;
         }
-        catch { }
+        catch (Exception ex) { Log.Debug("モニターの DPI を取得できませんでした (100% 扱い)", ex); }
         return 1.0;
     }
 

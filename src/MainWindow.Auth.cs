@@ -14,9 +14,9 @@ public partial class MainWindow
         {
             var user = await _api.TryGetCurrentUserAsync();
             if (user is not null) await EnterMainAsync(user);
-            else LoginStatus.Text = "";
+            else { Log.Info("保存されたセッションは無効でした。ログイン画面を出します"); LoginStatus.Text = ""; }
         }
-        catch (Exception ex) { SetLoginStatus(FriendlyError.Of(ex), error: true); }
+        catch (Exception ex) { Log.Warn("保存されたセッションの確認に失敗", ex); SetLoginStatus(FriendlyError.Of(ex), error: true); }
         finally { SetLoginBusy(false); }
     }
 
@@ -47,7 +47,7 @@ public partial class MainWindow
             _twoFactorMethods = tfa.Methods;
             ShowTwoFactor();
         }
-        catch (Exception ex) { SetLoginStatus(FriendlyError.Of(ex), error: true); }
+        catch (Exception ex) { Log.Warn("ログインに失敗", ex); SetLoginStatus(FriendlyError.Of(ex), error: true); }
         finally { SetLoginBusy(false); }
     }
 
@@ -117,14 +117,14 @@ public partial class MainWindow
         // 自動続行は VRChat のトークン形式 (authcookie_...) に限る。誤検知でログインを試さないため
         if (!token.StartsWith("authcookie_", StringComparison.Ordinal)) return;
         AuthTokenBox.Text = token;
-        _ = LoginWithTokenAsync(token);
+        LoginWithTokenAsync(token).Forget();
     }
 
     private static string? ReadClipboard()
     {
         // 他アプリがクリップボードを掴んでいると失敗することがある
         try { return Clipboard.ContainsText() ? Clipboard.GetText() : null; }
-        catch { return null; }
+        catch (Exception ex) { Log.Debug("クリップボードを読めませんでした (他のアプリが使用中)", ex); return null; }
     }
 
     private void AuthTokenField_KeyDown(object sender, KeyEventArgs e)
@@ -251,6 +251,7 @@ public partial class MainWindow
     /// <summary>ログイン成功後にメイン画面へ切り替える。</summary>
     private async Task EnterMainAsync(CurrentUser user)
     {
+        Log.Info($"ログイン: {user.DisplayName} 現在のアバター {user.CurrentAvatar}");
         StopClipboardWatch();
         _user = user;
         TouchRecentAvatar(user.CurrentAvatar); // 今着ているものは「最近使用」の先頭に載せる
@@ -283,7 +284,8 @@ public partial class MainWindow
     private bool HandleSessionExpired(Exception ex)
     {
         if (ex is not VRChatApiException { IsUnauthorized: true }) return false;
-        _ = _api.LogoutAsync();
+        Log.Warn("セッションが切れました (401)。ログイン画面に戻します");
+        _api.LogoutAsync().Forget();
         ReturnToLogin("VRChat のセッションが切れました。もう一度ログインしてください。");
         return true;
     }

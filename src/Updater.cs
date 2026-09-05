@@ -87,7 +87,7 @@ public static class Updater
             var htmlUrl = root.TryGetProperty("html_url", out var h) ? h.GetString() ?? "" : "";
             return new UpdateInfo(version, zipUrl, shaUrl, notes, htmlUrl);
         }
-        catch { return null; }
+        catch (Exception ex) { Log.Warn("更新の確認に失敗 (次回また確認します)", ex); return null; }
     }
 
     /// <summary>
@@ -97,6 +97,8 @@ public static class Updater
     public static async Task DownloadAndApplyAsync(UpdateInfo info)
     {
         if (info.ZipUrl is null) throw new InvalidOperationException("このリリースには自動更新用のファイルが添付されていません。");
+        // publish.ps1 は必ず SHA256SUMS.txt を添付する。無いリリースは添付物が不完全なので、検証なしで進めない
+        if (info.ShaUrl is null) throw new InvalidOperationException("このリリースには更新ファイルの検証情報 (SHA256SUMS.txt) が添付されていません。更新を中止します。");
         var exe = Environment.ProcessPath ?? throw new InvalidOperationException("実行ファイルの場所が分かりません。");
         var workDir = AppPaths.In("update");
         Directory.CreateDirectory(workDir);
@@ -112,7 +114,7 @@ public static class Updater
                 await res.Content.CopyToAsync(fs);
             }
 
-            // SHA256SUMS.txt があれば照合する(HTTPS に加えた整合性チェック)
+            // SHA256SUMS.txt と照合する (HTTPS に加えた整合性チェック。上で無いときは中止している)
             if (info.ShaUrl is not null)
             {
                 var sums = await http.GetStringAsync(info.ShaUrl);
@@ -170,6 +172,6 @@ public static class Updater
             var old = (Environment.ProcessPath ?? "") + ".old";
             if (old.Length > 4 && File.Exists(old)) File.Delete(old);
         }
-        catch { /* まだ掴まれていたら次回 */ }
+        catch (Exception ex) { Log.Debug("前回の更新の .old を消せませんでした (次回また試します)", ex); }
     }
 }
