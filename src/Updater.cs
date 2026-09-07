@@ -160,7 +160,7 @@ public static class Updater
             throw;
         }
 
-        System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(exe) { UseShellExecute = true });
+        Shell.Open(exe);
         System.Windows.Application.Current.Shutdown();
     }
 

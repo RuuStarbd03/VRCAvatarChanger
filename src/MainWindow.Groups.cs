@@ -17,13 +17,9 @@ public partial class MainWindow
     {
         if (!_ready) return;
         // OFF にしたら、開いているグループ表示も解除して通常一覧に戻す
-        if (!GroupViewOn && _openGroup is not null)
-        {
-            _openGroup = null;
-            GroupBar.Visibility = Visibility.Collapsed;
-        }
+        if (!GroupViewOn) ResetOpenGroup();
         _settings.GroupView = GroupViewOn;
-        if (!_preview) _settings.Save();
+        SaveSettings();
         ApplyFilter();
     }
 
@@ -34,11 +30,17 @@ public partial class MainWindow
         ApplyFilter();
     }
 
+    /// <summary>開いているグループの表示をやめる (一覧の作り直しはしない)。</summary>
+    private void ResetOpenGroup()
+    {
+        _openGroup = null;
+        GroupBar.Visibility = Visibility.Collapsed;
+    }
+
     private void CloseGroup()
     {
         var g = _openGroup;
-        _openGroup = null;
-        GroupBar.Visibility = Visibility.Collapsed;
+        ResetOpenGroup();
         ApplyFilter();
         // 戻ったら開いていたグループのタイルを選択しておく
         if (g is not null && AvatarList.Items.OfType<AvatarItem>().FirstOrDefault(a => a.Group == g) is { } tile)
@@ -61,13 +63,13 @@ public partial class MainWindow
         if (group.AvatarIds.Count <= 1)
         {
             _groups.Delete(group);
-            if (_openGroup == group) { _openGroup = null; GroupBar.Visibility = Visibility.Collapsed; }
+            if (_openGroup == group) ResetOpenGroup();
         }
     }
 
     private void MenuAssignGroup_Click(object sender, RoutedEventArgs e)
     {
-        if (AvatarList.SelectedItem is not AvatarItem { IsAvatar: true } item) return;
+        if (SelectedAvatar is not { } item) return;
         var win = new GroupPickerWindow(_groups, item.Name, _groups.GroupOf(item.Id)) { Owner = this };
         if (win.ShowDialog() == true && win.Result is not null)
         {
@@ -81,7 +83,7 @@ public partial class MainWindow
 
     private void MenuUnassignGroup_Click(object sender, RoutedEventArgs e)
     {
-        if (AvatarList.SelectedItem is not AvatarItem { IsAvatar: true } item) return;
+        if (SelectedAvatar is not { } item) return;
         var from = _groups.GroupOf(item.Id);
         _groups.Unassign(item.Id);
         if (from is not null) PruneGroup(from);
@@ -121,10 +123,7 @@ public partial class MainWindow
     private AvatarItem? _dropTarget;
 
     private static AvatarItem? ItemAt(ItemsControl list, DependencyObject? origin)
-    {
-        while (origin is not null && origin is not ListViewItem) origin = VisualTreeHelper.GetParent(origin);
-        return origin is ListViewItem lvi ? lvi.DataContext as AvatarItem : null;
-    }
+        => VisualTree.FindAncestor<ListViewItem>(origin)?.DataContext as AvatarItem;
 
     private void AvatarList_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {

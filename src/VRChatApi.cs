@@ -158,7 +158,7 @@ public sealed class VRChatApi : IDisposable
         if (!HasSavedSession) return null;
         var res = await SendAsync(() => new HttpRequestMessage(HttpMethod.Get, $"{BaseUrl}/auth/user"), ct);
         if (res.Status == HttpStatusCode.Unauthorized) return null;
-        if (!res.IsSuccess) throw new VRChatApiException(ExtractError(res.Body, res.Status), res.Status);
+        EnsureSuccess(res);
         if (res.Body.Contains("requiresTwoFactorAuth")) return null;
         return JsonSerializer.Deserialize<CurrentUser>(res.Body, JsonOptions);
     }
@@ -174,16 +174,24 @@ public sealed class VRChatApi : IDisposable
             req.Headers.Authorization = new AuthenticationHeaderValue("Basic", token);
             return req;
         }, ct);
-        if (!res.IsSuccess) throw new VRChatApiException(ExtractError(res.Body, res.Status), res.Status);
+        EnsureSuccess(res);
+        return CompleteLogin(res.Body);
+    }
 
-        using var doc = JsonDocument.Parse(res.Body);
+    /// <summary>
+    /// /auth/user の応答を解釈してログインを終える。2FA が要るならクッキー (auth) を保存したうえで
+    /// TwoFactorRequiredException。要らなければユーザー情報を返す。
+    /// </summary>
+    private CurrentUser CompleteLogin(string body)
+    {
+        using var doc = JsonDocument.Parse(body);
         if (doc.RootElement.TryGetProperty("requiresTwoFactorAuth", out var methods))
         {
             SaveCookies();
             throw new TwoFactorRequiredException(methods.EnumerateArray().Select(m => m.GetString() ?? "").ToList());
         }
         SaveCookies();
-        return JsonSerializer.Deserialize<CurrentUser>(res.Body, JsonOptions)!;
+        return JsonSerializer.Deserialize<CurrentUser>(body, JsonOptions)!;
     }
 
     // auth トークン (authcookie_ + UUID) として妥当な文字だけを許す。
@@ -227,15 +235,7 @@ public sealed class VRChatApi : IDisposable
         using var res = await _http.GetAsync($"{BaseUrl}/auth/user", ct);
         var body = await res.Content.ReadAsStringAsync(ct);
         if (!res.IsSuccessStatusCode) throw new VRChatApiException(ExtractError(body, res.StatusCode), res.StatusCode);
-
-        using var doc = JsonDocument.Parse(body);
-        if (doc.RootElement.TryGetProperty("requiresTwoFactorAuth", out var methods))
-        {
-            SaveCookies();
-            throw new TwoFactorRequiredException(methods.EnumerateArray().Select(m => m.GetString() ?? "").ToList());
-        }
-        SaveCookies();
-        return JsonSerializer.Deserialize<CurrentUser>(body, JsonOptions)!;
+        return CompleteLogin(body);
     }
 
     /// <summary>2FA コードを検証。method は "totp" / "otp" / "emailOtp"。</summary>
@@ -253,7 +253,7 @@ public sealed class VRChatApi : IDisposable
         {
             Content = new StringContent(payload, Encoding.UTF8, "application/json"),
         }, ct);
-        if (!res.IsSuccess) throw new VRChatApiException(ExtractError(res.Body, res.Status), res.Status);
+        EnsureSuccess(res);
 
         using var doc = JsonDocument.Parse(res.Body);
         if (!(doc.RootElement.TryGetProperty("verified", out var v) && v.GetBoolean()))
@@ -367,7 +367,7 @@ public sealed class VRChatApi : IDisposable
         {
             Content = new StringContent(payload, Encoding.UTF8, "application/json"),
         }, ct);
-        if (!res.IsSuccess) throw new VRChatApiException(ExtractError(res.Body, res.Status), res.Status);
+        EnsureSuccess(res);
         return JsonSerializer.Deserialize<Favorite>(res.Body, JsonOptions)
                ?? throw new VRChatApiException("API の応答を解釈できませんでした。");
     }
@@ -377,7 +377,7 @@ public sealed class VRChatApi : IDisposable
     {
         var id = RequireToken(favoriteId);
         var res = await SendAsync(() => new HttpRequestMessage(HttpMethod.Delete, $"{BaseUrl}/favorites/{id}"), ct);
-        if (!res.IsSuccess) throw new VRChatApiException(ExtractError(res.Body, res.Status), res.Status);
+        EnsureSuccess(res);
     }
 
     private static readonly Regex AvatarIdPattern = new(
@@ -404,7 +404,7 @@ public sealed class VRChatApi : IDisposable
     {
         var id = RequireAvatarId(avatarId);
         var res = await SendAsync(() => new HttpRequestMessage(HttpMethod.Put, $"{BaseUrl}/avatars/{id}/select"), ct);
-        if (!res.IsSuccess) throw new VRChatApiException(ExtractError(res.Body, res.Status), res.Status);
+        EnsureSuccess(res);
         return JsonSerializer.Deserialize<CurrentUser>(res.Body, JsonOptions)!;
     }
 
@@ -454,6 +454,12 @@ public sealed class VRChatApi : IDisposable
     private readonly record struct ApiResponse(HttpStatusCode Status, string Body)
     {
         public bool IsSuccess => (int)Status is >= 200 and < 300;
+    }
+
+    /// <summary>2xx 以外なら、利用者向けメッセージに直した VRChatApiException にする。</summary>
+    private static void EnsureSuccess(ApiResponse res)
+    {
+        if (!res.IsSuccess) throw new VRChatApiException(ExtractError(res.Body, res.Status), res.Status);
     }
 
     private const int MaxRetries = 2;
@@ -555,7 +561,7 @@ public sealed class VRChatApi : IDisposable
     private async Task<T> GetJsonAsync<T>(string pathAndQuery, CancellationToken ct)
     {
         var res = await SendAsync(() => new HttpRequestMessage(HttpMethod.Get, BaseUrl + pathAndQuery), ct);
-        if (!res.IsSuccess) throw new VRChatApiException(ExtractError(res.Body, res.Status), res.Status);
+        EnsureSuccess(res);
         return JsonSerializer.Deserialize<T>(res.Body, JsonOptions)
                ?? throw new VRChatApiException("API の応答を解釈できませんでした。");
     }

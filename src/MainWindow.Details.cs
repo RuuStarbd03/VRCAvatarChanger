@@ -1,7 +1,6 @@
 using System.Windows;
 using System.Windows.Input;
 using System.Windows.Media;
-using System.Windows.Media.Animation;
 
 namespace VRCAvatarChanger;
 
@@ -20,7 +19,6 @@ public sealed record DetailRow(string Label, string Value, bool Mono = false)
 public partial class MainWindow
 {
     private AvatarItem? _detailItem;
-    private bool _detailOpen;
     private CancellationTokenSource? _detailCts;
 
     /// <summary>詳細画面で出す画像の展開幅。カードの画像枠 (336 DIP) に高 DPI でも足りる程度</summary>
@@ -28,7 +26,7 @@ public partial class MainWindow
 
     private void MenuDetails_Click(object sender, RoutedEventArgs e)
     {
-        if (AvatarList.SelectedItem is AvatarItem { IsAvatar: true } item) OpenDetail(item);
+        if (SelectedAvatar is { } item) OpenDetail(item);
     }
 
     private void OpenDetail(AvatarItem item)
@@ -46,13 +44,13 @@ public partial class MainWindow
             _ => "",
         };
         DetailDescription.Text = string.IsNullOrWhiteSpace(a.Description) ? "(説明はありません)" : a.Description.Trim();
-        DetailCurrentBadge.Visibility = a.Id == _user?.CurrentAvatar ? Visibility.Visible : Visibility.Collapsed;
+        DetailCurrentBadge.Visibility = Vis(a.Id == _user?.CurrentAvatar);
 
         // 使えなくなったもの: 理由と確認日時。外す操作はパブリックタブでだけ意味がある
         var unavailable = item.IsUnavailable;
-        DetailUnavailable.Visibility = unavailable ? Visibility.Visible : Visibility.Collapsed;
+        DetailUnavailable.Visibility = Vis(unavailable);
         DetailUnavailableText.Text = item.UnavailableText;
-        DetailRemoveButton.Visibility = unavailable && IsPublicTab ? Visibility.Visible : Visibility.Collapsed;
+        DetailRemoveButton.Visibility = Vis(unavailable && IsPublicTab);
         DetailChangeButton.Content = unavailable ? "それでも着替えを試す" : "このアバターに着替える";
 
         DetailRows.ItemsSource = BuildDetailRows(item);
@@ -65,13 +63,7 @@ public partial class MainWindow
         // ダウンロードサイズは 1 件 1 リクエストなので、開いたときに 1 回だけ引く
         LoadDetailSizeAsync(item, _detailCts.Token).Forget();
 
-        if (DetailOverlay.Visibility != Visibility.Visible)
-        {
-            DetailOverlay.Opacity = 0;
-            DetailCardScale.ScaleX = DetailCardScale.ScaleY = 0.96;
-            DetailOverlay.Visibility = Visibility.Visible;
-        }
-        AnimateDetail(open: true);
+        Overlay.Open(DetailOverlay, DetailCardScale);
         DetailChangeButton.Focus();
     }
 
@@ -105,9 +97,9 @@ public partial class MainWindow
         }));
 
         rows.Add(new("ダウンロードサイズ", SizeText(a)));
-        rows.Add(new("作成日", Date(a.CreatedAt)));
-        rows.Add(new("更新日", Date(a.UpdatedAt)));
-        if (item.AddedAt is { } added && IsPublicTab) rows.Add(new("パブリックに追加", Date(added)));
+        rows.Add(new("作成日", TimeText.DateTime(a.CreatedAt) ?? "不明"));
+        rows.Add(new("更新日", TimeText.DateTime(a.UpdatedAt) ?? "不明"));
+        if (item.AddedAt is { } added && IsPublicTab) rows.Add(new("パブリックに追加", TimeText.DateTime(added) ?? "不明"));
         if (!string.IsNullOrEmpty(a.FavoriteGroup)) rows.Add(new("お気に入りグループ", a.FavoriteGroup));
         if (item.Tags.Count > 0) rows.Add(new("タグ", string.Join(", ", item.Tags)));
         if (_groups.GroupOf(a.Id) is { } g) rows.Add(new("グループ", $"{g.Name} ({g.AvatarIds.Count} 体)"));
@@ -115,8 +107,6 @@ public partial class MainWindow
             .Select(h => Hotkey.Parse(h.Key).Display).ToList();
         if (keys.Count > 0) rows.Add(new("ホットキー", string.Join(", ", keys)));
         return rows;
-
-        static string Date(DateTimeOffset? d) => d is { } v ? v.ToLocalTime().ToString("yyyy/MM/dd HH:mm") : "不明";
     }
 
     /// <summary>ダウンロードサイズの行の中身。まだ引いていなければ「取得中」(裏で引いて差し替える)。</summary>
@@ -159,34 +149,13 @@ public partial class MainWindow
     {
         if (DetailOverlay.Visibility != Visibility.Visible) return;
         _detailCts?.Cancel();
-        AnimateDetail(open: false);
-        // 開いた元の行に操作を戻す
-        if (AvatarList.SelectedItem is not null) AvatarList.Focus();
-    }
-
-    /// <summary>設定と同じ開閉 (フェード + 拡縮)。閉じ切ったら Collapsed にして、大きい画像も手放す。</summary>
-    private void AnimateDetail(bool open)
-    {
-        _detailOpen = open;
-        var dur = TimeSpan.FromMilliseconds(open ? 180 : 130);
-        var fade = new DoubleAnimation(open ? 1 : 0, dur) { EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut } };
-        if (!open) fade.Completed += (_, _) =>
+        Overlay.Close(DetailOverlay, DetailCardScale, onClosed: () =>
         {
-            if (_detailOpen) return;
-            DetailOverlay.Visibility = Visibility.Collapsed;
             DetailImage.Source = null; // 512px の画像は一覧のものより大きいので、閉じたら持たない
             _detailItem = null;
-        };
-        DetailOverlay.BeginAnimation(OpacityProperty, fade);
-
-        var scale = new DoubleAnimation(open ? 1 : 0.96, dur)
-        {
-            EasingFunction = open
-                ? new BackEase { EasingMode = EasingMode.EaseOut, Amplitude = 0.4 }
-                : new CubicEase { EasingMode = EasingMode.EaseIn }
-        };
-        DetailCardScale.BeginAnimation(ScaleTransform.ScaleXProperty, scale);
-        DetailCardScale.BeginAnimation(ScaleTransform.ScaleYProperty, scale);
+        });
+        // 開いた元の行に操作を戻す
+        if (AvatarList.SelectedItem is not null) AvatarList.Focus();
     }
 
     private void DetailClose_Click(object sender, RoutedEventArgs e) => CloseDetail();
@@ -211,16 +180,14 @@ public partial class MainWindow
 
     private void DetailCopyId_Click(object sender, RoutedEventArgs e)
     {
-        if (_detailItem is not { } item) return;
-        try { Clipboard.SetText(item.Id); SetStatus(StatusKind.Info, "アバター ID をコピーしました"); }
-        catch (Exception ex) { SetStatus(StatusKind.Error, "クリップボードにコピーできませんでした (他のアプリが使用中の可能性があります)"); Log.Warn("クリップボードへのコピーに失敗", ex); }
+        if (_detailItem is { } item) CopyAvatarId(item.Id);
     }
 
     private void DetailOpenWeb_Click(object sender, RoutedEventArgs e)
     {
         if (_detailItem is not { } item || !VRChatApi.IsValidAvatarId(item.Id)) return;
         var url = "https://vrchat.com/home/avatar/" + item.Id;
-        try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(url) { UseShellExecute = true }); }
+        try { Shell.Open(url); }
         catch (Exception ex) { SetStatus(StatusKind.Error, "ブラウザを開けませんでした: " + url); Log.Warn("ブラウザを開けませんでした", ex); }
     }
 }

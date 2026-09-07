@@ -54,7 +54,6 @@ public sealed class Settings
     /// <summary>動作の記録 (app.log) に警告・情報も書くか。オフでもエラーは書く。</summary>
     public bool LogEnabled { get; set; }
 
-    private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
 
     private static string PathOf() => AppPaths.In("settings.json");
 
@@ -68,5 +67,5 @@ public sealed class Settings
         return s;
     }
 
-    public void Save() => JsonFile.Save(PathOf(), this, JsonOptions);
+    public void Save() => JsonFile.Save(PathOf(), this, JsonFile.Indented);
 }

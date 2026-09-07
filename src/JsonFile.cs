@@ -11,6 +11,12 @@ namespace VRCAvatarChanger;
 /// </summary>
 public static class JsonFile
 {
+    /// <summary>人が読める形 (設定・グループなど、手で直すことがあるもの)。</summary>
+    public static readonly JsonSerializerOptions Indented = new() { WriteIndented = true };
+
+    /// <summary>1 行 (件数が多いキャッシュ)。</summary>
+    public static readonly JsonSerializerOptions Compact = new() { WriteIndented = false };
+
     /// <summary>読み書きに失敗したときに、利用者向けの一文を渡す。UI スレッドとは限らない。</summary>
     public static event Action<string>? Failed;
 

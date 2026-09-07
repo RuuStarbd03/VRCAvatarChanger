@@ -45,10 +45,9 @@ public partial class App : Application
             _showingError = true;
             try
             {
-                MessageBox.Show(
+                Dialogs.Error(null,
                     "予期しないエラーが起きました。操作をやり直しても直らない場合は、アプリを再起動してください。\n\n" +
-                    "詳細: " + args.Exception.Message + "\n\n記録先: " + Log.FilePath,
-                    "VRCAvatarChanger", MessageBoxButton.OK, MessageBoxImage.Error);
+                    "詳細: " + args.Exception.Message + "\n\n記録先: " + Log.FilePath);
             }
             finally { _showingError = false; }
         };

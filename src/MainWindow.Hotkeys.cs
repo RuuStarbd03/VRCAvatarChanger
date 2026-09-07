@@ -7,8 +7,11 @@ namespace VRCAvatarChanger;
 // プレイ中はメイン画面が見えないので、結果はゲームの上に小さく出す (ToastWindow)。
 public partial class MainWindow
 {
+    /// <summary>キーと、押されたときにすること。特定のアバターを呼ぶ場合はその ID と表示名。</summary>
+    private sealed record HotkeyBinding(Hotkey Key, HotkeyAction Action, string? AvatarId, string? Name);
+
     /// <summary>今有効な割り当て。設定を変えたら RebuildHotkeys で作り直す。</summary>
-    private readonly List<(Hotkey Key, HotkeyAction Action, string? AvatarId, string? Name)> _hotkeys = [];
+    private readonly List<HotkeyBinding> _hotkeys = [];
 
     private ToastWindow? _toast;
 
@@ -26,7 +29,7 @@ public partial class MainWindow
         void Add(Hotkey key, HotkeyAction action, string? avatarId, string? name)
         {
             if (!key.IsSet || _hotkeys.Any(h => h.Key == key)) return;
-            _hotkeys.Add((key, action, avatarId, name));
+            _hotkeys.Add(new HotkeyBinding(key, action, avatarId, name));
         }
     }
 
@@ -39,14 +42,14 @@ public partial class MainWindow
         return false;
     }
 
-    private (Hotkey Key, HotkeyAction Action, string? AvatarId, string? Name)? FindHotkey(Hotkey pressed)
+    private HotkeyBinding? FindHotkey(Hotkey pressed)
     {
         foreach (var hotkey in _hotkeys)
             if (hotkey.Key == pressed) return hotkey;
         return null;
     }
 
-    private void RunHotkey((Hotkey Key, HotkeyAction Action, string? AvatarId, string? Name) hit)
+    private void RunHotkey(HotkeyBinding hit)
     {
         switch (hit.Action)
         {
@@ -145,12 +148,12 @@ public partial class MainWindow
 
     private void MenuAssignHotkey_Click(object sender, RoutedEventArgs e)
     {
-        if (AvatarList.SelectedItem is AvatarItem { IsAvatar: true } item) OpenHotkeySettings((item.Id, item.Name));
+        if (SelectedAvatar is { } item) OpenHotkeySettings((item.Id, item.Name));
     }
 
     private void OpenHotkeySettings((string Id, string Name)? assign = null)
     {
-        var window = new HotkeyWindow(_settings, () => { if (!_preview) _settings.Save(); }, assign) { Owner = this };
+        var window = new HotkeyWindow(_settings, () => { SaveSettings(); }, assign) { Owner = this };
         window.ShowDialog();
         RebuildHotkeys();
     }

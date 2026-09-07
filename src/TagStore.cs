@@ -9,7 +9,6 @@ namespace VRCAvatarChanger;
 /// </summary>
 public sealed class TagStore
 {
-    private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
     private readonly Dictionary<string, List<string>> _tags = new(StringComparer.Ordinal);
 
     private static string PathOf() => AppPaths.In("tags.json");
@@ -17,14 +16,14 @@ public sealed class TagStore
     public static TagStore Load()
     {
         var store = new TagStore();
-        var map = JsonFile.Load<Dictionary<string, List<string>>>(PathOf(), JsonOptions);
+        var map = JsonFile.Load<Dictionary<string, List<string>>>(PathOf(), JsonFile.Indented);
         if (map is not null)
             foreach (var (id, tags) in map.Where(kv => VRChatApi.IsValidAvatarId(kv.Key)))
                 store._tags[id] = Normalize(tags);
         return store;
     }
 
-    public void Save() => JsonFile.Save(PathOf(), _tags.Where(kv => kv.Value.Count > 0).ToDictionary(kv => kv.Key, kv => kv.Value), JsonOptions);
+    public void Save() => JsonFile.Save(PathOf(), _tags.Where(kv => kv.Value.Count > 0).ToDictionary(kv => kv.Key, kv => kv.Value), JsonFile.Indented);
 
     private static List<string> Normalize(IEnumerable<string> tags)
         => tags.Select(t => t.Trim()).Where(t => t.Length > 0)

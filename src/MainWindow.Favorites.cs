@@ -39,8 +39,8 @@ public partial class MainWindow
     {
         var usable = item.IsAvatar && _user is not null && !_preview;
         var favorited = usable && IsFavorited(item.Id);
-        MenuRemoveFavorite.Visibility = favorited ? Visibility.Visible : Visibility.Collapsed;
-        MenuAddFavorite.Visibility = usable && !favorited ? Visibility.Visible : Visibility.Collapsed;
+        MenuRemoveFavorite.Visibility = Vis(favorited);
+        MenuAddFavorite.Visibility = Vis(usable && !favorited);
         if (MenuAddFavorite.Visibility != Visibility.Visible) return;
 
         // 追加先のグループを選ばせる。グループが取れていない場合は理由を出して押させない
@@ -68,7 +68,7 @@ public partial class MainWindow
             _favoriteRecords[item.Id] = await _api.AddFavoriteAsync(item.Id, group.Name);
             AvatarListCache.Invalidate(AvatarListCache.Favorites); // 次に開いたときは取り直す
             SetStatus(StatusKind.Success, $"{item.Name} をお気に入り「{groupName}」に追加しました");
-            if (SourceFavorites.IsChecked == true) await LoadAvatarsAsync();
+            if (IsFavoritesTab) await LoadAvatarsAsync();
         }
         catch (Exception ex)
         {
@@ -79,7 +79,7 @@ public partial class MainWindow
 
     private async void MenuRemoveFavorite_Click(object sender, RoutedEventArgs e)
     {
-        if (AvatarList.SelectedItem is not AvatarItem { IsAvatar: true } item) return;
+        if (SelectedAvatar is not { } item) return;
         if (!_favoriteRecords.TryGetValue(item.Id, out var record)) return;
         SetStatus(StatusKind.Info, $"{item.Name} をお気に入りから外しています");
         try
@@ -101,7 +101,7 @@ public partial class MainWindow
         _favoriteRecords.Remove(item.Id);
         AvatarListCache.Invalidate(AvatarListCache.Favorites);
         // お気に入りタブなら、取り直さずにその場で一覧から消す
-        if (SourceFavorites.IsChecked == true)
+        if (IsFavoritesTab)
         {
             _allItems.RemoveAll(a => a.Id == item.Id);
             BuildFilterChips();

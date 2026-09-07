@@ -143,7 +143,7 @@ public sealed class AvatarItem : INotifyPropertyChanged
         {
             if (!IsUnavailable) return "";
             var what = UnavailableReason == "private" ? "非公開になりました" : "削除されたか非公開になりました";
-            return UnavailableSince is { } at ? $"{at.ToLocalTime():yyyy/MM/dd HH:mm} に確認: {what}" : what;
+            return TimeText.DateTime(UnavailableSince) is { } at ? $"{at} に確認: {what}" : what;
         }
     }
 

@@ -30,7 +30,7 @@ public partial class MainWindow
     {
         if (_settings.QuickOverlay == enabled) return;
         _settings.QuickOverlay = enabled;
-        if (!_preview) _settings.Save();
+        SaveSettings();
         if (enabled)
         {
             InstallKeyHook();
@@ -121,7 +121,7 @@ public partial class MainWindow
     private void SaveQuickSortKey(string key)
     {
         _settings.QuickSortKey = key;
-        if (!_preview) _settings.Save();
+        SaveSettings();
     }
 
     private void RefocusVRChat()

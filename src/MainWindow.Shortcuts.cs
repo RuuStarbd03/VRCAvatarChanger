@@ -99,7 +99,7 @@ public partial class MainWindow
         switch (key)
         {
             case Key.Enter:
-                if (AvatarList.SelectedItem is AvatarItem sel)
+                if (SelectedTile is { } sel)
                 {
                     e.Handled = true;
                     if (sel.IsGroup) OpenGroup(sel.Group!);
@@ -110,7 +110,7 @@ public partial class MainWindow
                 if (_openGroup is not null) { e.Handled = true; CloseGroup(); }
                 return;
             case Key.Delete:
-                if (IsPublicTab && AvatarList.SelectedItem is AvatarItem { IsAvatar: true }) { e.Handled = true; RemoveSelectedFromPublicAsync().Forget(); }
+                if (IsPublicTab && SelectedAvatar is { }) { e.Handled = true; RemoveSelectedFromPublicAsync().Forget(); }
                 return;
         }
     }
@@ -145,16 +145,14 @@ public partial class MainWindow
 
     private void ShowDetailOfSelection()
     {
-        if (AvatarList.SelectedItem is AvatarItem { IsAvatar: true } item) OpenDetail(item);
+        if (SelectedAvatar is { } item) OpenDetail(item);
     }
 
     /// <summary>Delete キーからの削除。メニューと違ってキー 1 つで消えてしまうので、一度だけ確かめる。</summary>
     private async Task RemoveSelectedFromPublicAsync()
     {
-        if (AvatarList.SelectedItem is not AvatarItem { IsAvatar: true } item) return;
-        var r = MessageBox.Show(this, $"{item.Name} をパブリックから外しますか?\n(もう一度 ID か URL で追加すれば戻せます)",
-            "VRCAvatarChanger", MessageBoxButton.OKCancel, MessageBoxImage.Question);
-        if (r != MessageBoxResult.OK) return;
+        if (SelectedAvatar is not { } item) return;
+        if (!Dialogs.Confirm(this, $"{item.Name} をパブリックから外しますか?\n(もう一度 ID か URL で追加すれば戻せます)")) return;
         var index = AvatarList.SelectedIndex;
         _public.Remove(item.Id);
         SetStatus(StatusKind.Info, $"{item.Name} をパブリックから外しました");

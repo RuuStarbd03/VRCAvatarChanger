@@ -77,10 +77,9 @@ public partial class BrowserLoginWindow : Window
         }
         catch (Exception ex)
         {
-            MessageBox.Show(this,
+            Dialogs.Error(this,
                 "埋め込みブラウザ (WebView2 ランタイム) を起動できませんでした。\n" +
-                "https://developer.microsoft.com/microsoft-edge/webview2/ からランタイムをインストールしてください。\n\n" + ex.Message,
-                "VRCAvatarChanger", MessageBoxButton.OK, MessageBoxImage.Error);
+                "https://developer.microsoft.com/microsoft-edge/webview2/ からランタイムをインストールしてください。\n\n" + ex.Message);
             Close();
         }
     }

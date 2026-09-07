@@ -100,7 +100,29 @@ public partial class MainWindow : Window
             if (!_preview && _user is not null && MainPanel.Visibility == Visibility.Visible) LoadAvatarsAsync().Forget();
         };
         Closing += (_, _) => SaveWindowBounds();
-        Closed += (_, _) => { _settingsSaveTimer?.Stop(); _searchTimer?.Stop(); _oscRetry?.Stop(); _updateTimer?.Stop(); _thumbCts?.Cancel(); _osc.Dispose(); _api.Dispose(); };
+        Closed += (_, _) => { _settingsSave?.Cancel(); _search?.Cancel(); _oscRetry?.Stop(); _updateTimer?.Stop(); _thumbCts?.Cancel(); _osc.Dispose(); _api.Dispose(); };
+    }
+
+    // ---------------- 小さな共通処理 ----------------
+
+    /// <summary>設定を保存する。UI プレビュー中は実データに触らない。</summary>
+    private void SaveSettings()
+    {
+        if (!_preview) _settings.Save();
+    }
+
+    /// <summary>bool → Visibility。メニュー項目やパネルの出し分けに使う。</summary>
+    private static Visibility Vis(bool visible) => visible ? Visibility.Visible : Visibility.Collapsed;
+
+    /// <summary>一覧の 1 項目を作る。お気に入りタブはグループ表示を優先するのでタグを載せない。</summary>
+    private AvatarItem NewItem(Avatar avatar, bool favorites)
+        => new(avatar) { Tags = favorites ? [] : _tags.TagsOf(avatar.Id) };
+
+    /// <summary>アバター ID をクリップボードへ。他のアプリが掴んでいて失敗することがあるので、結果はステータスに出す。</summary>
+    private void CopyAvatarId(string avatarId)
+    {
+        try { Clipboard.SetText(avatarId); SetStatus(StatusKind.Info, "アバター ID をコピーしました"); }
+        catch (Exception ex) { SetStatus(StatusKind.Error, "クリップボードにコピーできませんでした (他のアプリが使用中の可能性があります)"); Log.Warn("クリップボードへのコピーに失敗", ex); }
     }
 
     // ---------------- 表示形式 ----------------
@@ -113,10 +135,10 @@ public partial class MainWindow : Window
         var grid = IsGridView;
         AvatarList.ItemContainerStyle = (Style)FindResource(grid ? "AvatarTile" : "AvatarRow");
         AvatarList.ItemTemplate = (DataTemplate)FindResource(grid ? "AvatarTileTemplate" : "AvatarRowTemplate");
-        ColumnsPanel.Visibility = grid ? Visibility.Visible : Visibility.Collapsed;
+        ColumnsPanel.Visibility = Vis(grid);
         ApplyPanels();
         _settings.ViewMode = grid ? "grid" : "list";
-        if (!_preview) _settings.Save();
+        SaveSettings();
         // 表示形式が変わるとサムネに要る幅も変わる。大きい版に差し替わるのは画面に出たものだけで、
         // 残りはスクロールして見えたときに差し替わる (見てもいない数百枚を展開しない)
         QueueThumbnails(_allItems.ToList(), _thumbCts?.Token ?? CancellationToken.None);
@@ -126,19 +148,13 @@ public partial class MainWindow : Window
     private void ApplyPanels()
         => AvatarList.ItemsPanel = (ItemsPanelTemplate)FindResource(IsGridView ? "GridPanel" : "ListPanel");
 
-    private System.Windows.Threading.DispatcherTimer? _settingsSaveTimer;
+    private Debounce? _settingsSave;
 
     /// <summary>スライダーのドラッグ中など、連続で変わる値の保存をまとめる(500ms 静止後に 1 回だけ書く)。</summary>
     private void SaveSettingsDebounced()
     {
         if (_preview) return;
-        if (_settingsSaveTimer is null)
-        {
-            _settingsSaveTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(500) };
-            _settingsSaveTimer.Tick += (_, _) => { _settingsSaveTimer!.Stop(); _settings.Save(); };
-        }
-        _settingsSaveTimer.Stop();
-        _settingsSaveTimer.Start();
+        (_settingsSave ??= new Debounce(TimeSpan.FromMilliseconds(500), () => _settings.Save())).Trigger();
     }
 
     private void ColumnsSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
@@ -157,55 +173,26 @@ public partial class MainWindow : Window
     /// 保存・並び替えに使うキー ("created_desc" など)。画面では「何で並べるか」と
     /// 「昇順 / 降順」を別の操作に分けているので、ここで元の形に組み直す。
     /// </summary>
-    private string SortKey
-        => ((SortBox.SelectedItem as ComboBoxItem)?.Tag as string ?? "created")
-           + (SortDescToggle.IsChecked == true ? "_desc" : "_asc");
+    private string SortKey => SortControls.Compose(SortBox, SortDescToggle, "created");
 
     /// <summary>保存されたキーを、種別のコンボと向きのトグルに振り分ける。</summary>
     private void InitSortControls(string savedKey)
     {
-        var desc = savedKey.EndsWith("_desc", StringComparison.Ordinal);
-        var kind = savedKey.Replace("_desc", "").Replace("_asc", "");
-        SortBox.SelectedItem = SortBox.Items.OfType<ComboBoxItem>().FirstOrDefault(i => (string?)i.Tag == kind)
-                               ?? SortBox.Items[0];
-        SortDescToggle.IsChecked = desc;
-        UpdateSortDirection();
+        SortControls.Init(SortBox, SortDescToggle, savedKey);
+        SortControls.UpdateDirection(SortBox, SortDescToggle, SortDirIcon);
     }
 
-    /// <summary>向きの見た目 (矢印とツールチップ) を今の状態に合わせる。</summary>
-    private void UpdateSortDirection()
-    {
-        var desc = SortDescToggle.IsChecked == true;
-        SortDirIcon.Text = desc ? "↓" : "↑";
-        // 向きの意味は種別で変わるので、言い方もそれに合わせる
-        SortDescToggle.ToolTip = (string?)(SortBox.SelectedItem as ComboBoxItem)?.Tag switch
-        {
-            "name" => desc ? "名前の降順 (Z → A)" : "名前の昇順 (A → Z)",
-            "author" => desc ? "作者名の降順 (Z → A)" : "作者名の昇順 (A → Z)",
-            "recent" => desc ? "使っていないものから" : "最近使ったものから",
-            "performance" => desc ? "重い順" : "軽い順",
-            _ => desc ? "新しい順" : "古い順",
-        };
-    }
+    private void SortBox_SelectionChanged(object sender, SelectionChangedEventArgs e) => OnSortChanged();
 
-    private void SortBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    private void SortDesc_Changed(object sender, RoutedEventArgs e) => OnSortChanged();
+
+    /// <summary>種別か向きが変わった: 見た目を合わせ、保存し、並べ直す。</summary>
+    private void OnSortChanged()
     {
         if (!_ready) return;
-        UpdateSortDirection();
-        SaveSortKey();
-    }
-
-    private void SortDesc_Changed(object sender, RoutedEventArgs e)
-    {
-        if (!_ready) return;
-        UpdateSortDirection();
-        SaveSortKey();
-    }
-
-    private void SaveSortKey()
-    {
+        SortControls.UpdateDirection(SortBox, SortDescToggle, SortDirIcon);
         _settings.SortKey = SortKey;
-        if (!_preview) _settings.Save();
+        SaveSettings();
         ApplyFilter();
     }
 
@@ -218,7 +205,7 @@ public partial class MainWindow : Window
         list.Remove(avatarId);
         list.Insert(0, avatarId);
         if (list.Count > 200) list.RemoveRange(200, list.Count - 200);
-        if (!_preview) _settings.Save();
+        SaveSettings();
     }
 
     /// <summary>
@@ -242,12 +229,11 @@ public partial class MainWindow : Window
             }
             a.SubText = kind switch
             {
-                "created" => Date(a.AddedAt ?? a.Avatar.CreatedAt) ?? a.AuthorName,
-                "updated" => Date(a.Avatar.UpdatedAt) ?? a.AuthorName,
+                "created" => TimeText.Date(a.AddedAt ?? a.Avatar.CreatedAt) ?? a.AuthorName,
+                "updated" => TimeText.Date(a.Avatar.UpdatedAt) ?? a.AuthorName,
                 _ => a.AuthorName,
             };
         }
-        static string? Date(DateTimeOffset? d) => d?.ToLocalTime().ToString("yyyy/MM/dd");
     }
 
     /// <summary>パフォーマンスランクの表示名。VRChat の画面と同じ言い方にする。</summary>
@@ -322,60 +308,54 @@ public partial class MainWindow : Window
     private void AvatarList_PreviewMouseRightButtonDown(object sender, MouseButtonEventArgs e)
     {
         // 右クリックした行を選択してからメニューを出す
-        var dep = e.OriginalSource as DependencyObject;
-        while (dep is not null && dep is not ListViewItem) dep = VisualTreeHelper.GetParent(dep);
-        if (dep is ListViewItem item) item.IsSelected = true;
+        if (VisualTree.FindAncestor<ListViewItem>(e.OriginalSource as DependencyObject) is { } row) row.IsSelected = true;
     }
 
     private void AvatarList_ContextMenuOpening(object sender, ContextMenuEventArgs e)
     {
-        if (AvatarList.SelectedItem is not AvatarItem item) { e.Handled = true; return; }
+        if (SelectedTile is not { } item) { e.Handled = true; return; }
         var isGroup = item.IsGroup;
         var pub = IsPublicTab;
         var isPublicAvatar = item.Avatar.ReleaseStatus == "public";
         var canAdd = !pub && !isGroup && isPublicAvatar && !_public.Contains(item.Id);
 
         MenuChange.Visibility = isGroup ? Visibility.Collapsed : Visibility.Visible;
-        MenuOpenGroup.Visibility = isGroup ? Visibility.Visible : Visibility.Collapsed;
+        MenuOpenGroup.Visibility = Vis(isGroup);
         MenuDetails.Visibility = isGroup ? Visibility.Collapsed : Visibility.Visible;
         // 使えなくなったものがあるときだけ、まとめて外す項目を出す (パブリックタブのみ)
-        MenuRemoveUnavailable.Visibility = pub && _public.Unavailable.Any() ? Visibility.Visible : Visibility.Collapsed;
+        MenuRemoveUnavailable.Visibility = Vis(pub && _public.Unavailable.Any());
 
         MenuAssignGroup.Visibility = isGroup ? Visibility.Collapsed : Visibility.Visible;
         MenuAssignGroup.Header = _openGroup is null ? "グループに入れる..." : "別のグループに移す...";
-        MenuUnassignGroup.Visibility = !isGroup && _openGroup is not null ? Visibility.Visible : Visibility.Collapsed;
-        MenuRenameGroup.Visibility = isGroup ? Visibility.Visible : Visibility.Collapsed;
-        MenuDissolveGroup.Visibility = isGroup ? Visibility.Visible : Visibility.Collapsed;
+        MenuUnassignGroup.Visibility = Vis(!isGroup && _openGroup is not null);
+        MenuRenameGroup.Visibility = Vis(isGroup);
+        MenuDissolveGroup.Visibility = Vis(isGroup);
 
         // パブリックリストに入れられるのは公開アバターだけ。非公開には項目自体を出さない
         MenuAddPublic.Visibility = pub || isGroup || !isPublicAvatar ? Visibility.Collapsed : Visibility.Visible;
         MenuAddPublic.IsEnabled = canAdd;
         MenuAddPublic.Header = _public.Contains(item.Id) ? "パブリックに追加済み" : "パブリックに追加";
-        MenuRemovePublic.Visibility = pub && !isGroup ? Visibility.Visible : Visibility.Collapsed;
+        MenuRemovePublic.Visibility = Vis(pub && !isGroup);
         // タグは「自分のアバター」と「パブリック」で使える。グループならメンバー全員にまとめて適用
-        MenuEditTags.Visibility = pub || SourceOwn.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
+        MenuEditTags.Visibility = Vis(pub || IsOwnTab);
         MenuEditTags.Header = isGroup ? "全員のタグを編集..." : "タグを編集...";
         MenuCopyId.Visibility = isGroup ? Visibility.Collapsed : Visibility.Visible;
         MenuAssignHotkey.Visibility = isGroup ? Visibility.Collapsed : Visibility.Visible;
         BuildFavoriteMenu(item);
 
         // 隠し機能が有効なときだけ出す
-        MenuStripeExclude.Visibility = _settings.StripeColors ? Visibility.Visible : Visibility.Collapsed;
+        MenuStripeExclude.Visibility = Vis(_settings.StripeColors);
         MenuStripeExclude.Header = IsStripeExcluded(item) ? "カウントに戻す" : "カウントから除外";
     }
 
     private async void MenuChange_Click(object sender, RoutedEventArgs e)
     {
-        if (AvatarList.SelectedItem is AvatarItem { IsAvatar: true } item) await ChangeFromListAsync(item);
+        if (SelectedAvatar is { } item) await ChangeFromListAsync(item);
     }
 
     private void MenuCopyId_Click(object sender, RoutedEventArgs e)
     {
-        if (AvatarList.SelectedItem is AvatarItem { IsAvatar: true } item)
-        {
-            try { Clipboard.SetText(item.Id); SetStatus(StatusKind.Info, "アバター ID をコピーしました"); }
-            catch (Exception ex) { SetStatus(StatusKind.Error, "クリップボードにコピーできませんでした (他のアプリが使用中の可能性があります)"); Log.Warn("クリップボードへのコピーに失敗", ex); }
-        }
+        if (SelectedAvatar is { } item) CopyAvatarId(item.Id);
     }
 
     // ---------------- 状態表示 ----------------
@@ -411,7 +391,7 @@ public partial class MainWindow : Window
 
     private void ShowListState(bool loading)
     {
-        SkeletonPanel.Visibility = loading ? Visibility.Visible : Visibility.Collapsed;
+        SkeletonPanel.Visibility = Vis(loading);
         AvatarList.Visibility = loading ? Visibility.Hidden : Visibility.Visible;
         if (loading) EmptyPanel.Visibility = Visibility.Collapsed;
     }
@@ -429,7 +409,7 @@ public partial class MainWindow : Window
                 ? $"「{_filterValue}」に一致するアバターがありません。「すべて」に戻すか、別のフィルタを試してください。"
                 : "別の名前や作者名、ID で試してください。";
         }
-        else if (SourceFavorites.IsChecked == true)
+        else if (IsFavoritesTab)
         {
             EmptyTitle.Text = "お気に入りのアバターがありません";
             EmptyHint.Text = "VRChat でお気に入りに登録したアバターがここに表示されます。";
@@ -523,8 +503,6 @@ public partial class MainWindow : Window
 
     private void SettingsButton_Click(object sender, RoutedEventArgs e) => OpenSettings();
 
-    private bool _settingsOpen;
-
     private void QuickToggle_Changed(object sender, RoutedEventArgs e)
     {
         if (!_ready) return;
@@ -537,7 +515,7 @@ public partial class MainWindow : Window
         var enabled = KeepLoginToggle.IsChecked == true;
         if (_settings.KeepBrowserLogin == enabled) return;
         _settings.KeepBrowserLogin = enabled;
-        if (!_preview) _settings.Save();
+        SaveSettings();
         if (!enabled)
         {
             // オフにした時点で、残っていたブラウザデータも消す
@@ -556,7 +534,7 @@ public partial class MainWindow : Window
         var enabled = LogToggle.IsChecked == true;
         if (_settings.LogEnabled == enabled) return;
         _settings.LogEnabled = enabled;
-        if (!_preview) _settings.Save();
+        SaveSettings();
         if (enabled) { Log.Enabled = true; Log.Info("ログの記録: オン"); }
         else { Log.Info("ログの記録: オフ"); Log.Enabled = false; }
         SetStatus(StatusKind.Info, enabled ? "ログの記録: オン。app.log に動作を書きます" : "ログの記録: オフ (エラーだけ記録します)");
@@ -568,7 +546,7 @@ public partial class MainWindow : Window
         try
         {
             Log.EnsureFile();
-            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(Log.FilePath) { UseShellExecute = true });
+            Shell.Open(Log.FilePath);
         }
         catch (Exception ex) { SetStatus(StatusKind.Error, "ログを開けませんでした: " + Log.FilePath); Log.Warn("ログファイルを開けませんでした", ex); }
     }
@@ -582,39 +560,10 @@ public partial class MainWindow : Window
         (_settings.Theme switch { "light" => ThemeLight, "dark" => ThemeDark, _ => ThemeSystem }).IsChecked = true;
         AccountDesc.Text = (string.IsNullOrEmpty(_user?.DisplayName) ? "" : $"{_user.DisplayName} としてログイン中。")
             + "ログイン状態を消して戻ります。";
-        if (SettingsOverlay.Visibility != Visibility.Visible)
-        {
-            SettingsOverlay.Opacity = 0;
-            SettingsCardScale.ScaleX = SettingsCardScale.ScaleY = 0.96;
-            SettingsOverlay.Visibility = Visibility.Visible;
-        }
-        AnimateSettings(open: true);
+        Overlay.Open(SettingsOverlay, SettingsCardScale);
     }
 
-    private void CloseSettings()
-    {
-        if (SettingsOverlay.Visibility != Visibility.Visible) return;
-        AnimateSettings(open: false);
-    }
-
-    /// <summary>設定オーバーレイのフェード + カードの拡縮。閉じ切ったら Collapsed にする。</summary>
-    private void AnimateSettings(bool open)
-    {
-        _settingsOpen = open;
-        var dur = TimeSpan.FromMilliseconds(open ? 180 : 130);
-        var fade = new DoubleAnimation(open ? 1 : 0, dur) { EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut } };
-        if (!open) fade.Completed += (_, _) => { if (!_settingsOpen) SettingsOverlay.Visibility = Visibility.Collapsed; };
-        SettingsOverlay.BeginAnimation(OpacityProperty, fade);
-
-        var scale = new DoubleAnimation(open ? 1 : 0.96, dur)
-        {
-            EasingFunction = open
-                ? new BackEase { EasingMode = EasingMode.EaseOut, Amplitude = 0.4 }
-                : new CubicEase { EasingMode = EasingMode.EaseIn }
-        };
-        SettingsCardScale.BeginAnimation(ScaleTransform.ScaleXProperty, scale);
-        SettingsCardScale.BeginAnimation(ScaleTransform.ScaleYProperty, scale);
-    }
+    private void CloseSettings() => Overlay.Close(SettingsOverlay, SettingsCardScale);
 
     private void SettingsClose_Click(object sender, RoutedEventArgs e) => CloseSettings();
 
@@ -632,7 +581,7 @@ public partial class MainWindow : Window
         var mode = (sender as RadioButton)?.Tag as string ?? "system";
         if (_settings.Theme == mode) return; // 設定画面を開いたときの初期化では何もしない
         _settings.Theme = mode;
-        if (!_preview) _settings.Save();
+        SaveSettings();
         App.ApplyTheme(mode);
     }
 
@@ -641,7 +590,7 @@ public partial class MainWindow : Window
         try
         {
             System.IO.Directory.CreateDirectory(AppPaths.DataDir);
-            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(AppPaths.DataDir) { UseShellExecute = true });
+            Shell.Open(AppPaths.DataDir);
         }
         catch (Exception ex) { SetStatus(StatusKind.Error, "フォルダを開けませんでした: " + AppPaths.DataDir); Log.Warn("データフォルダを開けませんでした", ex); }
     }
@@ -673,14 +622,21 @@ public partial class MainWindow : Window
     private void Source_Checked(object sender, RoutedEventArgs e)
     {
         if (!_ready) return;
-        PublicAddPanel.Visibility = SourcePublic.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
+        PublicAddPanel.Visibility = Vis(IsPublicTab);
         _filterValue = null; // タブを移ったらフィルタは解除
-        _openGroup = null;
-        GroupBar.Visibility = Visibility.Collapsed;
+        ResetOpenGroup();
         if (IsLoaded && MainPanel.Visibility == Visibility.Visible) LoadAvatarsAsync().Forget();
     }
 
+    private bool IsOwnTab => SourceOwn.IsChecked == true;
+    private bool IsFavoritesTab => SourceFavorites.IsChecked == true;
     private bool IsPublicTab => SourcePublic.IsChecked == true;
+
+    /// <summary>一覧で選んでいるタイル (アバターでもグループでも)。無ければ null。</summary>
+    private AvatarItem? SelectedTile => AvatarList.SelectedItem as AvatarItem;
+
+    /// <summary>一覧で選んでいるアバター。グループタイルや未選択なら null。</summary>
+    private AvatarItem? SelectedAvatar => SelectedTile is { IsAvatar: true } a ? a : null;
 
     /// <summary>この時間内に取った一覧は取り直さない(タブの行き来だけで毎回 API を叩かないため)。</summary>
     private static readonly TimeSpan ListCacheFreshFor = TimeSpan.FromMinutes(5);
@@ -689,7 +645,7 @@ public partial class MainWindow : Window
     private async Task LoadAvatarsAsync(bool refresh = false)
     {
         RefreshButton.IsEnabled = false;
-        var favorites = SourceFavorites.IsChecked == true;
+        var favorites = IsFavoritesTab;
         var pub = IsPublicTab;
         SetStatus(StatusKind.Info, pub ? "パブリックリストを読み込んでいます" : favorites ? "お気に入りを読み込んでいます" : "自分のアバターを読み込んでいます");
         ShowListState(loading: true);
@@ -745,7 +701,7 @@ public partial class MainWindow : Window
                     }
                     _allItems.Clear();
                     // 自分のアバターにはタグを載せる（お気に入りはグループ表示を優先）
-                    _allItems.AddRange(avatars.Select(a => new AvatarItem(a) { Tags = favorites ? [] : _tags.TagsOf(a.Id) }));
+                    _allItems.AddRange(avatars.Select(a => NewItem(a, favorites)));
                 }
                 catch (Exception ex) when (cached is not null
                                            && ex is not OperationCanceledException
@@ -789,7 +745,7 @@ public partial class MainWindow : Window
     private void ShowAvatars(List<Avatar> avatars, bool favorites, CancellationToken ct, string note)
     {
         _allItems.Clear();
-        _allItems.AddRange(avatars.Select(a => new AvatarItem(a) { Tags = favorites ? [] : _tags.TagsOf(a.Id) }));
+        _allItems.AddRange(avatars.Select(a => NewItem(a, favorites)));
         ShowListState(loading: false);
         BuildFilterChips();
         ApplyFilter();
@@ -847,20 +803,14 @@ public partial class MainWindow : Window
 
     // ---------------- 検索と絞り込みの適用 ----------------
 
-    private System.Windows.Threading.DispatcherTimer? _searchTimer;
+    private Debounce? _search;
 
     private void SearchBox_TextChanged(object sender, TextChangedEventArgs e)
     {
-        SearchPlaceholder.Visibility = SearchBox.Text.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
+        SearchPlaceholder.Visibility = Vis(SearchBox.Text.Length == 0);
         if (MainPanel.Visibility != Visibility.Visible) return;
         // 1 打鍵(IME の変換中含む)ごとに全件を並べ直すと重いので、入力が 200ms 止まってから 1 回だけ絞り込む
-        if (_searchTimer is null)
-        {
-            _searchTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(200) };
-            _searchTimer.Tick += (_, _) => { _searchTimer!.Stop(); ApplyFilter(); };
-        }
-        _searchTimer.Stop();
-        _searchTimer.Start();
+        (_search ??= new Debounce(TimeSpan.FromMilliseconds(200), ApplyFilter)).Trigger();
     }
 
     private void ApplyFilter()
@@ -947,13 +897,13 @@ public partial class MainWindow : Window
     }
 
     private void AvatarList_SelectionChanged(object sender, SelectionChangedEventArgs e)
-        => ChangeButton.IsEnabled = AvatarList.SelectedItem is AvatarItem { IsAvatar: true };
+        => ChangeButton.IsEnabled = SelectedAvatar is { };
 
     // ---------------- 着替え ----------------
 
     private async void ChangeSelected_Click(object sender, RoutedEventArgs e)
     {
-        if (AvatarList.SelectedItem is AvatarItem { IsAvatar: true } item) await ChangeFromListAsync(item);
+        if (SelectedAvatar is { } item) await ChangeFromListAsync(item);
         else SetStatus(StatusKind.Info, "一覧からアバターを選んでください");
     }
 
@@ -991,6 +941,6 @@ public partial class MainWindow : Window
             if (!HandleSessionExpired(ex)) SetStatus(StatusKind.Error, "着替えられませんでした: " + FriendlyError.Of(ex));
             return false;
         }
-        finally { ChangeButton.IsEnabled = AvatarList.SelectedItem is AvatarItem { IsAvatar: true }; }
+        finally { ChangeButton.IsEnabled = SelectedAvatar is { }; }
     }
 }

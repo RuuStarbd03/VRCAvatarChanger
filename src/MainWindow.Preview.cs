@@ -149,7 +149,7 @@ public partial class MainWindow
             OpenSettings();
             // "bottom" なら末尾まで送る (ログアウトなど下のほうの項目を撮るため)
             if (settingsAt == "bottom")
-                Dispatcher.BeginInvoke(() => FindDescendant<ScrollViewer>(SettingsOverlay)?.ScrollToEnd(),
+                Dispatcher.BeginInvoke(() => VisualTree.FindDescendant<ScrollViewer>(SettingsOverlay)?.ScrollToEnd(),
                     System.Windows.Threading.DispatcherPriority.Loaded);
         }
         // 配色の切り替えの確認: 設定から選んだあと、その場で全体が変わっているかを撮る
@@ -421,7 +421,7 @@ public partial class MainWindow
             await Task.Delay(1500);
 
             var items = AvatarList.Items.OfType<AvatarItem>().ToList();
-            var panel = FindDescendant<VirtualizingUniformGrid>(AvatarList);
+            var panel = VisualTree.FindDescendant<VirtualizingUniformGrid>(AvatarList);
             report.AppendLine($"件数={items.Count} 列数={columns} panel={(panel is null ? "見つからず" : "あり")}");
 
             void Check(string label)
@@ -457,7 +457,7 @@ public partial class MainWindow
             }
 
             Check("初期表示");
-            var sv = FindDescendant<ScrollViewer>(AvatarList);
+            var sv = VisualTree.FindDescendant<ScrollViewer>(AvatarList);
             for (var i = 1; i <= 6; i++)
             {
                 sv?.ScrollToVerticalOffset((sv.ExtentHeight - sv.ViewportHeight) * i / 6.0);
@@ -510,7 +510,7 @@ public partial class MainWindow
                 $"タイル幅={AvatarList.ActualWidth / GridColumns:F0}dip 展開幅={ThumbWidth}px");
             Snapshot("先頭");
 
-            var sv = FindDescendant<ScrollViewer>(AvatarList);
+            var sv = VisualTree.FindDescendant<ScrollViewer>(AvatarList);
             for (var i = 1; i <= 6; i++)
             {
                 sv?.ScrollToVerticalOffset((sv.ExtentHeight - sv.ViewportHeight) * i / 6.0);
@@ -711,7 +711,7 @@ public partial class MainWindow
         try
         {
             await Task.Delay(700); // 初期レイアウトと先頭ぶんの読み込み
-            var sv = FindDescendant<ScrollViewer>(AvatarList);
+            var sv = VisualTree.FindDescendant<ScrollViewer>(AvatarList);
             var items = AvatarList.Items.OfType<AvatarItem>().ToList();
             // 画面に出ているもののうち、まだ画像が入っていない数 (これが 0 なら灰色の枠は見えない)
             int VisibleBlank() => VisibleIndexes().Where(i => i < items.Count)
@@ -771,7 +771,7 @@ public partial class MainWindow
     private List<int> VisibleIndexes()
     {
         var containers = new List<ListViewItem>();
-        CollectDescendants(AvatarList, containers);
+        containers.AddRange(VisualTree.Descendants<ListViewItem>(AvatarList));
         return containers.Select(c => AvatarList.ItemContainerGenerator.IndexFromContainer(c))
             .Where(i => i >= 0).OrderBy(i => i).ToList();
     }
@@ -797,10 +797,10 @@ public partial class MainWindow
         try
         {
             await Task.Delay(1200);
-            var sv = FindDescendant<ScrollViewer>(AvatarList);
+            var sv = VisualTree.FindDescendant<ScrollViewer>(AvatarList);
             void Snapshot(string label)
             {
-                var realized = CountDescendants<ListViewItem>(AvatarList);
+                var realized = VisualTree.Descendants<ListViewItem>(AvatarList).Count();
                 report.AppendLine($"{label}: items={AvatarList.Items.Count} realized={realized} " +
                     $"offset={sv?.VerticalOffset:F0} extent={sv?.ExtentHeight:F0} viewport={sv?.ViewportHeight:F0}");
             }
@@ -832,7 +832,7 @@ public partial class MainWindow
 
             // リサイクル後のコンテナ整合性: Content が今の項目を指しているか / 重複が無いか
             var containers = new List<ListViewItem>();
-            CollectDescendants(AvatarList, containers);
+            containers.AddRange(VisualTree.Descendants<ListViewItem>(AvatarList));
             var bad = containers.Count(c => c.Content is not AvatarItem || !ReferenceEquals(c.Content, c.DataContext));
             var dup = containers.Count - containers.Select(c => c.Content).Distinct().Count();
             report.AppendLine($"container integrity: total={containers.Count} bad={bad} duplicates={dup}");
@@ -842,37 +842,7 @@ public partial class MainWindow
         Application.Current.Shutdown();
     }
 
-    private static T? FindDescendant<T>(DependencyObject root) where T : DependencyObject
-    {
-        for (var i = 0; i < VisualTreeHelper.GetChildrenCount(root); i++)
-        {
-            var child = VisualTreeHelper.GetChild(root, i);
-            if (child is T t) return t;
-            if (FindDescendant<T>(child) is { } found) return found;
-        }
-        return null;
-    }
 
-    private static int CountDescendants<T>(DependencyObject root) where T : DependencyObject
-    {
-        var n = 0;
-        for (var i = 0; i < VisualTreeHelper.GetChildrenCount(root); i++)
-        {
-            var child = VisualTreeHelper.GetChild(root, i);
-            if (child is T) n++;
-            n += CountDescendants<T>(child);
-        }
-        return n;
-    }
 
-    private static void CollectDescendants<T>(DependencyObject root, List<T> into) where T : DependencyObject
-    {
-        for (var i = 0; i < VisualTreeHelper.GetChildrenCount(root); i++)
-        {
-            var child = VisualTreeHelper.GetChild(root, i);
-            if (child is T t) into.Add(t);
-            CollectDescendants(child, into);
-        }
-    }
 }
 #endif

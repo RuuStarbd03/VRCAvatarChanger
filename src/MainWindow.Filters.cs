@@ -22,7 +22,7 @@ public partial class MainWindow
         {
             FilterChips.Children.Clear();
             // お気に入り: VRChat のお気に入りグループ / それ以外: 今の一覧で使われているタグ
-            List<string> values = SourceFavorites.IsChecked == true
+            List<string> values = IsFavoritesTab
                 ? _allItems.Select(a => a.Avatar.FavoriteGroup).OfType<string>().Where(g => g.Length > 0).Distinct().ToList()
                 : _allItems.SelectMany(a => a.Tags)
                     .Distinct(StringComparer.CurrentCultureIgnoreCase)
@@ -81,7 +81,7 @@ public partial class MainWindow
         var overflow = FilterChips.Children.OfType<FrameworkElement>()
             .Any(c => c.TranslatePoint(new Point(0, 0), FilterChips).Y > FilterRowHeight / 2);
         FilterChipsHost.MaxHeight = _filterExpanded && overflow ? double.PositiveInfinity : FilterCollapsedMax;
-        FilterMoreButton.Visibility = overflow ? Visibility.Visible : Visibility.Collapsed;
+        FilterMoreButton.Visibility = Vis(overflow);
         if (!overflow) _filterExpanded = false;
         FilterMoreText.Text = _filterExpanded ? "たたむ" : "もっと見る";
         FilterMoreChevron.Text = _filterExpanded ? "\uE70E" : "\uE70D"; // 上 ／ 下シェブロン (Segoe Fluent Icons)
@@ -101,7 +101,7 @@ public partial class MainWindow
         if (_filterValue is null) return items;
         if (_filterValue == UnavailableFilter)
             return items.Where(a => a.IsGroup ? a.Members.Any(m => m.IsUnavailable) : a.IsUnavailable);
-        if (SourceFavorites.IsChecked == true) return items.Where(a => a.Avatar.FavoriteGroup == _filterValue);
+        if (IsFavoritesTab) return items.Where(a => a.Avatar.FavoriteGroup == _filterValue);
         // タグは、グループタイルの場合「中に 1 体でも該当がいれば」表示する
         return items.Where(a => a.IsGroup
             ? a.Members.Any(m => m.Tags.Contains(_filterValue, StringComparer.CurrentCultureIgnoreCase))
@@ -110,7 +110,7 @@ public partial class MainWindow
 
     private void MenuEditTags_Click(object sender, RoutedEventArgs e)
     {
-        if (AvatarList.SelectedItem is not AvatarItem item) return;
+        if (SelectedTile is not { } item) return;
 
         if (item.IsGroup)
         {
@@ -179,17 +179,17 @@ public partial class MainWindow
     private void ToggleStripeColors()
     {
         _settings.StripeColors = !_settings.StripeColors;
-        if (!_preview) _settings.Save();
+        SaveSettings();
         ApplyFilter();
         SetStatus(StatusKind.Info, _settings.StripeColors ? "10 体ごとの色分け: オン" : "10 体ごとの色分け: オフ");
     }
 
     private void MenuStripeExclude_Click(object sender, RoutedEventArgs e)
     {
-        if (AvatarList.SelectedItem is not AvatarItem item) return;
+        if (SelectedTile is not { } item) return;
         var key = StripeKeyOf(item);
         if (!_settings.StripeExcluded.Remove(key)) _settings.StripeExcluded.Add(key);
-        if (!_preview) _settings.Save();
+        SaveSettings();
         ApplyFilter();
     }
 }
