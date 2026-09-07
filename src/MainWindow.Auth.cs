@@ -87,7 +87,7 @@ public partial class MainWindow
 
     private void OpenInBrowser(string url)
     {
-        try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(url) { UseShellExecute = true }); }
+        try { Shell.Open(url); }
         catch (Exception ex) { SetLoginStatus("ブラウザを開けませんでした: " + ex.Message, error: true); }
     }
 

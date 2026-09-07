@@ -16,7 +16,6 @@ public sealed class AvatarGroup
 /// </summary>
 public sealed class GroupStore
 {
-    private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
     private readonly List<AvatarGroup> _groups = [];
 
     public IReadOnlyList<AvatarGroup> Groups => _groups;
@@ -26,13 +25,13 @@ public sealed class GroupStore
     public static GroupStore Load()
     {
         var store = new GroupStore();
-        var list = JsonFile.Load<List<AvatarGroup>>(PathOf(), JsonOptions);
+        var list = JsonFile.Load<List<AvatarGroup>>(PathOf(), JsonFile.Indented);
         if (list is not null)
             store._groups.AddRange(list.Where(g => !string.IsNullOrWhiteSpace(g.Name)));
         return store;
     }
 
-    public void Save() => JsonFile.Save(PathOf(), _groups, JsonOptions);
+    public void Save() => JsonFile.Save(PathOf(), _groups, JsonFile.Indented);
 
     public AvatarGroup? GroupOf(string avatarId) => _groups.FirstOrDefault(g => g.AvatarIds.Contains(avatarId));
 

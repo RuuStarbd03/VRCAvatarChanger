@@ -137,10 +137,9 @@ public partial class MainWindow
     {
         if (item.IsUnavailable && IsPublicTab)
         {
-            var r = MessageBox.Show(this,
+            var r = Dialogs.AskOrCancel(this,
                 $"{item.Name} は使えなくなっています。\n{item.UnavailableText}\n\n" +
-                "パブリックから外しますか?\n(「いいえ」でそのまま着替えを試します)",
-                "VRCAvatarChanger", MessageBoxButton.YesNoCancel, MessageBoxImage.Warning);
+                "パブリックから外しますか?\n(「いいえ」でそのまま着替えを試します)");
             if (r == MessageBoxResult.Cancel) return;
             if (r == MessageBoxResult.Yes)
             {
@@ -159,11 +158,9 @@ public partial class MainWindow
         if (targets.Count == 0) return;
         var names = string.Join("\n", targets.Take(8).Select(t => "・" + t.Avatar.Name));
         if (targets.Count > 8) names += $"\n・ほか {targets.Count - 8} 件";
-        var r = MessageBox.Show(this,
-            $"使えなくなった {targets.Count} 件をパブリックから外します。\n\n{names}\n\n" +
-            "外したあとは、もう一度 ID か URL で追加すれば戻せます。",
-            "VRCAvatarChanger", MessageBoxButton.OKCancel, MessageBoxImage.Question);
-        if (r != MessageBoxResult.OK) return;
+        if (!Dialogs.Confirm(this,
+                $"使えなくなった {targets.Count} 件をパブリックから外します。\n\n{names}\n\n" +
+                "外したあとは、もう一度 ID か URL で追加すれば戻せます。")) return;
         var n = _public.RemoveUnavailable();
         SetStatus(StatusKind.Info, $"使えなくなった {n} 件をパブリックから外しました");
         await LoadAvatarsAsync();
@@ -171,12 +168,12 @@ public partial class MainWindow
 
     private async void MenuAddPublic_Click(object sender, RoutedEventArgs e)
     {
-        if (AvatarList.SelectedItem is AvatarItem { IsAvatar: true } item) await TryAddPublicAsync(item.Avatar);
+        if (SelectedAvatar is { } item) await TryAddPublicAsync(item.Avatar);
     }
 
     private async void MenuRemovePublic_Click(object sender, RoutedEventArgs e)
     {
-        if (AvatarList.SelectedItem is not AvatarItem { IsAvatar: true } item) return;
+        if (SelectedAvatar is not { } item) return;
         _public.Remove(item.Id);
         SetStatus(StatusKind.Info, $"{item.Name} をパブリックから削除しました");
         await LoadAvatarsAsync();

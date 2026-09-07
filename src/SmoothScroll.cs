@@ -58,7 +58,7 @@ public static class SmoothScroll
     private static void OnPreviewMouseWheel(object sender, MouseWheelEventArgs e)
     {
         if (sender is not DependencyObject host) return;
-        var sv = FindScrollViewer(host);
+        var sv = host as ScrollViewer ?? VisualTree.FindDescendant<ScrollViewer>(host);
         if (sv is null || sv.ScrollableHeight <= 0) return;
         e.Handled = true;
 
@@ -204,13 +204,4 @@ public static class SmoothScroll
         catch { }
     }
 
-    private static ScrollViewer? FindScrollViewer(DependencyObject root)
-    {
-        if (root is ScrollViewer sv) return sv;
-        for (var i = 0; i < VisualTreeHelper.GetChildrenCount(root); i++)
-        {
-            if (FindScrollViewer(VisualTreeHelper.GetChild(root, i)) is { } found) return found;
-        }
-        return null;
-    }
 }

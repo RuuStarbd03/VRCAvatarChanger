@@ -38,10 +38,7 @@ public partial class MainWindow
         }
         var notes = string.IsNullOrWhiteSpace(_update.Notes) ? "" : "\n\n" + _update.Notes.Trim();
         if (notes.Length > 400) notes = notes[..400] + "…";
-        var ok = MessageBox.Show(this,
-            $"バージョン {_update.Version.ToString(3)} に更新しますか?\n更新後、アプリは自動で再起動します。{notes}",
-            "VRCAvatarChanger の更新", MessageBoxButton.YesNo, MessageBoxImage.Question);
-        if (ok != MessageBoxResult.Yes) return;
+        if (!Dialogs.Ask(this, $"バージョン {_update.Version.ToString(3)} に更新しますか?\n更新後、アプリは自動で再起動します。{notes}")) return;
 
         UpdateButton.IsEnabled = false;
         UpdateButtonText.Text = "更新しています";

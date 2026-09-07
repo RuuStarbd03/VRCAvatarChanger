@@ -16,6 +16,10 @@ public static class AppPaths
 #if DEBUG
         var o = Environment.GetEnvironmentVariable("VRCAC_DATA_DIR");
         if (!string.IsNullOrEmpty(o)) return o;
+        // UI プレビュー (ダミーデータ) は、指定が無ければ一時フォルダを使う。
+        // ドロップやグループ化の確認で作ったグループが、実際の groups.json に書かれてしまわないように
+        if (Environment.GetEnvironmentVariable("VRCAC_UI_PREVIEW") == "1")
+            return Path.Combine(Path.GetTempPath(), "VRCAvatarChanger-preview");
 #endif
         return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "VRCAvatarChanger");
     }

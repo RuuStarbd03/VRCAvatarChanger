@@ -12,7 +12,6 @@ namespace VRCAvatarChanger;
 /// </summary>
 public static class AssetSizeCache
 {
-    private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = false };
 
     private static Dictionary<string, long>? _map;
     private static bool _dirty;
@@ -22,7 +21,7 @@ public static class AssetSizeCache
     private static string KeyOf(string fileId, int version) => $"{fileId}/{version}";
 
     private static Dictionary<string, long> Map
-        => _map ??= JsonFile.Load<Dictionary<string, long>>(PathOf(), JsonOptions) ?? [];
+        => _map ??= JsonFile.Load<Dictionary<string, long>>(PathOf(), JsonFile.Compact) ?? [];
 
     public static bool TryGet(string fileId, int version, out long bytes)
         => Map.TryGetValue(KeyOf(fileId, version), out bytes);
@@ -38,7 +37,7 @@ public static class AssetSizeCache
     {
         if (!_dirty) return;
         _dirty = false;
-        JsonFile.Save(PathOf(), Map, JsonOptions);
+        JsonFile.Save(PathOf(), Map, JsonFile.Compact);
     }
 
     /// <summary>「31.4 MB」「820 KB」のような表示。</summary>

@@ -1,7 +1,7 @@
 using System.Diagnostics;
 using System.Windows;
+using System.Windows.Controls;
 using Microsoft.Win32;
-using Forms = System.Windows.Forms;
 
 namespace VRCAvatarChanger;
 
@@ -19,7 +19,7 @@ public partial class MainWindow
     // 起動中は「終了したか」を見るだけで急がないので、さらに間隔を空ける
     private static readonly TimeSpan WatchRunningInterval = TimeSpan.FromSeconds(60);
 
-    private Forms.NotifyIcon? _trayIcon;
+    private TrayIcon? _trayIcon;
     private System.Windows.Threading.DispatcherTimer? _watchTimer;
     private bool _vrchatWasRunning;
     private bool _exitRequested;
@@ -49,7 +49,7 @@ public partial class MainWindow
     {
         if (_settings.WatchVRChat == enabled) return;
         _settings.WatchVRChat = enabled;
-        if (!_preview) _settings.Save();
+        SaveSettings();
         if (enabled)
         {
             EnableWatch();
@@ -67,17 +67,15 @@ public partial class MainWindow
         if (!_preview) RegisterStartup();
         if (_trayIcon is null)
         {
-            _trayIcon = new Forms.NotifyIcon
-            {
-                Text = "VRCAvatarChanger",
-                Icon = System.Drawing.Icon.ExtractAssociatedIcon(Environment.ProcessPath ?? "") ?? System.Drawing.SystemIcons.Application,
-                Visible = true,
-            };
-            _trayIcon.DoubleClick += (_, _) => ShowFromTray();
-            var menu = new Forms.ContextMenuStrip();
-            menu.Items.Add("開く", null, (_, _) => ShowFromTray());
-            menu.Items.Add("終了", null, (_, _) => { _exitRequested = true; Close(); });
-            _trayIcon.ContextMenuStrip = menu;
+            var open = new MenuItem { Header = "開く" };
+            open.Click += (_, _) => ShowFromTray();
+            var exit = new MenuItem { Header = "終了" };
+            exit.Click += (_, _) => { _exitRequested = true; Close(); };
+            var menu = new ContextMenu();
+            menu.Items.Add(open);
+            menu.Items.Add(exit);
+            _trayIcon = new TrayIcon(this, "VRCAvatarChanger") { Menu = menu };
+            _trayIcon.DoubleClick += ShowFromTray;
         }
         if (_watchTimer is null)
         {
@@ -92,12 +90,8 @@ public partial class MainWindow
     {
         UnregisterStartup();
         _watchTimer?.Stop();
-        if (_trayIcon is not null)
-        {
-            _trayIcon.Visible = false;
-            _trayIcon.Dispose();
-            _trayIcon = null;
-        }
+        _trayIcon?.Dispose();
+        _trayIcon = null;
     }
 
     private void WatchTick()

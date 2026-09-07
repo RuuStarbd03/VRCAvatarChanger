@@ -110,48 +110,23 @@ public partial class QuickPickWindow : Window
     }
 
     /// <summary>保存・並び替えに使うキー。種別と向きを組み直す (メイン画面と同じ形)。</summary>
-    private string SortKey
-        => ((SortBox.SelectedItem as ComboBoxItem)?.Tag as string ?? "recent")
-           + (SortDescToggle.IsChecked == true ? "_desc" : "_asc");
+    private string SortKey => SortControls.Compose(SortBox, SortDescToggle, "recent");
 
-    /// <summary>保存されたキーを、種別のコンボと向きのトグルに振り分ける。</summary>
+    /// <summary>保存されたキーを、種別のコンボと向きのトグルに振り分ける (以前の向きなし "recent" は昇順として扱われる)。</summary>
     private void InitSortControls(string savedKey)
     {
-        // 以前は「最近使用した順」を向きなしの "recent" で保存していた。昇順として扱う
-        var desc = savedKey.EndsWith("_desc", StringComparison.Ordinal);
-        var kind = savedKey.Replace("_desc", "").Replace("_asc", "");
-        SortBox.SelectedItem = SortBox.Items.OfType<ComboBoxItem>().FirstOrDefault(i => (string?)i.Tag == kind)
-                               ?? SortBox.Items[0];
-        SortDescToggle.IsChecked = desc;
-        UpdateSortDirection();
+        SortControls.Init(SortBox, SortDescToggle, savedKey);
+        SortControls.UpdateDirection(SortBox, SortDescToggle, SortDirIcon);
     }
 
-    private void UpdateSortDirection()
-    {
-        var desc = SortDescToggle.IsChecked == true;
-        SortDirIcon.Text = desc ? "↓" : "↑";
-        SortDescToggle.ToolTip = (string?)(SortBox.SelectedItem as ComboBoxItem)?.Tag switch
-        {
-            "name" => desc ? "名前の降順 (Z → A)" : "名前の昇順 (A → Z)",
-            "author" => desc ? "作者名の降順 (Z → A)" : "作者名の昇順 (A → Z)",
-            "recent" => desc ? "使っていないものから" : "最近使ったものから",
-            "performance" => desc ? "重い順" : "軽い順",
-            _ => desc ? "新しい順" : "古い順",
-        };
-    }
+    private void SortBox_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e) => OnSortChanged();
 
-    private void SortBox_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
+    private void SortDesc_Changed(object sender, RoutedEventArgs e) => OnSortChanged();
+
+    private void OnSortChanged()
     {
         if (!_ready) return;
-        UpdateSortDirection();
-        _saveSortKey(SortKey);
-        ApplyFilter();
-    }
-
-    private void SortDesc_Changed(object sender, RoutedEventArgs e)
-    {
-        if (!_ready) return;
-        UpdateSortDirection();
+        SortControls.UpdateDirection(SortBox, SortDescToggle, SortDirIcon);
         _saveSortKey(SortKey);
         ApplyFilter();
     }
