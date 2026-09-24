@@ -1,4 +1,3 @@
-using System.IO;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
@@ -60,12 +59,14 @@ public sealed class PublicAvatarStore
 
     public void Save() => JsonFile.Save(PathOf(), _entries, JsonOptions);
 
-    public bool Contains(string avatarId) => _entries.Any(e => e.Avatar.Id == avatarId);
+    private PublicAvatarEntry? Find(string avatarId) => _entries.Find(e => e.Avatar.Id == avatarId);
+
+    public bool Contains(string avatarId) => Find(avatarId) is not null;
 
     /// <summary>追加。すでにあれば情報だけ更新して false を返す。</summary>
     public bool Add(Avatar avatar)
     {
-        var existing = _entries.FirstOrDefault(e => e.Avatar.Id == avatar.Id);
+        var existing = Find(avatar.Id);
         if (existing is not null) { existing.Avatar = avatar; existing.RefreshedAt = DateTimeOffset.Now; Save(); return false; }
         _entries.Add(new PublicAvatarEntry { Avatar = avatar, AddedAt = DateTimeOffset.Now, RefreshedAt = DateTimeOffset.Now });
         Save();
@@ -81,7 +82,7 @@ public sealed class PublicAvatarStore
 
     public void Update(Avatar avatar)
     {
-        var existing = _entries.FirstOrDefault(e => e.Avatar.Id == avatar.Id);
+        var existing = Find(avatar.Id);
         if (existing is null) return;
         existing.Avatar = avatar;
         existing.RefreshedAt = DateTimeOffset.Now;
@@ -104,7 +105,7 @@ public sealed class PublicAvatarStore
     /// <returns>この呼び出しで新たに確定したら true。</returns>
     public bool MarkFailed(string avatarId, string reason)
     {
-        var e = _entries.FirstOrDefault(x => x.Avatar.Id == avatarId);
+        var e = Find(avatarId);
         if (e is null) return false;
         var now = DateTimeOffset.Now;
         e.LastFailedAt = now;

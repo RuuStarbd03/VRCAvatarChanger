@@ -143,9 +143,7 @@ public partial class MainWindow
             if (r == MessageBoxResult.Cancel) return;
             if (r == MessageBoxResult.Yes)
             {
-                _public.Remove(item.Id);
-                SetStatus(StatusKind.Info, $"{item.Name} をパブリックから外しました");
-                await LoadAvatarsAsync();
+                await RemoveFromPublicAsync(item);
                 return;
             }
         }
@@ -173,9 +171,14 @@ public partial class MainWindow
 
     private async void MenuRemovePublic_Click(object sender, RoutedEventArgs e)
     {
-        if (SelectedAvatar is not { } item) return;
+        if (SelectedAvatar is { } item) await RemoveFromPublicAsync(item);
+    }
+
+    /// <summary>パブリックから外して一覧を読み直す (右クリック / 詳細画面 / Delete キー / 使えないものの確認から)。</summary>
+    private async Task RemoveFromPublicAsync(AvatarItem item)
+    {
         _public.Remove(item.Id);
-        SetStatus(StatusKind.Info, $"{item.Name} をパブリックから削除しました");
+        SetStatus(StatusKind.Info, $"{item.Name} をパブリックから外しました");
         await LoadAvatarsAsync();
     }
 }

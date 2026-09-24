@@ -48,6 +48,8 @@ if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
 # 4. 同梱物
 Copy-Item "docs\README-配布用.txt" (Join-Path $outDir "はじめにお読みください.txt")
+# exe に同梱している OpenVR (SteamVR) の利用条件 (BSD-3) により、著作権表示を添える
+Copy-Item "src\OpenVR\LICENSE" (Join-Path $outDir "OpenVR-LICENSE.txt")
 Get-ChildItem $outDir -Include "*.pdb","*.xml" -Recurse | Remove-Item -Force
 
 # 5. zip + SHA-256(自動アップデートの検証用)

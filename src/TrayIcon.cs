@@ -16,7 +16,6 @@ internal sealed class TrayIcon : IDisposable
     private const uint CallbackMessage = 0x8000 + 1; // WM_APP + 1
     private const uint IconId = 1;
 
-    private readonly Window _owner;
     private readonly nint _hwnd;
     private readonly HwndSource _source;
     private readonly uint _taskbarCreated;
@@ -32,7 +31,6 @@ internal sealed class TrayIcon : IDisposable
 
     public TrayIcon(Window owner, string tip)
     {
-        _owner = owner;
         _tip = tip;
         // まだ表示していないウィンドウ (--tray 起動) でもハンドルは作れる
         _hwnd = new WindowInteropHelper(owner).EnsureHandle();

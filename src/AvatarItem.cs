@@ -71,7 +71,7 @@ public sealed class AvatarItem : INotifyPropertyChanged
     public string SubText
     {
         get => _subText ?? AuthorName;
-        set { _subText = value; OnPropertyChanged(); }
+        set { if (_subText != value) { _subText = value; OnPropertyChanged(); } }
     }
 
     private string? _subText2;
@@ -84,7 +84,10 @@ public sealed class AvatarItem : INotifyPropertyChanged
         get => _subText2;
         set
         {
-            _subText2 = string.IsNullOrEmpty(value) ? null : value;
+            // 絞り込みのたびに全件へ入れ直されるので、変わらないときは通知しない
+            var v = string.IsNullOrEmpty(value) ? null : value;
+            if (_subText2 == v) return;
+            _subText2 = v;
             OnPropertyChanged();
             OnPropertyChanged(nameof(HasSubText2));
         }
@@ -146,6 +149,10 @@ public sealed class AvatarItem : INotifyPropertyChanged
             return TimeText.DateTime(UnavailableSince) is { } at ? $"{at} に確認: {what}" : what;
         }
     }
+
+    /// <summary>今着ているアバターの ID から、チェックバッジの印を付け直す。グループは中にそのアバターがいれば付ける。</summary>
+    public void MarkCurrent(string? currentAvatarId)
+        => IsCurrent = IsGroup ? Members.Any(m => m.Id == currentAvatarId) : Id == currentAvatarId;
 
     private bool _isCurrent;
     /// <summary>現在着ているアバター(グループの場合は中に現在のアバターがいる)。チェックバッジの表示に使う。</summary>

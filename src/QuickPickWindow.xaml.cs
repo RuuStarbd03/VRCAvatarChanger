@@ -17,6 +17,7 @@ public partial class QuickPickWindow : Window
     private readonly Func<AvatarItem, Task<bool>> _change;
     private readonly Action _refocusGame;
     private readonly Action<string> _saveSortKey;
+    private readonly Action<AvatarItem> _requestThumbnail;
     private List<AvatarItem> _all = [];
     private IReadOnlyList<string> _recentAvatars = [];
     private bool _busy;
@@ -30,11 +31,14 @@ public partial class QuickPickWindow : Window
     /// </summary>
     internal const double DesignWidthDip = 380;
 
-    public QuickPickWindow(Func<AvatarItem, Task<bool>> change, Action refocusGame, Action<string> saveSortKey)
+    /// <param name="requestThumbnail">行が画面に出たときに呼ぶ。サムネイルは見えた行のぶんだけ読む (全件を展開しない)</param>
+    public QuickPickWindow(Func<AvatarItem, Task<bool>> change, Action refocusGame, Action<string> saveSortKey,
+        Action<AvatarItem> requestThumbnail)
     {
         _change = change;
         _refocusGame = refocusGame;
         _saveSortKey = saveSortKey;
+        _requestThumbnail = requestThumbnail;
         InitializeComponent();
         Deactivated += (_, _) => { if (!_busy) CloseOverlay(refocus: false); };
         // 初回表示では別の DPI のモニターでウィンドウが作られてから移動するため、移動時に
@@ -71,8 +75,9 @@ public partial class QuickPickWindow : Window
         _ready = false;
         InitSortControls(sortKey);
         _ready = true;
-        SearchBox.Text = "";
-        ApplyFilter();
+        // 前回の検索語が残っていれば消す (消すと TextChanged で絞り込み直されるので、ここでは呼ばない)
+        if (SearchBox.Text.Length > 0) SearchBox.Text = "";
+        else ApplyFilter();
         StatusText.Text = _all.Count == 0 ? "一覧が空です。AvatarChanger でログインして一覧を読み込んでください。" : "";
 
         var wPx = (int)Math.Round(DesignWidthDip * scale);
@@ -172,6 +177,16 @@ public partial class QuickPickWindow : Window
     {
         SearchHint.Visibility = SearchBox.Text.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
         ApplyFilter();
+    }
+
+    private void Row_Realized(object sender, RoutedEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.DataContext is AvatarItem item) _requestThumbnail(item);
+    }
+
+    private void Row_DataContextChanged(object sender, DependencyPropertyChangedEventArgs e)
+    {
+        if (e.NewValue is AvatarItem item) _requestThumbnail(item);
     }
 
     private async void List_MouseLeftButtonUp(object sender, MouseButtonEventArgs e)

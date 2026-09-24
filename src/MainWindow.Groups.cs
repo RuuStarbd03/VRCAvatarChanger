@@ -1,7 +1,6 @@
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
-using System.Windows.Media;
 
 namespace VRCAvatarChanger;
 
@@ -122,13 +121,13 @@ public partial class MainWindow
     private AvatarItem? _dragSource;
     private AvatarItem? _dropTarget;
 
-    private static AvatarItem? ItemAt(ItemsControl list, DependencyObject? origin)
+    private static AvatarItem? ItemAt(DependencyObject? origin)
         => VisualTree.FindAncestor<ListViewItem>(origin)?.DataContext as AvatarItem;
 
     private void AvatarList_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
         _dragStart = e.GetPosition(AvatarList);
-        _dragSource = ItemAt(AvatarList, e.OriginalSource as DependencyObject);
+        _dragSource = ItemAt(e.OriginalSource as DependencyObject);
     }
 
     private void AvatarList_PreviewMouseMove(object sender, MouseEventArgs e)
@@ -155,7 +154,7 @@ public partial class MainWindow
     private void AvatarList_DragOver(object sender, DragEventArgs e)
     {
         var src = e.Data.GetData(typeof(AvatarItem)) as AvatarItem;
-        var target = ItemAt(AvatarList, e.OriginalSource as DependencyObject);
+        var target = ItemAt(e.OriginalSource as DependencyObject);
         var ok = src is not null && target is not null && !ReferenceEquals(src, target) && !(src.IsGroup && target.IsGroup && src.Group == target.Group);
         e.Effects = ok ? DragDropEffects.Move : DragDropEffects.None;
         SetDropTarget(ok ? target : null);
@@ -167,7 +166,7 @@ public partial class MainWindow
     private void AvatarList_Drop(object sender, DragEventArgs e)
     {
         var src = e.Data.GetData(typeof(AvatarItem)) as AvatarItem;
-        var target = ItemAt(AvatarList, e.OriginalSource as DependencyObject);
+        var target = ItemAt(e.OriginalSource as DependencyObject);
         SetDropTarget(null);
         e.Handled = true;
         if (src is null || target is null || ReferenceEquals(src, target)) return;
@@ -199,7 +198,7 @@ public partial class MainWindow
                 ? $"「{src.Name}」と {target.Name} を「{dest.Name}」にまとめました"
                 : $"{src.Name} と {target.Name} を「{dest.Name}」にまとめました。名前は右クリックで変えられます";
         }
-        foreach (var id in srcIds) _groups.Assign(id, dest);
+        _groups.Assign(srcIds, dest);
         if (srcGroup is not null && srcGroup != dest) _groups.Delete(srcGroup);
 
         SetStatus(StatusKind.Success, message);

@@ -1,9 +1,6 @@
 ﻿using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
-using System.Windows.Media;
-using System.Windows.Media.Animation;
-using System.Windows.Media.Imaging;
 
 namespace VRCAvatarChanger;
 
@@ -18,6 +15,7 @@ namespace VRCAvatarChanger;
 //   MainWindow.Updates.cs 自動アップデート
 //   MainWindow.Details.cs アバターの詳細 (オーバーレイ)
 //   MainWindow.Shortcuts.cs メイン画面のキーボード操作
+//   MainWindow.Vr.cs      VR (SteamVR) の手首ボタン (本体は VrOverlay.cs / VrPanel.cs)
 //   MainWindow.Preview.cs UI プレビュー / 自己診断 (Debug のみ)
 public partial class MainWindow : Window
 {
@@ -73,6 +71,7 @@ public partial class MainWindow : Window
         InitSortControls(savedSort);
         InitWatchVRChat(); // _ready 前に呼ぶ (トグルの初期化でイベントを発火させない)
         InitQuickOverlay();
+        InitVr();
         _ready = true;
         GridColumns = savedColumns;
         ColumnsSlider.Value = savedColumns;
@@ -256,7 +255,13 @@ public partial class MainWindow : Window
         // 「追加日」はパブリックタブではリストに追加した日時、それ以外はアバターの作成日時。日時が無いものは末尾に寄せる
         static DateTimeOffset? Added(AvatarItem a) => a.AddedAt ?? a.Avatar.CreatedAt;
         // 使用履歴の順位。使っていないものは末尾へ。グループは中で一番新しく使ったメンバーで代表する
-        var rank = recent?.Select((id, i) => (id, i)).ToDictionary(t => t.id, t => t.i);
+        // (索引を作るのは「最近使った順」のときだけ。検索の打鍵ごとに通るので、使わない並びでは作らない)
+        Dictionary<string, int>? rank = null;
+        if (recent is not null && key.StartsWith("recent", StringComparison.Ordinal))
+        {
+            rank = new Dictionary<string, int>(recent.Count, StringComparer.Ordinal);
+            for (var i = 0; i < recent.Count; i++) rank.TryAdd(recent[i], i);
+        }
         int Recent(AvatarItem a)
         {
             if (rank is null) return int.MaxValue;
@@ -557,6 +562,7 @@ public partial class MainWindow : Window
         WatchToggle.IsChecked = _settings.WatchVRChat;
         QuickToggle.IsChecked = _settings.QuickOverlay;
         KeepLoginToggle.IsChecked = _settings.KeepBrowserLogin;
+        ShowVrSettings();
         (_settings.Theme switch { "light" => ThemeLight, "dark" => ThemeDark, _ => ThemeSystem }).IsChecked = true;
         AccountDesc.Text = (string.IsNullOrEmpty(_user?.DisplayName) ? "" : $"{_user.DisplayName} としてログイン中。")
             + "ログイン状態を消して戻ります。";
@@ -656,11 +662,11 @@ public partial class MainWindow : Window
         {
             int? refreshedEntries = null;
             var newlyUnavailable = 0;
+            List<AvatarItem> items;
             if (pub)
             {
                 if (refresh) (refreshedEntries, newlyUnavailable) = await RefreshPublicEntriesAsync(ct);
-                _allItems.Clear();
-                _allItems.AddRange(_public.Entries.Select(e => PublicItemOf(e, _tags.TagsOf(e.Avatar.Id))));
+                items = _public.Entries.Select(e => PublicItemOf(e, _tags.TagsOf(e.Avatar.Id))).ToList();
             }
             else
             {
@@ -672,19 +678,15 @@ public partial class MainWindow : Window
                 {
                     var note = $" ({cached.FetchedAt:HH:mm} 時点・F5 で取り直し)";
                     // すでに同じものを出しているなら作り直さない (トレイから開き直したときなど)
-                    if (AlreadyShowing(cached.Avatars))
-                    {
-                        ShowListState(loading: false);
-                        SetStatus(StatusKind.Info, CountText() + note);
-                    }
-                    else ShowAvatars(cached.Avatars, favorites, ct, note);
+                    if (AlreadyShowing(cached.Avatars)) KeepShowing(note);
+                    else ShowItems(ItemsOf(cached.Avatars, favorites), ct, note);
                     return;
                 }
                 // 前回の一覧があれば先に見せる。サムネもディスクキャッシュから戻るので待たされない
                 if (cached is not null)
                 {
                     if (AlreadyShowing(cached.Avatars)) ShowListState(loading: false);
-                    else ShowAvatars(cached.Avatars, favorites, ct, " (前回の一覧・最新を確認しています)");
+                    else ShowItems(ItemsOf(cached.Avatars, favorites), ct, " (前回の一覧・最新を確認しています)");
                 }
                 try
                 {
@@ -694,14 +696,11 @@ public partial class MainWindow : Window
                     {
                         // 取り直したが中身は同じだった。一覧を作り直さない
                         // (件数によらず作り直しだけで 20ms 前後かかり、スクロール位置も先頭に戻ってしまう)
-                        ShowListState(loading: false);
-                        SetStatus(StatusKind.Info, CountText());
+                        KeepShowing("");
                         if (refresh) RefreshFavoriteStateAsync(ct).Forget();
                         return;
                     }
-                    _allItems.Clear();
-                    // 自分のアバターにはタグを載せる（お気に入りはグループ表示を優先）
-                    _allItems.AddRange(avatars.Select(a => NewItem(a, favorites)));
+                    items = ItemsOf(avatars, favorites);
                 }
                 catch (Exception ex) when (cached is not null
                                            && ex is not OperationCanceledException
@@ -714,19 +713,14 @@ public partial class MainWindow : Window
                     return;
                 }
             }
-            ShowListState(loading: false);
-            BuildFilterChips();
-            ApplyFilter();
-            UpdateUserHeader();
-            Log.Info($"一覧を表示: {(pub ? "パブリック" : favorites ? "お気に入り" : "自分のアバター")} {_allItems.Count} 件"
-                     + (refreshedEntries is { } rn ? $" (パブリック {rn} 件を取り直し)" : ""));
-            SetStatus(StatusKind.Info, CountText() + refreshedEntries switch
+            ShowItems(items, ct, refreshedEntries switch
             {
                 null => "",
                 0 => " (情報は最新です)",
                 var n => $" ({n} 件の情報を更新しました)",
             } + UnavailableNote(newlyUnavailable));
-            QueueThumbnails(_allItems.ToList(), ct);
+            Log.Info($"一覧を表示: {(pub ? "パブリック" : favorites ? "お気に入り" : "自分のアバター")} {_allItems.Count} 件"
+                     + (refreshedEntries is { } rn ? $" (パブリック {rn} 件を取り直し)" : ""));
             if (refresh) RefreshFavoriteStateAsync(ct).Forget();
         }
         catch (OperationCanceledException) { }
@@ -741,17 +735,31 @@ public partial class MainWindow : Window
         finally { RefreshButton.IsEnabled = true; }
     }
 
-    /// <summary>アバター列を一覧に載せて表示する(取得したものでも、キャッシュから読んだものでも同じ扱い)。</summary>
-    private void ShowAvatars(List<Avatar> avatars, bool favorites, CancellationToken ct, string note)
+    /// <summary>アバター列を一覧の項目にする。自分のアバターにはタグを載せる (お気に入りはグループ表示を優先)。</summary>
+    private List<AvatarItem> ItemsOf(List<Avatar> avatars, bool favorites)
+        => avatars.Select(a => NewItem(a, favorites)).ToList();
+
+    /// <summary>
+    /// 項目を一覧に載せて表示する (取得したものでも、キャッシュから読んだものでも、パブリックでも同じ手順)。
+    /// note はステータスの件数の後ろに添える一言。
+    /// </summary>
+    private void ShowItems(List<AvatarItem> items, CancellationToken ct, string note)
     {
         _allItems.Clear();
-        _allItems.AddRange(avatars.Select(a => NewItem(a, favorites)));
+        _allItems.AddRange(items);
         ShowListState(loading: false);
         BuildFilterChips();
         ApplyFilter();
         UpdateUserHeader();
         SetStatus(StatusKind.Info, CountText() + note);
         QueueThumbnails(_allItems.ToList(), ct);
+    }
+
+    /// <summary>同じ内容を表示中なので、一覧は作り直さずに読み込み中の表示だけ外す。</summary>
+    private void KeepShowing(string note)
+    {
+        ShowListState(loading: false);
+        SetStatus(StatusKind.Info, CountText() + note);
     }
 
     /// <summary>今まさに同じ内容を表示中か (何も出していないときは false)。</summary>
@@ -830,8 +838,7 @@ public partial class MainWindow : Window
         if (_openGroup is not null)
         {
             // グループを開いている: そのメンバーだけ
-            var memberIds = _openGroup.AvatarIds.ToHashSet(StringComparer.Ordinal);
-            list = sorted.Where(a => memberIds.Contains(a.Id)).ToList();
+            list = MembersOf(sorted, _openGroup);
             GroupBarName.Text = _openGroup.Name;
             GroupBarCount.Text = $"{list.Count} 体";
         }
@@ -840,21 +847,7 @@ public partial class MainWindow : Window
             // グループ化 OFF: すべて個別に表示
             list = sorted;
         }
-        else
-        {
-            // グループに属するアバターは 1 枚のグループタイルにまとめる(代表 = 並び順で先頭のメンバー)
-            var membership = _groups.BuildMembershipIndex();
-            var byGroup = new Dictionary<AvatarGroup, List<AvatarItem>>();
-            list = [];
-            foreach (var a in sorted)
-            {
-                if (!membership.TryGetValue(a.Id, out var g)) { list.Add(a); continue; }
-                if (!byGroup.TryGetValue(g, out var members)) byGroup[g] = members = [];
-                members.Add(a);
-            }
-            list.AddRange(byGroup.Select(kv => new AvatarItem(kv.Key, kv.Value)));
-            list = ApplySort(list, SortKey, _settings.RecentAvatars).ToList();
-        }
+        else list = GroupIntoTiles(sorted, SortKey);
         // 並びも中身も今と同じなら入れ直さない。一覧の作り直しは件数によらず 20ms 前後かかるうえ、
         // スクロール位置と選択が先頭に戻ってしまう (タグ編集や色分けの切り替えなど、見た目が変わらない場合に効く)
         if (AvatarList.ItemsSource is List<AvatarItem> shown && SameContent(shown, list)) list = shown;
@@ -865,6 +858,32 @@ public partial class MainWindow : Window
         if (reselect is not null) AvatarList.SelectedItem = reselect;
         RefreshCurrentMarks();
         if (SkeletonPanel.Visibility != Visibility.Visible) UpdateEmptyState(list.Count);
+    }
+
+    /// <summary>並べ済みの一覧から、グループのメンバーだけを並びを保って取り出す。メイン画面と VR パネルで共通。</summary>
+    private static List<AvatarItem> MembersOf(List<AvatarItem> sorted, AvatarGroup group)
+    {
+        var memberIds = group.AvatarIds.ToHashSet(StringComparer.Ordinal);
+        return sorted.Where(a => memberIds.Contains(a.Id)).ToList();
+    }
+
+    /// <summary>
+    /// グループに属するアバターを 1 枚のグループタイルにまとめ、タイルごと並べ直す。
+    /// グループの中身はそのまま並び順を保つ。メイン画面と VR パネルで共通。
+    /// </summary>
+    private List<AvatarItem> GroupIntoTiles(List<AvatarItem> sorted, string sortKey)
+    {
+        var membership = _groups.BuildMembershipIndex();
+        var byGroup = new Dictionary<AvatarGroup, List<AvatarItem>>();
+        var list = new List<AvatarItem>();
+        foreach (var a in sorted)
+        {
+            if (!membership.TryGetValue(a.Id, out var g)) { list.Add(a); continue; }
+            if (!byGroup.TryGetValue(g, out var members)) byGroup[g] = members = [];
+            members.Add(a);
+        }
+        list.AddRange(byGroup.Select(kv => new AvatarItem(kv.Key, kv.Value)));
+        return ApplySort(list, sortKey, _settings.RecentAvatars).ToList();
     }
 
     /// <summary>
@@ -892,8 +911,7 @@ public partial class MainWindow : Window
     {
         var cur = _user?.CurrentAvatar;
         if (AvatarList.ItemsSource is not IEnumerable<AvatarItem> items) return;
-        foreach (var item in items)
-            item.IsCurrent = item.IsGroup ? item.Members.Any(m => m.Id == cur) : item.Id == cur;
+        foreach (var item in items) item.MarkCurrent(cur);
     }
 
     private void AvatarList_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -910,7 +928,7 @@ public partial class MainWindow : Window
     private async void AvatarList_MouseDoubleClick(object sender, MouseButtonEventArgs e)
     {
         // タイル以外(余白)のダブルクリックは無視
-        if (ItemAt(AvatarList, e.OriginalSource as DependencyObject) is not { } item) return;
+        if (ItemAt(e.OriginalSource as DependencyObject) is not { } item) return;
         if (item.IsGroup) OpenGroup(item.Group!);
         else await ChangeFromListAsync(item);
     }

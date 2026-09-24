@@ -1,6 +1,3 @@
-using System.IO;
-using System.Text.Json;
-
 namespace VRCAvatarChanger;
 
 public sealed class AvatarGroup
@@ -56,10 +53,16 @@ public sealed class GroupStore
     }
 
     /// <summary>グループに割り当てる。別のグループに入っていたらそこからは外す。</summary>
-    public void Assign(string avatarId, AvatarGroup group)
+    public void Assign(string avatarId, AvatarGroup group) => Assign([avatarId], group);
+
+    /// <summary>まとめて割り当てる。グループ同士の統合などで、1 体ごとにファイルを書き直さないため。</summary>
+    public void Assign(IEnumerable<string> avatarIds, AvatarGroup group)
     {
-        foreach (var g in _groups) g.AvatarIds.Remove(avatarId);
-        group.AvatarIds.Add(avatarId);
+        foreach (var avatarId in avatarIds)
+        {
+            foreach (var g in _groups) g.AvatarIds.Remove(avatarId);
+            group.AvatarIds.Add(avatarId);
+        }
         Save();
     }
 

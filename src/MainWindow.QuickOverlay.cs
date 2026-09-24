@@ -1,8 +1,6 @@
 using System.Diagnostics;
 using System.Runtime.InteropServices;
-using System.Windows;
 using System.Windows.Input;
-using System.Windows.Media;
 
 namespace VRCAvatarChanger;
 
@@ -109,7 +107,7 @@ public partial class MainWindow
 
     private void ToggleQuickOverlay()
     {
-        _quick ??= new QuickPickWindow(QuickChangeAsync, RefocusVRChat, SaveQuickSortKey);
+        _quick ??= new QuickPickWindow(QuickChangeAsync, RefocusVRChat, SaveQuickSortKey, RequestThumbnail);
         if (_quick.IsVisible) { _quick.CloseOverlay(refocus: true); return; }
         // PerMonitorV2 では WPF の DIP 変換の倍率が「どのモニターにいるか」で変わり、
         // メインウィンドウと VRChat が別モニターだと座標がずれる。
@@ -141,20 +139,18 @@ public partial class MainWindow
         return Win32.WorkAreaPx(_vrchatHwnd);
     }
 
-    /// <summary>今の一覧をグループ展開してフラットにしたアバターだけの列。</summary>
+    /// <summary>
+    /// 今のタブのアバター (グループにまとめる前)。グループのタイルは表示用の一覧にだけ作られ、
+    /// _allItems にはアバターしか入らないので、そのまま写せばよい。
+    /// </summary>
     private List<AvatarItem> FlatAvatarItems()
     {
-        var flat = new List<AvatarItem>();
-        foreach (var item in _allItems)
-        {
-            if (item.IsGroup) flat.AddRange(item.Members);
-            else flat.Add(item);
-        }
-        // グループの中身はメイン画面の現在マーク更新の対象外なので、ここで付け直す
+        var flat = _allItems.ToList();
+        // グループにまとめられて一覧に出ていないアバターは、メイン画面の現在マーク更新の対象外なので、ここで付け直す
         var cur = _user?.CurrentAvatar;
-        foreach (var i in flat) i.IsCurrent = i.Id == cur;
-        // サムネ未取得のもの (グループの中身など) を優先で読み込む。これから見えるものなので後回しにしない
-        foreach (var i in flat) RequestThumbnail(i);
+        foreach (var i in flat) i.MarkCurrent(cur);
+        // サムネイルはここでは要求しない。全件を要求すると見ない行まで展開して上限を使い切り、
+        // メイン画面の画像を押し出してしまう。オーバーレイの行が画面に出たときに要求される
         return flat;
     }
 

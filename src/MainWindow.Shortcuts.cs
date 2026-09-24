@@ -154,9 +154,7 @@ public partial class MainWindow
         if (SelectedAvatar is not { } item) return;
         if (!Dialogs.Confirm(this, $"{item.Name} をパブリックから外しますか?\n(もう一度 ID か URL で追加すれば戻せます)")) return;
         var index = AvatarList.SelectedIndex;
-        _public.Remove(item.Id);
-        SetStatus(StatusKind.Info, $"{item.Name} をパブリックから外しました");
-        await LoadAvatarsAsync();
+        await RemoveFromPublicAsync(item);
         // 消した位置の次を選んでおくと、続けて Delete で片付けられる
         if (AvatarList.Items.Count > 0) AvatarList.SelectedIndex = Math.Min(index, AvatarList.Items.Count - 1);
         FocusList();

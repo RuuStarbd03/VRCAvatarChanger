@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using System.Windows;
 using System.Windows.Controls;
 using Microsoft.Win32;
@@ -80,7 +79,7 @@ public partial class MainWindow
         if (_watchTimer is null)
         {
             _watchTimer = new System.Windows.Threading.DispatcherTimer { Interval = WatchIdleInterval };
-            _watchTimer.Tick += (_, _) => WatchTick();
+            _watchTimer.Tick += async (_, _) => await WatchTickAsync();
         }
         _vrchatWasRunning = IsVRChatRunning(); // 有効化した時点で既に起動中なら、それを理由には開かない
         _watchTimer.Start();
@@ -94,9 +93,18 @@ public partial class MainWindow
         _trayIcon = null;
     }
 
-    private void WatchTick()
+    private bool _watchChecking;
+
+    private async Task WatchTickAsync()
     {
-        var running = IsVRChatRunning();
+        // プロセスの列挙は全プロセスを見るので数 ms〜かかる。常駐中ずっと繰り返すので UI スレッドの外で行う
+        if (_watchChecking) return;
+        _watchChecking = true;
+        bool running;
+        try { running = await Task.Run(IsVRChatRunning); }
+        catch (Exception ex) { Log.Debug("VRChat の起動を確認できませんでした (次の周期で再確認します)", ex); return; }
+        finally { _watchChecking = false; }
+        if (_watchTimer is not { IsEnabled: true }) return; // 確認している間に連動がオフにされた
         // 「未起動 → 起動」の変化のときだけ開く (VRChat 起動中に手で閉じたウィンドウを勝手に開き直さない)
         if (running && !_vrchatWasRunning && !IsVisible) ShowFromTray();
         _vrchatWasRunning = running;
@@ -105,12 +113,7 @@ public partial class MainWindow
         if (_watchTimer is not null && _watchTimer.Interval != interval) _watchTimer.Interval = interval;
     }
 
-    private static bool IsVRChatRunning()
-    {
-        var ps = Process.GetProcessesByName("VRChat");
-        foreach (var p in ps) p.Dispose();
-        return ps.Length > 0;
-    }
+    private static bool IsVRChatRunning() => Shell.IsRunning("VRChat");
 
     private void ShowFromTray()
     {

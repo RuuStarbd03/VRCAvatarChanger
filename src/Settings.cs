@@ -1,6 +1,3 @@
-using System.IO;
-using System.Text.Json;
-
 namespace VRCAvatarChanger;
 
 /// <summary>表示設定など、機密ではない設定。%AppData%\VRCAvatarChanger\settings.json に平文で保存する。</summary>
@@ -8,6 +5,8 @@ public sealed class Settings
 {
     public const int MinGridColumns = 3;
     public const int MaxGridColumns = 10;
+    public const double MinVrAlongCm = -5, MaxVrAlongCm = 20;
+    public const double MinVrHeightCm = -5, MaxVrHeightCm = 5;
 
     public string ViewMode { get; set; } = "list";   // "list" | "grid"
     /// <summary>配色。"system" (Windows のアプリのモードに合わせる) / "light" / "dark"。</summary>
@@ -21,6 +20,21 @@ public sealed class Settings
     /// 残しておくと再ログインが数クリックで済む。オフにすると従来どおり毎回消去する。
     /// </summary>
     public bool KeepBrowserLogin { get; set; } = true;
+    /// <summary>VR (SteamVR) の手首ボタンとアバター選択パネル。SteamVR と VRChat が動いているときだけ出る。</summary>
+    public bool VrOverlay { get; set; } = true;
+    /// <summary>手首ボタンを付ける手。"left" / "right"。</summary>
+    public string VrHand { get; set; } = "left";
+    /// <summary>手首ボタンを腕時計の位置から肘側へずらす量 (cm)。OVR Toolkit などの腕時計と重ならないように。</summary>
+    public double VrButtonAlongCm { get; set; } = 8;
+    /// <summary>手首ボタンの高さの微調整 (cm、腕から浮かせる向きが +)。</summary>
+    public double VrButtonHeightCm { get; set; }
+    // VR パネルの表示状態。メイン画面とは別に持ち、VR の中で切り替えたものを次に開いたときも使う
+    /// <summary>VR パネルのタブ。"own" / "favorites" / "public"。</summary>
+    public string VrTab { get; set; } = AvatarTab.Own;
+    /// <summary>VR パネルの並び順。"recent_asc" / "name_asc"。</summary>
+    public string VrSortKey { get; set; } = "recent_asc";
+    /// <summary>VR パネルでグループを 1 枚にまとめるか。</summary>
+    public bool VrGroupView { get; set; } = true;
     /// <summary>クイック着替えのオーバーレイを開くキー。空 = 割り当てなし。</summary>
     public string QuickHotkey { get; set; } = "Shift+D1";
     /// <summary>直前に着ていたアバターに戻すキー。空 = 割り当てなし。</summary>
@@ -64,6 +78,11 @@ public sealed class Settings
         s.GridColumns = Math.Clamp(s.GridColumns, MinGridColumns, MaxGridColumns);
         if (s.ViewMode is not ("list" or "grid")) s.ViewMode = "list";
         if (s.Theme is not ("system" or "light" or "dark")) s.Theme = "system";
+        if (s.VrHand is not ("left" or "right")) s.VrHand = "left";
+        if (s.VrTab is not (AvatarTab.Own or AvatarTab.Favorites or AvatarTab.Public)) s.VrTab = AvatarTab.Own;
+        if (s.VrSortKey is not ("recent_asc" or "name_asc")) s.VrSortKey = "recent_asc";
+        s.VrButtonAlongCm = Math.Clamp(s.VrButtonAlongCm, MinVrAlongCm, MaxVrAlongCm);
+        s.VrButtonHeightCm = Math.Clamp(s.VrButtonHeightCm, MinVrHeightCm, MaxVrHeightCm);
         return s;
     }
 
