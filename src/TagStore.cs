@@ -39,11 +39,17 @@ public sealed class TagStore
     public IReadOnlyList<string> TagsOf(string avatarId)
         => _tags.TryGetValue(avatarId, out var tags) ? tags : [];
 
-    public void SetTags(string avatarId, IEnumerable<string> tags)
+    public void SetTags(string avatarId, IEnumerable<string> tags) => SetTags([avatarId], tags);
+
+    /// <summary>複数のアバターに同じタグを付ける (グループの全員など)。1 体ごとにファイルを書き直さないため。</summary>
+    public void SetTags(IEnumerable<string> avatarIds, IEnumerable<string> tags)
     {
         var list = Normalize(tags);
-        if (list.Count == 0) _tags.Remove(avatarId);
-        else _tags[avatarId] = list;
+        foreach (var avatarId in avatarIds)
+        {
+            if (list.Count == 0) _tags.Remove(avatarId);
+            else _tags[avatarId] = [.. list]; // 1 体ごとに別のリストを持たせる (あとで 1 体だけ変えても他に波及しない)
+        }
         Save();
     }
 }

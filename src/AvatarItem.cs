@@ -71,7 +71,7 @@ public sealed class AvatarItem : INotifyPropertyChanged
     public string SubText
     {
         get => _subText ?? AuthorName;
-        set { _subText = value; OnPropertyChanged(); }
+        set { if (_subText != value) { _subText = value; OnPropertyChanged(); } }
     }
 
     private string? _subText2;
@@ -84,7 +84,10 @@ public sealed class AvatarItem : INotifyPropertyChanged
         get => _subText2;
         set
         {
-            _subText2 = string.IsNullOrEmpty(value) ? null : value;
+            // 絞り込みのたびに全件へ入れ直されるので、変わらないときは通知しない
+            var v = string.IsNullOrEmpty(value) ? null : value;
+            if (_subText2 == v) return;
+            _subText2 = v;
             OnPropertyChanged();
             OnPropertyChanged(nameof(HasSubText2));
         }

@@ -121,11 +121,8 @@ public partial class MainWindow
                 .ToList();
             var win = new TagPickerWindow($"グループ「{item.Name}」の {item.Members.Count} 体すべてに適用します", _tags.AllTags(), common) { Owner = this };
             if (win.ShowDialog() != true || win.Result is null) return;
-            foreach (var m in item.Members)
-            {
-                _tags.SetTags(m.Id, win.Result);
-                m.Tags = win.Result;
-            }
+            _tags.SetTags(item.Members.Select(m => m.Id), win.Result);
+            foreach (var m in item.Members) m.Tags = win.Result;
             SetStatus(StatusKind.Info, win.Result.Count > 0
                 ? $"「{item.Name}」の {item.Members.Count} 体にタグを付けました: {string.Join(", ", win.Result)}"
                 : $"「{item.Name}」の {item.Members.Count} 体からタグを外しました");

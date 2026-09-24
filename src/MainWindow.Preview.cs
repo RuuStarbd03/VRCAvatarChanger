@@ -227,7 +227,7 @@ public partial class MainWindow
         {
             // クイック着替えオーバーレイを画面外に開いて撮る
             Left = -4000; Top = 0;
-            _quick = new QuickPickWindow(QuickChangeAsync, () => { }, SaveQuickSortKey);
+            _quick = new QuickPickWindow(QuickChangeAsync, () => { }, SaveQuickSortKey, RequestThumbnail);
             _quick.OpenAt(new Win32.NativeRect { Left = -4400, Top = 0, Right = -4000, Bottom = 760 }, 1.0,
                 FlatAvatarItems(), _settings.RecentAvatars,
                 Environment.GetEnvironmentVariable("VRCAC_UI_PREVIEW_SORT") ?? _settings.QuickSortKey,
@@ -262,7 +262,7 @@ public partial class MainWindow
             sb.AppendLine($"vrchat scale= {scale}");
             sb.AppendLine($"main scale  = {VisualTreeHelper.GetDpi(this).DpiScaleX}");
 
-            _quick = new QuickPickWindow(QuickChangeAsync, () => { }, SaveQuickSortKey);
+            _quick = new QuickPickWindow(QuickChangeAsync, () => { }, SaveQuickSortKey, RequestThumbnail);
             _quick.OpenAt(area, scale, FlatAvatarItems(), _settings.RecentAvatars, _settings.QuickSortKey,
                 Hotkey.Parse(_settings.QuickHotkey));
             var wantW = (int)Math.Round(QuickPickWindow.DesignWidthDip * scale);
@@ -687,8 +687,15 @@ public partial class MainWindow
 
             // 一覧キャッシュの読み書き (起動のたびに通る)
             var avatars = _allItems.Select(a => a.Avatar).ToList();
+            // 保存は UI スレッドで待つぶんだけ (書き出しは裏で行う)。読み込みは 2 回目以降はメモリから返る
             Measure("一覧キャッシュ 保存", () => AvatarListCache.Save(AvatarListCache.Own, "usr_perf", avatars), 10);
             Measure("一覧キャッシュ 読み込み", () => AvatarListCache.Load(AvatarListCache.Own, "usr_perf"), 10);
+            await Task.Delay(500); // 裏の書き出しが終わるのを待ってから、ファイルからの読み込みを測る
+            Measure("一覧キャッシュ 読み込み (起動直後・ファイルから)", () =>
+            {
+                AvatarListCache.DropMemory();
+                AvatarListCache.Load(AvatarListCache.Own, "usr_perf");
+            }, 10);
         }
         catch (Exception ex) { report.AppendLine("EXCEPTION: " + ex); }
         if (!string.IsNullOrEmpty(reportPath)) File.WriteAllText(reportPath, report.ToString());

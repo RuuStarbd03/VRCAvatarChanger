@@ -256,7 +256,13 @@ public partial class MainWindow : Window
         // 「追加日」はパブリックタブではリストに追加した日時、それ以外はアバターの作成日時。日時が無いものは末尾に寄せる
         static DateTimeOffset? Added(AvatarItem a) => a.AddedAt ?? a.Avatar.CreatedAt;
         // 使用履歴の順位。使っていないものは末尾へ。グループは中で一番新しく使ったメンバーで代表する
-        var rank = recent?.Select((id, i) => (id, i)).ToDictionary(t => t.id, t => t.i);
+        // (索引を作るのは「最近使った順」のときだけ。検索の打鍵ごとに通るので、使わない並びでは作らない)
+        Dictionary<string, int>? rank = null;
+        if (recent is not null && key.StartsWith("recent", StringComparison.Ordinal))
+        {
+            rank = new Dictionary<string, int>(recent.Count, StringComparer.Ordinal);
+            for (var i = 0; i < recent.Count; i++) rank.TryAdd(recent[i], i);
+        }
         int Recent(AvatarItem a)
         {
             if (rank is null) return int.MaxValue;

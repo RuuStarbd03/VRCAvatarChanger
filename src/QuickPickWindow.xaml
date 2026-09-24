@@ -88,7 +88,8 @@
                      PreviewMouseLeftButtonUp="List_MouseLeftButtonUp">
                 <ListBox.ItemTemplate>
                     <DataTemplate>
-                        <Grid>
+                        <!-- Loaded / DataContextChanged = この行が画面に出た (使い回された) 合図。そこでサムネを要求する -->
+                        <Grid Loaded="Row_Realized" DataContextChanged="Row_DataContextChanged">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="Auto"/>
                                 <ColumnDefinition Width="*"/>

@@ -199,7 +199,7 @@ public partial class MainWindow
                 ? $"「{src.Name}」と {target.Name} を「{dest.Name}」にまとめました"
                 : $"{src.Name} と {target.Name} を「{dest.Name}」にまとめました。名前は右クリックで変えられます";
         }
-        foreach (var id in srcIds) _groups.Assign(id, dest);
+        _groups.Assign(srcIds, dest);
         if (srcGroup is not null && srcGroup != dest) _groups.Delete(srcGroup);
 
         SetStatus(StatusKind.Success, message);
