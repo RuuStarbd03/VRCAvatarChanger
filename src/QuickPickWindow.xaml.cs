@@ -75,8 +75,9 @@ public partial class QuickPickWindow : Window
         _ready = false;
         InitSortControls(sortKey);
         _ready = true;
-        SearchBox.Text = "";
-        ApplyFilter();
+        // 前回の検索語が残っていれば消す (消すと TextChanged で絞り込み直されるので、ここでは呼ばない)
+        if (SearchBox.Text.Length > 0) SearchBox.Text = "";
+        else ApplyFilter();
         StatusText.Text = _all.Count == 0 ? "一覧が空です。AvatarChanger でログインして一覧を読み込んでください。" : "";
 
         var wPx = (int)Math.Round(DesignWidthDip * scale);

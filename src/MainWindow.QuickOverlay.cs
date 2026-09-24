@@ -1,8 +1,6 @@
 using System.Diagnostics;
 using System.Runtime.InteropServices;
-using System.Windows;
 using System.Windows.Input;
-using System.Windows.Media;
 
 namespace VRCAvatarChanger;
 
@@ -141,16 +139,14 @@ public partial class MainWindow
         return Win32.WorkAreaPx(_vrchatHwnd);
     }
 
-    /// <summary>今の一覧をグループ展開してフラットにしたアバターだけの列。</summary>
+    /// <summary>
+    /// 今のタブのアバター (グループにまとめる前)。グループのタイルは表示用の一覧にだけ作られ、
+    /// _allItems にはアバターしか入らないので、そのまま写せばよい。
+    /// </summary>
     private List<AvatarItem> FlatAvatarItems()
     {
-        var flat = new List<AvatarItem>();
-        foreach (var item in _allItems)
-        {
-            if (item.IsGroup) flat.AddRange(item.Members);
-            else flat.Add(item);
-        }
-        // グループの中身はメイン画面の現在マーク更新の対象外なので、ここで付け直す
+        var flat = _allItems.ToList();
+        // グループにまとめられて一覧に出ていないアバターは、メイン画面の現在マーク更新の対象外なので、ここで付け直す
         var cur = _user?.CurrentAvatar;
         foreach (var i in flat) i.IsCurrent = i.Id == cur;
         // サムネイルはここでは要求しない。全件を要求すると見ない行まで展開して上限を使い切り、

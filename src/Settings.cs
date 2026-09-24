@@ -1,6 +1,3 @@
-using System.IO;
-using System.Text.Json;
-
 namespace VRCAvatarChanger;
 
 /// <summary>表示設定など、機密ではない設定。%AppData%\VRCAvatarChanger\settings.json に平文で保存する。</summary>

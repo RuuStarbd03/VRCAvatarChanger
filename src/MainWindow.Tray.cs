@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using System.Windows;
 using System.Windows.Controls;
 using Microsoft.Win32;
@@ -114,12 +113,7 @@ public partial class MainWindow
         if (_watchTimer is not null && _watchTimer.Interval != interval) _watchTimer.Interval = interval;
     }
 
-    private static bool IsVRChatRunning()
-    {
-        var ps = Process.GetProcessesByName("VRChat");
-        foreach (var p in ps) p.Dispose();
-        return ps.Length > 0;
-    }
+    private static bool IsVRChatRunning() => Shell.IsRunning("VRChat");
 
     private void ShowFromTray()
     {

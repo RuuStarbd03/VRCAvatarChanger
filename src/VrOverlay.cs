@@ -163,7 +163,7 @@ internal sealed class VrOverlay : IDisposable
         try
         {
             // プロセスの列挙は全プロセスを見るので UI スレッドの外で
-            var (steamVr, vrchat) = await Task.Run(() => (IsRunning("vrserver"), IsRunning("VRChat")));
+            var (steamVr, vrchat) = await Task.Run(() => (Shell.IsRunning("vrserver"), Shell.IsRunning("VRChat")));
             if (!_watch.IsEnabled) return; // 確認している間に止められた
             _vrchatRunning = vrchat;
             if (steamVr && vrchat && !_connected) Connect();
@@ -171,13 +171,6 @@ internal sealed class VrOverlay : IDisposable
         }
         catch (Exception ex) { Log.Debug("SteamVR / VRChat の起動を確認できませんでした (次の周期で再確認します)", ex); }
         finally { _checking = false; }
-    }
-
-    private static bool IsRunning(string processName)
-    {
-        var ps = Process.GetProcessesByName(processName);
-        foreach (var p in ps) p.Dispose();
-        return ps.Length > 0;
     }
 
     private void Connect()

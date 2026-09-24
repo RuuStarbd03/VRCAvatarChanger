@@ -1,9 +1,6 @@
 ﻿using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
-using System.Windows.Media;
-using System.Windows.Media.Animation;
-using System.Windows.Media.Imaging;
 
 namespace VRCAvatarChanger;
 
@@ -930,7 +927,7 @@ public partial class MainWindow : Window
     private async void AvatarList_MouseDoubleClick(object sender, MouseButtonEventArgs e)
     {
         // タイル以外(余白)のダブルクリックは無視
-        if (ItemAt(AvatarList, e.OriginalSource as DependencyObject) is not { } item) return;
+        if (ItemAt(e.OriginalSource as DependencyObject) is not { } item) return;
         if (item.IsGroup) OpenGroup(item.Group!);
         else await ChangeFromListAsync(item);
     }
