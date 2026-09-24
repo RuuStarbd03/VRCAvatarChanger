@@ -1,0 +1,4 @@
+# Valve 公式の openvr_api.cs はそのまま使う (手を入れると更新時に差分が追えなくなる)。
+# 自動生成扱いにして、このプロジェクトの Nullable などの警告を出さない。
+[openvr_api.cs]
+generated_code = true

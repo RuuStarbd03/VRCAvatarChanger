@@ -31,4 +31,10 @@
     <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4129.50" />
   </ItemGroup>
 
+  <!-- SteamVR (OpenVR v2.15.6、github.com/ValveSoftware/openvr)。openvr_api.cs / openvr_api.dll / LICENSE は公式のまま置いている。
+       dll は exe の隣に置き、単一 exe の発行では exe に同梱される (IncludeNativeLibrariesForSelfExtract) -->
+  <ItemGroup>
+    <None Include="OpenVR\openvr_api.dll" Link="openvr_api.dll" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
 </Project>

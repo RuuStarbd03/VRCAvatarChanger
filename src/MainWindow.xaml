@@ -862,6 +862,53 @@
                                 <ColumnDefinition Width="Auto"/>
                             </Grid.ColumnDefinitions>
                             <StackPanel>
+                                <TextBlock Text="VR の手首ボタン (SteamVR)" Style="{StaticResource SettingTitle}"/>
+                                <TextBlock Style="{StaticResource SettingDesc}"
+                                           Text="VR で手首を見るとボタンが出ます。反対の手で触れるか、レーザーで押すとアバター選択が開きます。開いたパネルは、グリップを握ったままスティックを前後に倒すと奥 / 手前へ動かせます。OVR Toolkit などの腕時計と重ならないよう、肘側にずらして置きます。"/>
+                                <StackPanel x:Name="VrOptionsPanel" Margin="0,10,0,0">
+                                    <StackPanel Orientation="Horizontal">
+                                        <RadioButton x:Name="VrHandLeft" Content="左手" GroupName="VrHand" Tag="left" Style="{StaticResource SegmentButton}" Checked="VrHand_Checked"/>
+                                        <RadioButton x:Name="VrHandRight" Content="右手" GroupName="VrHand" Tag="right" Style="{StaticResource SegmentButton}" Checked="VrHand_Checked"/>
+                                    </StackPanel>
+                                    <Grid Margin="0,8,0,0">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="92"/>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="56"/>
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Text="肘側へ" Style="{StaticResource SettingDesc}" VerticalAlignment="Center" Margin="0"/>
+                                        <Slider Grid.Column="1" x:Name="VrAlongSlider" Minimum="-5" Maximum="20" SmallChange="1" LargeChange="2"
+                                                IsSnapToTickEnabled="True" TickFrequency="1" VerticalAlignment="Center"
+                                                ValueChanged="VrPlacement_ValueChanged" AutomationProperties.Name="手首ボタンを肘側へずらす量"/>
+                                        <TextBlock Grid.Column="2" x:Name="VrAlongLabel" Style="{StaticResource SettingDesc}" VerticalAlignment="Center" TextAlignment="Right" Margin="0"/>
+                                    </Grid>
+                                    <Grid Margin="0,4,0,0">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="92"/>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="56"/>
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Text="浮かせる高さ" Style="{StaticResource SettingDesc}" VerticalAlignment="Center" Margin="0"/>
+                                        <Slider Grid.Column="1" x:Name="VrHeightSlider" Minimum="-5" Maximum="5" SmallChange="1" LargeChange="1"
+                                                IsSnapToTickEnabled="True" TickFrequency="1" VerticalAlignment="Center"
+                                                ValueChanged="VrPlacement_ValueChanged" AutomationProperties.Name="手首ボタンを浮かせる高さ"/>
+                                        <TextBlock Grid.Column="2" x:Name="VrHeightLabel" Style="{StaticResource SettingDesc}" VerticalAlignment="Center" TextAlignment="Right" Margin="0"/>
+                                    </Grid>
+                                </StackPanel>
+                            </StackPanel>
+                            <ToggleButton Grid.Column="1" x:Name="VrToggle" Style="{StaticResource OnOffToggle}"
+                                          Checked="VrToggle_Changed" Unchecked="VrToggle_Changed"
+                                          VerticalAlignment="Top" Margin="14,0,0,0" AutomationProperties.Name="VR の手首ボタン"/>
+                        </Grid>
+                    </Border>
+
+                    <Border Style="{StaticResource SettingRow}">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <StackPanel>
                                 <TextBlock Text="ブラウザのログイン状態を保持" Style="{StaticResource SettingTitle}"/>
                                 <TextBlock Style="{StaticResource SettingDesc}"
                                            Text="次回のログインが数クリックで済みます。共用 PC ではオフ推奨 (オフにすると保存済みのデータも消します)。"/>

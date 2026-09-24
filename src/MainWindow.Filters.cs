@@ -21,12 +21,7 @@ public partial class MainWindow
         try
         {
             FilterChips.Children.Clear();
-            // お気に入り: VRChat のお気に入りグループ / それ以外: 今の一覧で使われているタグ
-            List<string> values = IsFavoritesTab
-                ? _allItems.Select(a => a.Avatar.FavoriteGroup).OfType<string>().Where(g => g.Length > 0).Distinct().ToList()
-                : _allItems.SelectMany(a => a.Tags)
-                    .Distinct(StringComparer.CurrentCultureIgnoreCase)
-                    .OrderBy(t => t, StringComparer.CurrentCultureIgnoreCase).ToList();
+            var values = FilterValuesOf(_allItems, IsFavoritesTab);
             // パブリック: 使えなくなったものがあれば、それだけを見るチップを末尾に足す
             var unavailable = IsPublicTab ? _allItems.Count(a => a.IsUnavailable) : 0;
             if (values.Count == 0 && unavailable == 0)
@@ -97,15 +92,30 @@ public partial class MainWindow
 
     /// <summary>フィルタ選択中ならそれで絞り込む。</summary>
     private IEnumerable<AvatarItem> ApplyChipFilter(IEnumerable<AvatarItem> items)
+        => FilterBy(items, _filterValue, IsFavoritesTab);
+
+    /// <summary>
+    /// 一覧で選べるフィルタの値。お気に入り: VRChat のお気に入りグループ / それ以外: 使われているタグ (名前順)。
+    /// メイン画面のチップと VR パネルのチップで共通。
+    /// </summary>
+    internal static List<string> FilterValuesOf(IEnumerable<AvatarItem> items, bool favorites)
+        => favorites
+            ? items.Select(a => a.Avatar.FavoriteGroup).OfType<string>().Where(g => g.Length > 0).Distinct().ToList()
+            : items.SelectMany(a => a.Tags)
+                .Distinct(StringComparer.CurrentCultureIgnoreCase)
+                .OrderBy(t => t, StringComparer.CurrentCultureIgnoreCase).ToList();
+
+    /// <summary>フィルタの値で絞り込む (null = すべて)。メイン画面と VR パネルで共通。</summary>
+    internal static IEnumerable<AvatarItem> FilterBy(IEnumerable<AvatarItem> items, string? value, bool favorites)
     {
-        if (_filterValue is null) return items;
-        if (_filterValue == UnavailableFilter)
+        if (value is null) return items;
+        if (value == UnavailableFilter)
             return items.Where(a => a.IsGroup ? a.Members.Any(m => m.IsUnavailable) : a.IsUnavailable);
-        if (IsFavoritesTab) return items.Where(a => a.Avatar.FavoriteGroup == _filterValue);
+        if (favorites) return items.Where(a => a.Avatar.FavoriteGroup == value);
         // タグは、グループタイルの場合「中に 1 体でも該当がいれば」表示する
         return items.Where(a => a.IsGroup
-            ? a.Members.Any(m => m.Tags.Contains(_filterValue, StringComparer.CurrentCultureIgnoreCase))
-            : a.Tags.Contains(_filterValue, StringComparer.CurrentCultureIgnoreCase));
+            ? a.Members.Any(m => m.Tags.Contains(value, StringComparer.CurrentCultureIgnoreCase))
+            : a.Tags.Contains(value, StringComparer.CurrentCultureIgnoreCase));
     }
 
     private void MenuEditTags_Click(object sender, RoutedEventArgs e)

@@ -4,6 +4,9 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Media.Imaging;
+using Matrix4x4 = System.Numerics.Matrix4x4;
+using Vector3 = System.Numerics.Vector3;
 
 namespace VRCAvatarChanger;
 
@@ -105,6 +108,9 @@ public partial class MainWindow
         // 自前で撮影まで行うので、下の共通の撮影経路 (先に終了してしまう) には進ませない
         if (Environment.GetEnvironmentVariable("VRCAC_UI_PREVIEW_RETRYTEST") == "1") { _ = RunRetryTestAsync(); return; }
         if (Environment.GetEnvironmentVariable("VRCAC_UI_PREVIEW_SIZEPROBE") is { Length: > 0 } szPath) { _ = RunSizeProbeAsync(szPath); return; }
+        // VR パネルの確認: VRCAC_UI_PREVIEW_VR=フォルダ で、パネルと手首ボタンの画像と、当たり判定・座標計算の結果を書き出して終了する
+        // (SteamVR は使わないので、SteamVR の無い PC でも確かめられる)
+        if (Environment.GetEnvironmentVariable("VRCAC_UI_PREVIEW_VR") is { Length: > 0 } vrDir) { _ = RunVrTestAsync(vrDir); return; }
 
         // 見た目確認: VRCAC_UI_PREVIEW_SHOT=path でウィンドウを画面外に置いたまま PNG に描画して終了する
         // (実画面をキャプチャしないので、ゲーム中でも邪魔にならない)。SETTINGS=1 なら設定オーバーレイを開いた状態で撮る
@@ -699,6 +705,221 @@ public partial class MainWindow
         }
         catch (Exception ex) { report.AppendLine("EXCEPTION: " + ex); }
         if (!string.IsNullOrEmpty(reportPath)) File.WriteAllText(reportPath, report.ToString());
+        Application.Current.Shutdown();
+    }
+
+    /// <summary>
+    /// VR パネルの自己診断 (VRCAC_UI_PREVIEW_VR=フォルダ)。SteamVR には繋がず、次を確かめる:
+    /// 描画 (PNG に書き出す)、押した場所の判定、行列の変換、手首ボタンの向き、触れた点から画像座標への変換。
+    /// </summary>
+    private async Task RunVrTestAsync(string dir)
+    {
+        Left = -4000; Top = 0;
+        var report = new System.Text.StringBuilder();
+        var failures = 0;
+        void Expect(string label, bool ok, string detail = "")
+        {
+            if (!ok) failures++;
+            report.AppendLine($"{(ok ? "OK  " : "NG  ")}{label}{(detail.Length > 0 ? "  " + detail : "")}");
+        }
+        void Save(BitmapSource bmp, string name)
+        {
+            using var stream = File.Create(Path.Combine(dir, name));
+            var encoder = new PngBitmapEncoder();
+            encoder.Frames.Add(BitmapFrame.Create(bmp));
+            encoder.Save(stream);
+        }
+        try
+        {
+            Directory.CreateDirectory(dir);
+            // openvr_api.dll が読めること (SteamVR が無ければ false が返るだけで、例外にならない)
+            report.AppendLine($"OpenVR ランタイム: {(Valve.VR.OpenVR.IsRuntimeInstalled() ? "あり" : "なし")} (dll の読み込みは成功)");
+
+            // ---- 準備: グループ 1 つ (3 体)、タグ 2 種類、お気に入りの一覧キャッシュ ----
+            // (データはプレビュー用の一時フォルダにだけ書かれる)
+            var ids = _allItems.Select(a => a.Id).ToList();
+            var testGroup = _groups.Create("テストグループ");
+            _groups.Assign(ids.Skip(1).Take(3), testGroup); // 2〜4 番目
+            for (var i = 0; i < _allItems.Count; i++)
+                _allItems[i].Tags = i % 3 == 0 ? ["改変"] : i % 3 == 1 ? ["ラフ"] : [];
+            AvatarListCache.Save(AvatarListCache.Favorites, _user!.Id, _allItems.Take(12).Select((a, i) => new Avatar
+            {
+                Id = a.Id, Name = a.Avatar.Name, AuthorName = a.AuthorName, ThumbnailImageUrl = a.Avatar.ThumbnailImageUrl,
+                FavoriteGroup = i < 5 ? "お気に入り 1" : "お気に入り 2",
+            }).ToList());
+            _settings.VrTab = "own";
+            _settings.VrSortKey = "recent_asc";
+            _settings.VrGroupView = true;
+
+            var vr = _vr!;
+            var panel = vr.PanelForTest;
+            vr.SetOpenForTest(true);
+            vr.ReloadForTest();
+            for (var i = 0; i < 40 && panel.PageItems.Any(p => p.ThumbnailUrl is not null && p.Thumbnail is null); i++) await Task.Delay(100);
+            Expect("今着ているアバターのページから開く", panel.PageItems.Any(p => p.IsCurrent), $"page={panel.Page + 1}/{panel.PageCount}");
+            Expect("グループは 1 枚にまとまる", panel.Items.Count == _allItems.Count - 2 && panel.Items.Count(t => t.IsGroup) == 1,
+                $"tiles={panel.Items.Count}");
+            Expect("絞り込みの候補はタグ", panel.Chips.SequenceEqual(["ラフ", "改変"]) || panel.Chips.SequenceEqual(["改変", "ラフ"]), string.Join(",", panel.Chips));
+            Save(panel.Render(), "panel-own-recent.png");
+
+            // 当たり判定: 画像の座標でボタンやタイルの中心を押す
+            Expect("閉じる", panel.HitTest(588, 44).Kind == VrPanel.HitKind.Close);
+            Expect("タブ: 自分", panel.HitTest(114, 44) is { Kind: VrPanel.HitKind.Tab, Index: 0 });
+            Expect("タブ: お気に入り", panel.HitTest(288, 44) is { Kind: VrPanel.HitKind.Tab, Index: 1 });
+            Expect("タブ: パブリック", panel.HitTest(461, 44) is { Kind: VrPanel.HitKind.Tab, Index: 2 });
+            Expect("最近使った順", panel.HitTest(100, 102).Kind == VrPanel.HitKind.SortRecent);
+            Expect("名前順", panel.HitTest(240, 102).Kind == VrPanel.HitKind.SortName);
+            Expect("グループ化", panel.HitTest(517, 102).Kind == VrPanel.HitKind.GroupToggle);
+            Expect("チップ: すべて", panel.HitTest(40, 154) is { Kind: VrPanel.HitKind.Chip, Index: 0 });
+            Expect("タイルの隙間は何もしない", panel.HitTest(219, 269).Kind == VrPanel.HitKind.None);
+
+            // 名前順: 先頭ページの左上・右下
+            vr.ClickForTest(240, 102);
+            Expect("名前順に切り替わる", _settings.VrSortKey == "name_asc" && panel.SortKey == "name_asc");
+            panel.TurnPage(-panel.Page);
+            var first = panel.HitTest(121, 269);
+            Expect("左上のタイル", first is { Kind: VrPanel.HitKind.Tile, Index: 0 }, first.ToString());
+            var last = panel.HitTest(518, 621);
+            Expect("右下のタイル", last is { Kind: VrPanel.HitKind.Tile, Index: 8 }, last.ToString());
+            Expect("先頭ページでは「前へ」は押せない", panel.HitTest(88, 770).Kind == VrPanel.HitKind.None);
+            Expect("次へ", panel.HitTest(552, 770).Kind == VrPanel.HitKind.Next);
+
+            // グループのタイルを押すと中身だけになり、「戻る」で元のページへ
+            (double X, double Y) TileCenter(int index)
+            {
+                var slot = index - panel.PageStart;
+                return (28 + slot % 3 * (186.667 + 10) + 93, 186 + slot / 3 * (166 + 10) + 83);
+            }
+            panel.ShowPageOf(t => t.IsGroup);
+            var groupIndex = panel.Items.ToList().FindIndex(t => t.IsGroup);
+            var groupPage = panel.Page;
+            var (gx, gy) = TileCenter(groupIndex);
+            vr.ClickForTest(gx, gy);
+            Expect("グループを開くと中身だけ", panel.OpenGroupName == "テストグループ" && panel.Items.Count == 3 && panel.Items.All(t => !t.IsGroup),
+                $"open={panel.OpenGroupName} tiles={panel.Items.Count}");
+            Expect("グループを開いている間は「戻る」", panel.HitTest(60, 154).Kind == VrPanel.HitKind.Back);
+            for (var i = 0; i < 20 && panel.PageItems.Any(p => p.ThumbnailUrl is not null && p.Thumbnail is null); i++) await Task.Delay(100);
+            Save(panel.Render(), "panel-group-open.png");
+            vr.ClickForTest(60, 154);
+            Expect("戻るとグループのタイルのページ", panel.OpenGroupName is null && panel.Page == groupPage && panel.PageItems.Any(t => t.IsGroup));
+            for (var i = 0; i < 20 && panel.PageItems.Any(p => p.ThumbnailUrl is not null && p.Thumbnail is null); i++) await Task.Delay(100);
+            Save(panel.Render(), "panel-group-tile.png");
+
+            // グループ化をオフにすると、中身も 1 体ずつ並ぶ
+            vr.ClickForTest(517, 102);
+            Expect("グループ化オフ", !_settings.VrGroupView && panel.Items.Count == _allItems.Count && panel.Items.All(t => !t.IsGroup));
+            vr.ClickForTest(517, 102);
+            Expect("グループ化オン", _settings.VrGroupView && panel.Items.Any(t => t.IsGroup));
+
+            // チップで絞り込む (「改変」)
+            var chipX = Enumerable.Range(0, 150).Select(i => 28 + i * 4.0)
+                .FirstOrDefault(x => panel.HitTest(x, 154) is { Kind: VrPanel.HitKind.Chip } h && h.Index > 0 && panel.Chips[h.Index - 1] == "改変");
+            vr.ClickForTest(chipX, 154);
+            Expect("タグで絞り込める", panel.Filter == "改変" && panel.Items.Count > 0
+                && panel.Items.All(t => t.IsGroup ? t.Members.Any(m => m.Tags.Contains("改変")) : t.Tags.Contains("改変")),
+                $"filter={panel.Filter} tiles={panel.Items.Count}");
+            Save(panel.Render(), "panel-filter.png");
+
+            // タブ: お気に入り (一覧キャッシュから。チップはお気に入りグループ)
+            vr.ClickForTest(288, 44);
+            Expect("お気に入りタブ", _settings.VrTab == "favorites" && panel.Filter is null && panel.Items.Count > 0
+                && panel.Chips.SequenceEqual(["お気に入り 1", "お気に入り 2"]), $"tiles={panel.Items.Count} chips={string.Join(",", panel.Chips)}");
+            for (var i = 0; i < 20 && panel.PageItems.Any(p => p.ThumbnailUrl is not null && p.Thumbnail is null); i++) await Task.Delay(100);
+            Save(panel.Render(), "panel-favorites.png");
+            // タブ: パブリック (プレビューでは空)
+            vr.ClickForTest(461, 44);
+            Expect("パブリックタブ (空)", _settings.VrTab == "public" && panel.Items.Count == 0);
+            Save(panel.Render(), "panel-public-empty.png");
+            vr.ClickForTest(114, 44);
+            Expect("自分のタブに戻る", _settings.VrTab == "own" && panel.Items.Count > 0);
+
+            panel.Status = "Kikyo 9 に着替えられませんでした";
+            panel.StatusIsError = true;
+            panel.Hover = new VrPanel.Hit(VrPanel.HitKind.Tile, panel.PageStart + 4);
+            Save(panel.Render(), "panel-hover-error.png");
+            panel.Status = "";
+            panel.StatusIsError = false;
+            panel.Hover = default;
+            Save(VrPanel.RenderButton(panelOpen: false), "button.png");
+            Save(VrPanel.RenderButton(panelOpen: true), "button-open.png");
+
+            // 行列: SteamVR の 3x4 (列ベクトル) に直しても、点の移り先が変わらないこと
+            var m = Matrix4x4.CreateRotationX(0.3f) * Matrix4x4.CreateRotationY(-1.1f) * Matrix4x4.CreateTranslation(0.2f, 1.5f, -0.4f);
+            var h = VrOverlay.ToHmdForTest(m);
+            var p = new Vector3(0.1f, -0.2f, 0.3f);
+            var byHmd = new Vector3(h.m0 * p.X + h.m1 * p.Y + h.m2 * p.Z + h.m3, h.m4 * p.X + h.m5 * p.Y + h.m6 * p.Z + h.m7, h.m8 * p.X + h.m9 * p.Y + h.m10 * p.Z + h.m11);
+            Expect("行列の変換 (Numerics → SteamVR)", Vector3.Distance(byHmd, Vector3.Transform(p, m)) < 1e-5f);
+            Expect("行列の変換 (往復)", Vector3.Distance(Vector3.Transform(p, VrOverlay.ToNumericsForTest(h)), Vector3.Transform(p, m)) < 1e-5f);
+
+            // 手首ボタン: 左手なら甲 (-X) を向き、手首より肘側 (+Z) にあること。右手は左右反転
+            foreach (var hand in new[] { "left", "right" })
+            {
+                var s = new Settings { VrHand = hand, VrButtonAlongCm = 8 };
+                var offset = VrOverlay.ButtonOffsetForTest(s);
+                var normal = Vector3.TransformNormal(Vector3.UnitZ, offset);
+                var up = Vector3.TransformNormal(Vector3.UnitY, offset);
+                var pos = offset.Translation;
+                report.AppendLine($"     {hand}: 位置 ({pos.X:F3}, {pos.Y:F3}, {pos.Z:F3}) m / 表の向き ({normal.X:F2}, {normal.Y:F2}, {normal.Z:F2}) / 画像の上 ({up.X:F2}, {up.Y:F2}, {up.Z:F2})");
+                Expect($"{hand}: 表は腕の外側を向く", hand == "left" ? normal.X < -0.5f : normal.X > 0.5f);
+                Expect($"{hand}: 表はやや上向き", normal.Y > 0.1f);
+                Expect($"{hand}: 画像の上は手の側 (-Z)", up.Z < -0.9f);
+                Expect($"{hand}: 腕時計 (0.13m) より 8cm 肘側", MathF.Abs(pos.Z - 0.21f) < 0.001f);
+            }
+
+            // 触れた点 → 画像の座標: 斜めに置いたパネルの右上寄りを触る
+            var panelWorld = Matrix4x4.CreateRotationX(-0.26f) * Matrix4x4.CreateRotationY(0.8f) * Matrix4x4.CreateTranslation(0.3f, 1.2f, -0.5f);
+            var w = VrOverlay.PanelWidthForTest;
+            var hM = w * VrPanel.Height / VrPanel.Width;
+            var touch = Vector3.Transform(new Vector3(w * 0.25f, hM * 0.25f, 0.01f), panelWorld); // 中心から右へ 1/4、上へ 1/4、1cm 手前
+            var inside = VrOverlay.TouchPoint(panelWorld, w, VrPanel.Width, VrPanel.Height, touch, out var at);
+            Expect("触れた点が画像の右上寄りに対応", inside && Math.Abs(at.X - 480) < 0.5 && Math.Abs(at.Y - 200) < 0.5, $"({at.X:F1}, {at.Y:F1})");
+            var far = Vector3.Transform(new Vector3(0, 0, 0.05f), panelWorld); // 5cm 手前
+            Expect("離れている点は触れていない", !VrOverlay.TouchPoint(panelWorld, w, VrPanel.Width, VrPanel.Height, far, out _));
+            var outside = Vector3.Transform(new Vector3(w * 0.6f, 0, 0), panelWorld); // 面の外
+            Expect("面の外は触れていない", !VrOverlay.TouchPoint(panelWorld, w, VrPanel.Width, VrPanel.Height, outside, out _));
+
+            // SteamVR に渡す並び (RGBA) になっているか: 「グループ化: オン」のボタンの色 #3E8FD0 の画素を見る
+            var rgba = panel.RenderRgba();
+            var px = (102 * VrPanel.Width + 430) * 4; // (430, 102) = グループ化ボタンの左端寄り (文字の無いところ)
+            Expect("RGBA の並び (R=3E G=8F B=D0 A=FF)", rgba[px] == 0x3E && rgba[px + 1] == 0x8F && rgba[px + 2] == 0xD0 && rgba[px + 3] == 0xFF,
+                $"{rgba[px]:X2} {rgba[px + 1]:X2} {rgba[px + 2]:X2} {rgba[px + 3]:X2}");
+            var btn = VrPanel.ButtonRgba(panelOpen: false);
+            var bAt = (40 * VrPanel.ButtonSize + 96) * 4; // 手首ボタンの丸の上のほう (アクセント色)
+            Expect("手首ボタンも RGBA", btn[bAt] == 0x3E && btn[bAt + 2] == 0xD0, $"{btn[bAt]:X2} {btn[bAt + 1]:X2} {btn[bAt + 2]:X2}");
+            Expect("手首ボタンの画像は作り直さない", ReferenceEquals(btn, VrPanel.ButtonRgba(panelOpen: false)));
+
+            // 描き直し 1 回ぶんの負荷 (ホバーやサムネイルの到着のたびに走る)
+            vr.RenderPanelBytesForTest();
+            GC.Collect();
+            var alloc0 = GC.GetAllocatedBytesForCurrentThread();
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+            const int renders = 30;
+            for (var i = 0; i < renders; i++) vr.RenderPanelBytesForTest();
+            sw.Stop();
+            var allocKb = (GC.GetAllocatedBytesForCurrentThread() - alloc0) / renders / 1024;
+            report.AppendLine($"     パネルの描き直し: {sw.Elapsed.TotalMilliseconds / renders:F2} ms/回、確保 {allocKb} KB/回");
+
+            // パネルの距離 (グリップ + スティック前後)
+            Expect("遊びの範囲では動かない", VrOverlay.NextPanelDistance(0.55f, 0.2f, 0.1f) == 0.55f);
+            Expect("前に倒すと奥へ", VrOverlay.NextPanelDistance(0.55f, 1f, 0.1f) > 0.55f);
+            Expect("後ろに倒すと手前へ", VrOverlay.NextPanelDistance(0.55f, -1f, 0.1f) < 0.55f);
+            Expect("奥の上限で止まる", VrOverlay.NextPanelDistance(1.49f, 1f, 0.5f) == VrOverlay.MaxPanelDistanceM);
+            Expect("手前の下限で止まる", VrOverlay.NextPanelDistance(0.31f, -1f, 0.5f) == VrOverlay.MinPanelDistanceM);
+            var headPos = new Vector3(0.2f, 1.6f, 0.1f);
+            var fwd = Vector3.Normalize(new Vector3(1, 0, -1));
+            foreach (var d in new[] { VrOverlay.MinPanelDistanceM, 1.0f })
+            {
+                var pose = VrOverlay.PanelPose(headPos, fwd, d);
+                var flat = pose.Translation - headPos;
+                flat.Y = 0;
+                var face = Vector3.TransformNormal(Vector3.UnitZ, pose);
+                Expect($"距離 {d:F2}m: 正面にその距離だけ離れて置かれる", MathF.Abs(flat.Length() - d) < 1e-4f && Vector3.Dot(Vector3.Normalize(flat), fwd) > 0.999f);
+                Expect($"距離 {d:F2}m: 表がこちらを向く", Vector3.Dot(face, -fwd) > 0.9f);
+            }
+        }
+        catch (Exception ex) { failures++; report.AppendLine("EXCEPTION: " + ex); }
+        report.Insert(0, failures == 0 ? "RESULT: all passed\n" : $"RESULT: {failures} failed\n");
+        File.WriteAllText(Path.Combine(dir, "report.txt"), report.ToString());
         Application.Current.Shutdown();
     }
 

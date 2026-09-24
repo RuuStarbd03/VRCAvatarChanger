@@ -18,6 +18,7 @@ namespace VRCAvatarChanger;
 //   MainWindow.Updates.cs 自動アップデート
 //   MainWindow.Details.cs アバターの詳細 (オーバーレイ)
 //   MainWindow.Shortcuts.cs メイン画面のキーボード操作
+//   MainWindow.Vr.cs      VR (SteamVR) の手首ボタン (本体は VrOverlay.cs / VrPanel.cs)
 //   MainWindow.Preview.cs UI プレビュー / 自己診断 (Debug のみ)
 public partial class MainWindow : Window
 {
@@ -73,6 +74,7 @@ public partial class MainWindow : Window
         InitSortControls(savedSort);
         InitWatchVRChat(); // _ready 前に呼ぶ (トグルの初期化でイベントを発火させない)
         InitQuickOverlay();
+        InitVr();
         _ready = true;
         GridColumns = savedColumns;
         ColumnsSlider.Value = savedColumns;
@@ -563,6 +565,7 @@ public partial class MainWindow : Window
         WatchToggle.IsChecked = _settings.WatchVRChat;
         QuickToggle.IsChecked = _settings.QuickOverlay;
         KeepLoginToggle.IsChecked = _settings.KeepBrowserLogin;
+        ShowVrSettings();
         (_settings.Theme switch { "light" => ThemeLight, "dark" => ThemeDark, _ => ThemeSystem }).IsChecked = true;
         AccountDesc.Text = (string.IsNullOrEmpty(_user?.DisplayName) ? "" : $"{_user.DisplayName} としてログイン中。")
             + "ログイン状態を消して戻ります。";
@@ -836,8 +839,7 @@ public partial class MainWindow : Window
         if (_openGroup is not null)
         {
             // グループを開いている: そのメンバーだけ
-            var memberIds = _openGroup.AvatarIds.ToHashSet(StringComparer.Ordinal);
-            list = sorted.Where(a => memberIds.Contains(a.Id)).ToList();
+            list = MembersOf(sorted, _openGroup);
             GroupBarName.Text = _openGroup.Name;
             GroupBarCount.Text = $"{list.Count} 体";
         }
@@ -846,21 +848,7 @@ public partial class MainWindow : Window
             // グループ化 OFF: すべて個別に表示
             list = sorted;
         }
-        else
-        {
-            // グループに属するアバターは 1 枚のグループタイルにまとめる(代表 = 並び順で先頭のメンバー)
-            var membership = _groups.BuildMembershipIndex();
-            var byGroup = new Dictionary<AvatarGroup, List<AvatarItem>>();
-            list = [];
-            foreach (var a in sorted)
-            {
-                if (!membership.TryGetValue(a.Id, out var g)) { list.Add(a); continue; }
-                if (!byGroup.TryGetValue(g, out var members)) byGroup[g] = members = [];
-                members.Add(a);
-            }
-            list.AddRange(byGroup.Select(kv => new AvatarItem(kv.Key, kv.Value)));
-            list = ApplySort(list, SortKey, _settings.RecentAvatars).ToList();
-        }
+        else list = GroupIntoTiles(sorted, SortKey);
         // 並びも中身も今と同じなら入れ直さない。一覧の作り直しは件数によらず 20ms 前後かかるうえ、
         // スクロール位置と選択が先頭に戻ってしまう (タグ編集や色分けの切り替えなど、見た目が変わらない場合に効く)
         if (AvatarList.ItemsSource is List<AvatarItem> shown && SameContent(shown, list)) list = shown;
@@ -871,6 +859,32 @@ public partial class MainWindow : Window
         if (reselect is not null) AvatarList.SelectedItem = reselect;
         RefreshCurrentMarks();
         if (SkeletonPanel.Visibility != Visibility.Visible) UpdateEmptyState(list.Count);
+    }
+
+    /// <summary>並べ済みの一覧から、グループのメンバーだけを並びを保って取り出す。メイン画面と VR パネルで共通。</summary>
+    private static List<AvatarItem> MembersOf(List<AvatarItem> sorted, AvatarGroup group)
+    {
+        var memberIds = group.AvatarIds.ToHashSet(StringComparer.Ordinal);
+        return sorted.Where(a => memberIds.Contains(a.Id)).ToList();
+    }
+
+    /// <summary>
+    /// グループに属するアバターを 1 枚のグループタイルにまとめ、タイルごと並べ直す。
+    /// グループの中身はそのまま並び順を保つ。メイン画面と VR パネルで共通。
+    /// </summary>
+    private List<AvatarItem> GroupIntoTiles(List<AvatarItem> sorted, string sortKey)
+    {
+        var membership = _groups.BuildMembershipIndex();
+        var byGroup = new Dictionary<AvatarGroup, List<AvatarItem>>();
+        var list = new List<AvatarItem>();
+        foreach (var a in sorted)
+        {
+            if (!membership.TryGetValue(a.Id, out var g)) { list.Add(a); continue; }
+            if (!byGroup.TryGetValue(g, out var members)) byGroup[g] = members = [];
+            members.Add(a);
+        }
+        list.AddRange(byGroup.Select(kv => new AvatarItem(kv.Key, kv.Value)));
+        return ApplySort(list, sortKey, _settings.RecentAvatars).ToList();
     }
 
     /// <summary>
