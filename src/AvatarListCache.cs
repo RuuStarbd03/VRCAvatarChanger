@@ -26,8 +26,8 @@ public sealed class CachedAvatarList
 /// </summary>
 public static class AvatarListCache
 {
-    public const string Own = "own";
-    public const string Favorites = "favorites";
+    public const string Own = AvatarTab.Own;
+    public const string Favorites = AvatarTab.Favorites;
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {

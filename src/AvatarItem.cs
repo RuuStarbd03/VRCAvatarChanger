@@ -150,6 +150,10 @@ public sealed class AvatarItem : INotifyPropertyChanged
         }
     }
 
+    /// <summary>今着ているアバターの ID から、チェックバッジの印を付け直す。グループは中にそのアバターがいれば付ける。</summary>
+    public void MarkCurrent(string? currentAvatarId)
+        => IsCurrent = IsGroup ? Members.Any(m => m.Id == currentAvatarId) : Id == currentAvatarId;
+
     private bool _isCurrent;
     /// <summary>現在着ているアバター(グループの場合は中に現在のアバターがいる)。チェックバッジの表示に使う。</summary>
     public bool IsCurrent

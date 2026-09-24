@@ -662,11 +662,11 @@ public partial class MainWindow : Window
         {
             int? refreshedEntries = null;
             var newlyUnavailable = 0;
+            List<AvatarItem> items;
             if (pub)
             {
                 if (refresh) (refreshedEntries, newlyUnavailable) = await RefreshPublicEntriesAsync(ct);
-                _allItems.Clear();
-                _allItems.AddRange(_public.Entries.Select(e => PublicItemOf(e, _tags.TagsOf(e.Avatar.Id))));
+                items = _public.Entries.Select(e => PublicItemOf(e, _tags.TagsOf(e.Avatar.Id))).ToList();
             }
             else
             {
@@ -678,19 +678,15 @@ public partial class MainWindow : Window
                 {
                     var note = $" ({cached.FetchedAt:HH:mm} 時点・F5 で取り直し)";
                     // すでに同じものを出しているなら作り直さない (トレイから開き直したときなど)
-                    if (AlreadyShowing(cached.Avatars))
-                    {
-                        ShowListState(loading: false);
-                        SetStatus(StatusKind.Info, CountText() + note);
-                    }
-                    else ShowAvatars(cached.Avatars, favorites, ct, note);
+                    if (AlreadyShowing(cached.Avatars)) KeepShowing(note);
+                    else ShowItems(ItemsOf(cached.Avatars, favorites), ct, note);
                     return;
                 }
                 // 前回の一覧があれば先に見せる。サムネもディスクキャッシュから戻るので待たされない
                 if (cached is not null)
                 {
                     if (AlreadyShowing(cached.Avatars)) ShowListState(loading: false);
-                    else ShowAvatars(cached.Avatars, favorites, ct, " (前回の一覧・最新を確認しています)");
+                    else ShowItems(ItemsOf(cached.Avatars, favorites), ct, " (前回の一覧・最新を確認しています)");
                 }
                 try
                 {
@@ -700,14 +696,11 @@ public partial class MainWindow : Window
                     {
                         // 取り直したが中身は同じだった。一覧を作り直さない
                         // (件数によらず作り直しだけで 20ms 前後かかり、スクロール位置も先頭に戻ってしまう)
-                        ShowListState(loading: false);
-                        SetStatus(StatusKind.Info, CountText());
+                        KeepShowing("");
                         if (refresh) RefreshFavoriteStateAsync(ct).Forget();
                         return;
                     }
-                    _allItems.Clear();
-                    // 自分のアバターにはタグを載せる（お気に入りはグループ表示を優先）
-                    _allItems.AddRange(avatars.Select(a => NewItem(a, favorites)));
+                    items = ItemsOf(avatars, favorites);
                 }
                 catch (Exception ex) when (cached is not null
                                            && ex is not OperationCanceledException
@@ -720,19 +713,14 @@ public partial class MainWindow : Window
                     return;
                 }
             }
-            ShowListState(loading: false);
-            BuildFilterChips();
-            ApplyFilter();
-            UpdateUserHeader();
-            Log.Info($"一覧を表示: {(pub ? "パブリック" : favorites ? "お気に入り" : "自分のアバター")} {_allItems.Count} 件"
-                     + (refreshedEntries is { } rn ? $" (パブリック {rn} 件を取り直し)" : ""));
-            SetStatus(StatusKind.Info, CountText() + refreshedEntries switch
+            ShowItems(items, ct, refreshedEntries switch
             {
                 null => "",
                 0 => " (情報は最新です)",
                 var n => $" ({n} 件の情報を更新しました)",
             } + UnavailableNote(newlyUnavailable));
-            QueueThumbnails(_allItems.ToList(), ct);
+            Log.Info($"一覧を表示: {(pub ? "パブリック" : favorites ? "お気に入り" : "自分のアバター")} {_allItems.Count} 件"
+                     + (refreshedEntries is { } rn ? $" (パブリック {rn} 件を取り直し)" : ""));
             if (refresh) RefreshFavoriteStateAsync(ct).Forget();
         }
         catch (OperationCanceledException) { }
@@ -747,17 +735,31 @@ public partial class MainWindow : Window
         finally { RefreshButton.IsEnabled = true; }
     }
 
-    /// <summary>アバター列を一覧に載せて表示する(取得したものでも、キャッシュから読んだものでも同じ扱い)。</summary>
-    private void ShowAvatars(List<Avatar> avatars, bool favorites, CancellationToken ct, string note)
+    /// <summary>アバター列を一覧の項目にする。自分のアバターにはタグを載せる (お気に入りはグループ表示を優先)。</summary>
+    private List<AvatarItem> ItemsOf(List<Avatar> avatars, bool favorites)
+        => avatars.Select(a => NewItem(a, favorites)).ToList();
+
+    /// <summary>
+    /// 項目を一覧に載せて表示する (取得したものでも、キャッシュから読んだものでも、パブリックでも同じ手順)。
+    /// note はステータスの件数の後ろに添える一言。
+    /// </summary>
+    private void ShowItems(List<AvatarItem> items, CancellationToken ct, string note)
     {
         _allItems.Clear();
-        _allItems.AddRange(avatars.Select(a => NewItem(a, favorites)));
+        _allItems.AddRange(items);
         ShowListState(loading: false);
         BuildFilterChips();
         ApplyFilter();
         UpdateUserHeader();
         SetStatus(StatusKind.Info, CountText() + note);
         QueueThumbnails(_allItems.ToList(), ct);
+    }
+
+    /// <summary>同じ内容を表示中なので、一覧は作り直さずに読み込み中の表示だけ外す。</summary>
+    private void KeepShowing(string note)
+    {
+        ShowListState(loading: false);
+        SetStatus(StatusKind.Info, CountText() + note);
     }
 
     /// <summary>今まさに同じ内容を表示中か (何も出していないときは false)。</summary>
@@ -909,8 +911,7 @@ public partial class MainWindow : Window
     {
         var cur = _user?.CurrentAvatar;
         if (AvatarList.ItemsSource is not IEnumerable<AvatarItem> items) return;
-        foreach (var item in items)
-            item.IsCurrent = item.IsGroup ? item.Members.Any(m => m.Id == cur) : item.Id == cur;
+        foreach (var item in items) item.MarkCurrent(cur);
     }
 
     private void AvatarList_SelectionChanged(object sender, SelectionChangedEventArgs e)

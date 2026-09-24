@@ -148,7 +148,7 @@ public partial class MainWindow
         var flat = _allItems.ToList();
         // グループにまとめられて一覧に出ていないアバターは、メイン画面の現在マーク更新の対象外なので、ここで付け直す
         var cur = _user?.CurrentAvatar;
-        foreach (var i in flat) i.IsCurrent = i.Id == cur;
+        foreach (var i in flat) i.MarkCurrent(cur);
         // サムネイルはここでは要求しない。全件を要求すると見ない行まで展開して上限を使い切り、
         // メイン画面の画像を押し出してしまう。オーバーレイの行が画面に出たときに要求される
         return flat;

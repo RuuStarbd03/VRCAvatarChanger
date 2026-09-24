@@ -30,7 +30,7 @@ public sealed class Settings
     public double VrButtonHeightCm { get; set; }
     // VR パネルの表示状態。メイン画面とは別に持ち、VR の中で切り替えたものを次に開いたときも使う
     /// <summary>VR パネルのタブ。"own" / "favorites" / "public"。</summary>
-    public string VrTab { get; set; } = "own";
+    public string VrTab { get; set; } = AvatarTab.Own;
     /// <summary>VR パネルの並び順。"recent_asc" / "name_asc"。</summary>
     public string VrSortKey { get; set; } = "recent_asc";
     /// <summary>VR パネルでグループを 1 枚にまとめるか。</summary>
@@ -79,7 +79,7 @@ public sealed class Settings
         if (s.ViewMode is not ("list" or "grid")) s.ViewMode = "list";
         if (s.Theme is not ("system" or "light" or "dark")) s.Theme = "system";
         if (s.VrHand is not ("left" or "right")) s.VrHand = "left";
-        if (s.VrTab is not ("own" or "favorites" or "public")) s.VrTab = "own";
+        if (s.VrTab is not (AvatarTab.Own or AvatarTab.Favorites or AvatarTab.Public)) s.VrTab = AvatarTab.Own;
         if (s.VrSortKey is not ("recent_asc" or "name_asc")) s.VrSortKey = "recent_asc";
         s.VrButtonAlongCm = Math.Clamp(s.VrButtonAlongCm, MinVrAlongCm, MaxVrAlongCm);
         s.VrButtonHeightCm = Math.Clamp(s.VrButtonHeightCm, MinVrHeightCm, MaxVrHeightCm);

@@ -30,7 +30,7 @@ public partial class MainWindow : IVrAvatarSource
     }
 
     /// <summary>メイン画面で今開いているタブ (VR パネルのタブと同じ呼び名)。</summary>
-    private string MainTab => IsPublicTab ? "public" : IsFavoritesTab ? "favorites" : "own";
+    private string MainTab => IsPublicTab ? AvatarTab.Public : IsFavoritesTab ? AvatarTab.Favorites : AvatarTab.Own;
 
     // ---------------- VR パネルに並べる一覧 ----------------
 
@@ -38,10 +38,9 @@ public partial class MainWindow : IVrAvatarSource
     {
         // メイン画面が同じタブを出していれば、その項目をそのまま使う (サムネイルも共有できる)
         if (tab == MainTab && _allItems.Count > 0) return _allItems;
-        if (tab == "public") return VrItems(tab, _public.Entries.Select(e => (e.Avatar, (PublicAvatarEntry?)e)));
+        if (tab == AvatarTab.Public) return VrItems(tab, _public.Entries.Select(e => (e.Avatar, (PublicAvatarEntry?)e)));
         if (_user is null) return null;
-        var kind = tab == "favorites" ? AvatarListCache.Favorites : AvatarListCache.Own;
-        var avatars = AvatarListCache.Load(kind, _user.Id)?.Avatars ?? _vrFetched.GetValueOrDefault(tab);
+        var avatars = AvatarListCache.Load(tab, _user.Id)?.Avatars ?? _vrFetched.GetValueOrDefault(tab);
         return avatars is null ? null : VrItems(tab, avatars.Select(a => (a, (PublicAvatarEntry?)null)));
     }
 
@@ -49,7 +48,7 @@ public partial class MainWindow : IVrAvatarSource
     private List<AvatarItem> VrItems(string tab, IEnumerable<(Avatar Avatar, PublicAvatarEntry? Entry)> source)
     {
         if (!_vrItems.TryGetValue(tab, out var byId)) _vrItems[tab] = byId = new(StringComparer.Ordinal);
-        var favorites = tab == "favorites";
+        var favorites = tab == AvatarTab.Favorites;
         var list = new List<AvatarItem>();
         var seen = new HashSet<string>(StringComparer.Ordinal);
         foreach (var (avatar, entry) in source)
@@ -71,27 +70,25 @@ public partial class MainWindow : IVrAvatarSource
 
     async Task IVrAvatarSource.LoadAsync(string tab)
     {
-        if (tab == "public") return; // パブリックは手元のリストなので取りに行くものはない
+        if (tab == AvatarTab.Public) return; // パブリックは手元のリストなので取りに行くものはない
         if (_user is null) throw new InvalidOperationException("ログインしていません。PC の AvatarChanger でログインしてください。");
-        var favorites = tab == "favorites";
-        var avatars = favorites ? await _api.GetFavoriteAvatarsAsync() : await _api.GetOwnAvatarsAsync();
-        AvatarListCache.Save(favorites ? AvatarListCache.Favorites : AvatarListCache.Own, _user.Id, avatars);
+        var avatars = tab == AvatarTab.Favorites ? await _api.GetFavoriteAvatarsAsync() : await _api.GetOwnAvatarsAsync();
+        AvatarListCache.Save(tab, _user.Id, avatars);
         _vrFetched[tab] = avatars;
     }
 
     List<string> IVrAvatarSource.FilterValuesOf(IReadOnlyList<AvatarItem> items, string tab)
-        => FilterValuesOf(items, tab == "favorites");
+        => FilterValuesOf(items, tab == AvatarTab.Favorites);
 
     List<AvatarItem> IVrAvatarSource.Arrange(IReadOnlyList<AvatarItem> items, VrView view)
     {
-        var filtered = FilterBy(items, view.Filter, view.Tab == "favorites");
+        var filtered = FilterBy(items, view.Filter, view.Tab == AvatarTab.Favorites);
         var sorted = ApplySort(filtered, view.SortKey, _settings.RecentAvatars).ToList();
         var tiles = view.OpenGroup is { } group ? MembersOf(sorted, group)
             : view.GroupView ? GroupIntoTiles(sorted, view.SortKey)
             : sorted;
         var current = _user?.CurrentAvatar;
-        foreach (var tile in tiles)
-            tile.IsCurrent = tile.IsGroup ? tile.Members.Any(m => m.Id == current) : tile.Id == current;
+        foreach (var tile in tiles) tile.MarkCurrent(current);
         return tiles;
     }
 

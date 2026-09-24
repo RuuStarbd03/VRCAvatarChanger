@@ -747,7 +747,7 @@ public partial class MainWindow
                 Id = a.Id, Name = a.Avatar.Name, AuthorName = a.AuthorName, ThumbnailImageUrl = a.Avatar.ThumbnailImageUrl,
                 FavoriteGroup = i < 5 ? "お気に入り 1" : "お気に入り 2",
             }).ToList());
-            _settings.VrTab = "own";
+            _settings.VrTab = AvatarTab.Own;
             _settings.VrSortKey = "recent_asc";
             _settings.VrGroupView = true;
 
@@ -822,16 +822,16 @@ public partial class MainWindow
 
             // タブ: お気に入り (一覧キャッシュから。チップはお気に入りグループ)
             vr.ClickForTest(288, 44);
-            Expect("お気に入りタブ", _settings.VrTab == "favorites" && panel.Filter is null && panel.Items.Count > 0
+            Expect("お気に入りタブ", _settings.VrTab == AvatarTab.Favorites && panel.Filter is null && panel.Items.Count > 0
                 && panel.Chips.SequenceEqual(["お気に入り 1", "お気に入り 2"]), $"tiles={panel.Items.Count} chips={string.Join(",", panel.Chips)}");
             for (var i = 0; i < 20 && panel.PageItems.Any(p => p.ThumbnailUrl is not null && p.Thumbnail is null); i++) await Task.Delay(100);
             Save(panel.Render(), "panel-favorites.png");
             // タブ: パブリック (プレビューでは空)
             vr.ClickForTest(461, 44);
-            Expect("パブリックタブ (空)", _settings.VrTab == "public" && panel.Items.Count == 0);
+            Expect("パブリックタブ (空)", _settings.VrTab == AvatarTab.Public && panel.Items.Count == 0);
             Save(panel.Render(), "panel-public-empty.png");
             vr.ClickForTest(114, 44);
-            Expect("自分のタブに戻る", _settings.VrTab == "own" && panel.Items.Count > 0);
+            Expect("自分のタブに戻る", _settings.VrTab == AvatarTab.Own && panel.Items.Count > 0);
 
             panel.Status = "Kikyo 9 に着替えられませんでした";
             panel.StatusIsError = true;

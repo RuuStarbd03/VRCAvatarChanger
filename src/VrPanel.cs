@@ -31,7 +31,7 @@ internal sealed class VrPanel
     public const int PageSize = Columns * Rows;
 
     /// <summary>タブの値と表示名 (並びは画面の左から)。</summary>
-    public static readonly string[] Tabs = ["own", "favorites", "public"];
+    public static readonly string[] Tabs = [AvatarTab.Own, AvatarTab.Favorites, AvatarTab.Public];
     private static readonly string[] TabLabels = ["自分", "お気に入り", "パブリック"];
 
     // ---- レイアウト (px) ----
@@ -94,7 +94,7 @@ internal sealed class VrPanel
     public readonly record struct Hit(HitKind Kind, int Index = -1);
 
     // ---- 表示する状態 (切り替えの判断は VrOverlay が行い、ここは描くだけ) ----
-    public string Tab { get; set; } = "own";
+    public string Tab { get; set; } = AvatarTab.Own;
     public string SortKey { get; set; } = "recent_asc";
     public bool GroupView { get; set; } = true;
     /// <summary>選んでいる絞り込み (null = すべて)。</summary>

@@ -113,8 +113,10 @@ public partial class MainWindow
     private static string SizeText(Avatar a)
     {
         if (a.WindowsAssetRef is not { } r) return "不明";
-        return AssetSizeCache.TryGet(r.FileId, r.Version, out var b) ? $"{AssetSizeCache.Format(b)} (PC)" : "取得中...";
+        return AssetSizeCache.TryGet(r.FileId, r.Version, out var b) ? SizeLabel(b) : "取得中...";
     }
+
+    private static string SizeLabel(long bytes) => $"{AssetSizeCache.Format(bytes)} (PC)";
 
     private async Task LoadDetailSizeAsync(AvatarItem item, CancellationToken ct)
     {
@@ -129,7 +131,7 @@ public partial class MainWindow
             var rows = (DetailRows.ItemsSource as List<DetailRow>)?.ToList();
             if (rows is null) return;
             var at = rows.FindIndex(x => x.Label == "ダウンロードサイズ");
-            if (at >= 0) rows[at] = rows[at] with { Value = size is { } b ? $"{AssetSizeCache.Format(b)} (PC)" : "不明" };
+            if (at >= 0) rows[at] = rows[at] with { Value = size is { } b ? SizeLabel(b) : "不明" };
             DetailRows.ItemsSource = rows;
         }
         catch (OperationCanceledException) { }
@@ -173,9 +175,7 @@ public partial class MainWindow
     {
         if (_detailItem is not { } item) return;
         CloseDetail();
-        _public.Remove(item.Id);
-        SetStatus(StatusKind.Info, $"{item.Name} をパブリックから外しました");
-        await LoadAvatarsAsync();
+        await RemoveFromPublicAsync(item);
     }
 
     private void DetailCopyId_Click(object sender, RoutedEventArgs e)
