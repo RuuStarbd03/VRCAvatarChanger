@@ -169,7 +169,10 @@ public partial class MainWindow
     private void AvatarList_DragLeave(object sender, DragEventArgs e)
     {
         SetDropTarget(null);
-        _dragScrollY = null;
+        // DragLeave は一覧の中で別のタイルへ移っただけでも (スクロールでカーソルの下が入れ替わっても) 届く。
+        // そこで止めると 1 回送っただけで止まってしまうので、本当に一覧の外へ出たときだけ止める
+        var p = e.GetPosition(AvatarList);
+        if (p.X < 0 || p.Y < 0 || p.X >= AvatarList.ActualWidth || p.Y >= AvatarList.ActualHeight) _dragScrollY = null;
     }
 
     // ---------------- ドラッグ中の自動スクロール ----------------
