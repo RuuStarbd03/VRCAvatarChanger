@@ -827,11 +827,7 @@
                                 <ColumnDefinition Width="*"/>
                                 <ColumnDefinition Width="Auto"/>
                             </Grid.ColumnDefinitions>
-                            <StackPanel>
-                                <TextBlock Text="VRChat 連動" Style="{StaticResource SettingTitle}"/>
-                                <TextBlock Style="{StaticResource SettingDesc}"
-                                           Text="VRChat の起動に合わせてウィンドウを開きます。オンの間はトレイに常駐します。"/>
-                            </StackPanel>
+                            <TextBlock Text="VRChat 連動" Style="{StaticResource SettingTitle}" VerticalAlignment="Center"/>
                             <ToggleButton Grid.Column="1" x:Name="WatchToggle" Style="{StaticResource OnOffToggle}"
                                           Checked="WatchToggle_Changed" Unchecked="WatchToggle_Changed"
                                           VerticalAlignment="Top" Margin="14,0,0,0" AutomationProperties.Name="VRChat 連動"/>
@@ -844,11 +840,7 @@
                                 <ColumnDefinition Width="*"/>
                                 <ColumnDefinition Width="Auto"/>
                             </Grid.ColumnDefinitions>
-                            <StackPanel>
-                                <TextBlock Text="クイック着替え / ホットキー" Style="{StaticResource SettingTitle}"/>
-                                <TextBlock Style="{StaticResource SettingDesc}"
-                                           Text="VRChat が手前のとき、Shift+1 で画面の右にアバター選択を重ねて出します。"/>
-                            </StackPanel>
+                            <TextBlock Text="クイック着替え / ホットキー" Style="{StaticResource SettingTitle}" VerticalAlignment="Center"/>
                             <ToggleButton Grid.Column="1" x:Name="QuickToggle" Style="{StaticResource OnOffToggle}"
                                           Checked="QuickToggle_Changed" Unchecked="QuickToggle_Changed"
                                           VerticalAlignment="Top" Margin="14,0,0,0" AutomationProperties.Name="クイック着替え"/>
@@ -863,8 +855,6 @@
                             </Grid.ColumnDefinitions>
                             <StackPanel>
                                 <TextBlock Text="VR の手首ボタン (SteamVR)" Style="{StaticResource SettingTitle}"/>
-                                <TextBlock Style="{StaticResource SettingDesc}"
-                                           Text="VR で手首を見るとボタンが出ます。反対の手で触れるか、レーザーで押すとアバター選択が開きます。開いたパネルは、グリップを握ったままスティックを前後に倒すと奥 / 手前へ動かせます。OVR Toolkit などの腕時計と重ならないよう、肘側にずらして置きます。"/>
                                 <StackPanel x:Name="VrOptionsPanel" Margin="0,10,0,0">
                                     <StackPanel Orientation="Horizontal">
                                         <RadioButton x:Name="VrHandLeft" Content="左手" GroupName="VrHand" Tag="left" Style="{StaticResource SegmentButton}" Checked="VrHand_Checked"/>
@@ -908,11 +898,7 @@
                                 <ColumnDefinition Width="*"/>
                                 <ColumnDefinition Width="Auto"/>
                             </Grid.ColumnDefinitions>
-                            <StackPanel>
-                                <TextBlock Text="ブラウザのログイン状態を保持" Style="{StaticResource SettingTitle}"/>
-                                <TextBlock Style="{StaticResource SettingDesc}"
-                                           Text="次回のログインが数クリックで済みます。共用 PC ではオフ推奨 (オフにすると保存済みのデータも消します)。"/>
-                            </StackPanel>
+                            <TextBlock Text="ブラウザのログイン状態を保持" Style="{StaticResource SettingTitle}" VerticalAlignment="Center"/>
                             <ToggleButton Grid.Column="1" x:Name="KeepLoginToggle" Style="{StaticResource OnOffToggle}"
                                           Checked="KeepLoginToggle_Changed" Unchecked="KeepLoginToggle_Changed"
                                           VerticalAlignment="Top" Margin="14,0,0,0" AutomationProperties.Name="ブラウザのログイン状態を保持"/>
@@ -925,11 +911,7 @@
                                 <ColumnDefinition Width="*"/>
                                 <ColumnDefinition Width="Auto"/>
                             </Grid.ColumnDefinitions>
-                            <StackPanel>
-                                <TextBlock Text="ホットキーの割り当て" Style="{StaticResource SettingTitle}"/>
-                                <TextBlock Style="{StaticResource SettingDesc}"
-                                           Text="クイック着替え、直前に戻す、グループ内の次へ、特定のアバターにキーを割り当てます。"/>
-                            </StackPanel>
+                            <TextBlock Text="ホットキーの割り当て" Style="{StaticResource SettingTitle}" VerticalAlignment="Center"/>
                             <Button Grid.Column="1" Content="設定..." Style="{StaticResource SecondaryButton}" Click="HotkeySettings_Click"
                                     MinWidth="80" Height="32" VerticalAlignment="Top" Margin="14,0,0,0"/>
                         </Grid>
@@ -941,11 +923,7 @@
                                 <ColumnDefinition Width="*"/>
                                 <ColumnDefinition Width="Auto"/>
                             </Grid.ColumnDefinitions>
-                            <StackPanel>
-                                <TextBlock Text="配色" Style="{StaticResource SettingTitle}"/>
-                                <TextBlock Style="{StaticResource SettingDesc}"
-                                           Text="「システム」は Windows の設定に追従します。選ぶとその場で変わります。"/>
-                            </StackPanel>
+                            <TextBlock Text="配色" Style="{StaticResource SettingTitle}" VerticalAlignment="Center"/>
                             <Border Grid.Column="1" Background="{DynamicResource InputBrush}" BorderBrush="{DynamicResource BorderBrush}"
                                     BorderThickness="1" CornerRadius="{StaticResource ControlRadius}"
                                     VerticalAlignment="Top" Margin="14,0,0,0">
@@ -967,11 +945,7 @@
                                 <ColumnDefinition Width="*"/>
                                 <ColumnDefinition Width="Auto"/>
                             </Grid.ColumnDefinitions>
-                            <StackPanel>
-                                <TextBlock Text="ログの記録" Style="{StaticResource SettingTitle}"/>
-                                <TextBlock Style="{StaticResource SettingDesc}"
-                                           Text="動作の記録を app.log に書きます。不具合を報告するときはオンにして再現し、「開く」で出たファイルを添えてください。オフでもエラーは記録します。"/>
-                            </StackPanel>
+                            <TextBlock Text="ログの記録" Style="{StaticResource SettingTitle}" VerticalAlignment="Center"/>
                             <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Top" Margin="14,0,0,0">
                                 <Button Content="開く" Style="{StaticResource SecondaryButton}" Click="OpenLog_Click"
                                         ToolTip="app.log をテキストエディタで開く" MinWidth="80" Height="32" Margin="0,0,14,0"/>
@@ -988,11 +962,7 @@
                                 <ColumnDefinition Width="*"/>
                                 <ColumnDefinition Width="Auto"/>
                             </Grid.ColumnDefinitions>
-                            <StackPanel>
-                                <TextBlock Text="データの保存先" Style="{StaticResource SettingTitle}"/>
-                                <TextBlock Style="{StaticResource SettingDesc}"
-                                           Text="設定・グループ・タグ・パブリックリストの保存先を開きます。"/>
-                            </StackPanel>
+                            <TextBlock Text="データの保存先" Style="{StaticResource SettingTitle}" VerticalAlignment="Center"/>
                             <Button Grid.Column="1" Content="開く" Style="{StaticResource SecondaryButton}" Click="OpenDataFolder_Click"
                                     MinWidth="80" Height="32" VerticalAlignment="Top" Margin="14,0,0,0"/>
                         </Grid>
