@@ -1,6 +1,8 @@
+using System.Diagnostics;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using System.Windows.Threading;
 
 namespace VRCAvatarChanger;
 
@@ -139,7 +141,9 @@ public partial class MainWindow
         if (_openGroup is not null) { _dragSource = null; return; }
         var src = _dragSource;
         _dragSource = null;
-        DragDrop.DoDragDrop(AvatarList, new DataObject(typeof(AvatarItem), src), DragDropEffects.Move);
+        StartDragScroll();
+        try { DragDrop.DoDragDrop(AvatarList, new DataObject(typeof(AvatarItem), src), DragDropEffects.Move); }
+        finally { StopDragScroll(); }
         SetDropTarget(null);
     }
 
@@ -158,10 +162,54 @@ public partial class MainWindow
         var ok = src is not null && target is not null && !ReferenceEquals(src, target) && !(src.IsGroup && target.IsGroup && src.Group == target.Group);
         e.Effects = ok ? DragDropEffects.Move : DragDropEffects.None;
         SetDropTarget(ok ? target : null);
+        _dragScrollY = e.GetPosition(AvatarList).Y;
         e.Handled = true;
     }
 
-    private void AvatarList_DragLeave(object sender, DragEventArgs e) => SetDropTarget(null);
+    private void AvatarList_DragLeave(object sender, DragEventArgs e)
+    {
+        SetDropTarget(null);
+        _dragScrollY = null;
+    }
+
+    // ---------------- ドラッグ中の自動スクロール ----------------
+    // ドラッグ中は OS のドラッグ処理に入るのでホイールが効かない。
+    // 下の方にいるアバターへ重ねられるよう、一覧の上端 / 下端に近づけたらその向きへ送る
+
+    private const double DragScrollZone = 56;      // 端からこの距離 (DIP) に入ったら送り始める
+    private const double DragScrollMaxSpeed = 1600; // 端に着けたときの速さ (DIP/秒)
+
+    private DispatcherTimer? _dragScrollTimer;
+    private readonly Stopwatch _dragScrollClock = new();
+    private double? _dragScrollY; // 一覧の上端からのカーソル位置。一覧の外に出たら null
+
+    private void StartDragScroll()
+    {
+        _dragScrollY = null;
+        _dragScrollTimer ??= new DispatcherTimer(TimeSpan.FromMilliseconds(15), DispatcherPriority.Render, (_, _) => DragScrollTick(), Dispatcher) { IsEnabled = false };
+        _dragScrollClock.Restart();
+        _dragScrollTimer.Start();
+    }
+
+    private void StopDragScroll()
+    {
+        _dragScrollTimer?.Stop();
+        _dragScrollY = null;
+    }
+
+    private void DragScrollTick()
+    {
+        var dt = _dragScrollClock.Elapsed.TotalSeconds;
+        _dragScrollClock.Restart();
+        if (_dragScrollY is not { } y || VisualTree.FindDescendant<ScrollViewer>(AvatarList) is not { ScrollableHeight: > 0 } sv) return;
+        // 端に近いほど速く (ゾーンの入口で 0、端で最大)。ゆっくり探したいときは入口付近に置けばよい
+        var depth = y < DragScrollZone ? -(DragScrollZone - y)
+            : y > AvatarList.ActualHeight - DragScrollZone ? y - (AvatarList.ActualHeight - DragScrollZone)
+            : 0;
+        if (depth == 0) return;
+        var ratio = Math.Clamp(depth / DragScrollZone, -1, 1);
+        sv.ScrollToVerticalOffset(sv.VerticalOffset + ratio * Math.Abs(ratio) * DragScrollMaxSpeed * Math.Min(dt, 0.05));
+    }
 
     private void AvatarList_Drop(object sender, DragEventArgs e)
     {
