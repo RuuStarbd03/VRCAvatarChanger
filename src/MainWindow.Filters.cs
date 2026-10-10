@@ -151,9 +151,9 @@ public partial class MainWindow
 
     // ---------------- 隠し機能: 10 刻みの色分け (Ctrl+Shift+C) ----------------
 
-    // 6 色ループ。両テーマで薄く乗る程度のアルファ
+    // 赤 → 橙 → 黄 → 黄緑 → 緑 → 水 → 青 → 紺 → 紫 → 桃 の 10 色ループ。両テーマで薄く乗る程度のアルファ
     private static readonly Brush[] StripePalette =
-        new[] { "#4E3E8FD0", "#4E4CAF7D", "#4E9C6ADE", "#4EE09B4C", "#4ED66A9C", "#4E4CB8C4" }
+        new[] { "#4EE05252", "#4EE8873A", "#4EE3C53A", "#4E9CCB3B", "#4E3FAE5A", "#4E3FC1D9", "#4E3E86D6", "#4E4459C0", "#4E8E5CC9", "#4EE07AB0" }
         .Select(c => { var b = new SolidColorBrush((Color)ColorConverter.ConvertFromString(c)); b.Freeze(); return (Brush)b; })
         .ToArray();
 
