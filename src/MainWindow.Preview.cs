@@ -74,7 +74,7 @@ public partial class MainWindow
         if (Environment.GetEnvironmentVariable("VRCAC_UI_PREVIEW_STATE") == "empty") _allItems.Clear();
         BuildFilterChips(); // 「使えなくなったもの」のチップなど、一覧の中身で決まるフィルタを出す
         ApplyFilter();
-        if (withThumbs) QueueThumbnails(_allItems.ToList(), CancellationToken.None); // 実際の読み込みと同じ経路を通す
+        if (withThumbs) QueueThumbnails(_allItems.ToList()); // 実際の読み込みと同じ経路を通す
         AvatarList.SelectedIndex = 1;
         if (Environment.GetEnvironmentVariable("VRCAC_UI_PREVIEW_VIEW") is { Length: > 0 } view)
             (view == "grid" ? ViewGrid : ViewList).IsChecked = true;
@@ -351,7 +351,7 @@ public partial class MainWindow
             if (groupLate) GroupToggle.IsChecked = false;
             ApplyFilter();
             AvatarList.UpdateLayout();
-            QueueThumbnails(_allItems.ToList(), CancellationToken.None);
+            QueueThumbnails(_allItems.ToList());
 
             void Snap(string label)
             {
@@ -394,6 +394,14 @@ public partial class MainWindow
                 Snap("グループ位置へ");
                 await Task.Delay(3000);
                 Snap("さらに待つ");
+                // 一覧の読み込みをやり直したが中身が同じだった (F5 / トレイから開き直し) 状態にしてから、
+                // グループを開く。中身はまだ画面に出ていないので、ここで初めて展開される
+                _loadCts?.Cancel();
+                _loadCts = new CancellationTokenSource();
+                OpenGroup(all[firstGroup].Group!);
+                AvatarList.UpdateLayout();
+                await Task.Delay(2000);
+                Snap("グループを開く");
             }
             if (Environment.GetEnvironmentVariable("VRCAC_UI_PREVIEW_SHOT") is { Length: > 0 } shot)
             {

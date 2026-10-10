@@ -54,7 +54,15 @@ public partial class MainWindow
     private readonly Queue<AvatarItem> _thumbFront = new();
     private readonly HashSet<AvatarItem> _thumbFrontSet = [];
     private int _thumbRunning;
-    private CancellationToken _thumbCt;
+
+    /// <summary>
+    /// サムネイル読み込みの寿命。ウィンドウを閉じたときだけ止める。
+    /// 一覧の読み込み (F5 / トレイから開き直し) のトークンを使い回すと、中身が同じで一覧を作り直さなかったときに
+    /// キャンセル済みのものが残り、以降に画面へ出たタイル (グループの中身やスクロールした先) が空のままになる。
+    /// 手放した一覧の読み残しは QueueThumbnails が待ち行列から外すので、ここで止めなくてよい。
+    /// </summary>
+    private readonly CancellationTokenSource _thumbLife = new();
+    private CancellationToken ThumbCt => _thumbLife.Token;
 
     /// <summary>取れなかったサムネイルの再試行回数。上限を超えたらあきらめる (消された画像を叩き続けないため)。</summary>
     private readonly Dictionary<AvatarItem, int> _thumbAttempts = [];
@@ -81,9 +89,8 @@ public partial class MainWindow
         => item.ThumbnailUrl is not null && (item.Thumbnail is null || item.ThumbnailWidth < ThumbWidth);
 
     /// <summary>一覧が変わったとき / 表示形式が変わったときに呼ぶ。</summary>
-    private void QueueThumbnails(List<AvatarItem> items, CancellationToken ct)
+    private void QueueThumbnails(List<AvatarItem> items)
     {
-        _thumbCt = ct;
         _thumbAttempts.Clear(); // 一覧が変わったら再試行の回数は数え直す
         _thumbItems = items;
         // ここへ来る前にタイルが実体化していると、その要求はもう入っている。
@@ -96,7 +103,7 @@ public partial class MainWindow
         foreach (var item in pending)
             if (_thumbFrontSet.Add(item)) _thumbFront.Enqueue(item);
         RebuildThumbnailBudget(items);
-        StartWarming(ct);
+        StartWarming(ThumbCt);
         PumpThumbnails();
     }
 
@@ -131,7 +138,7 @@ public partial class MainWindow
             _thumbFrontSet.Remove(item);
             if (!NeedsThumbnail(item)) continue; // 先に読み終わっていた
             _thumbRunning++;
-            LoadThumbnailAsync(item, _thumbCt).Forget();
+            LoadThumbnailAsync(item, ThumbCt).Forget();
         }
     }
 
@@ -264,7 +271,7 @@ public partial class MainWindow
     /// <summary>トレイから開き直したときなど、止めていた用意を再開する。</summary>
     private void ResumeWarming()
     {
-        if (_thumbItems.Count > 0) StartWarming(_thumbCt);
+        if (_thumbItems.Count > 0) StartWarming(ThumbCt);
     }
 
     private async Task WarmDiskCacheAsync(CancellationToken ct)

@@ -39,7 +39,7 @@ public partial class MainWindow : Window
     private readonly List<AvatarItem> _allItems = [];
     private CurrentUser? _user;
     private IReadOnlyList<string> _twoFactorMethods = [];
-    private CancellationTokenSource? _thumbCts;
+    private CancellationTokenSource? _loadCts; // 一覧の読み込み。次の読み込みが始まったら止める
     private readonly OscListener _osc = new();
     private readonly Dictionary<string, Avatar> _avatarInfoCache = [];
 
@@ -99,7 +99,7 @@ public partial class MainWindow : Window
             if (!_preview && _user is not null && MainPanel.Visibility == Visibility.Visible) LoadAvatarsAsync().Forget();
         };
         Closing += (_, _) => SaveWindowBounds();
-        Closed += (_, _) => { _settingsSave?.Cancel(); _search?.Cancel(); _oscRetry?.Stop(); _updateTimer?.Stop(); _thumbCts?.Cancel(); _osc.Dispose(); _api.Dispose(); };
+        Closed += (_, _) => { _settingsSave?.Cancel(); _search?.Cancel(); _oscRetry?.Stop(); _updateTimer?.Stop(); _loadCts?.Cancel(); _thumbLife.Cancel(); _osc.Dispose(); _api.Dispose(); };
     }
 
     // ---------------- 小さな共通処理 ----------------
@@ -140,7 +140,7 @@ public partial class MainWindow : Window
         SaveSettings();
         // 表示形式が変わるとサムネに要る幅も変わる。大きい版に差し替わるのは画面に出たものだけで、
         // 残りはスクロールして見えたときに差し替わる (見てもいない数百枚を展開しない)
-        QueueThumbnails(_allItems.ToList(), _thumbCts?.Token ?? CancellationToken.None);
+        QueueThumbnails(_allItems.ToList());
         if (AvatarList.SelectedItem is not null) AvatarList.ScrollIntoView(AvatarList.SelectedItem);
     }
 
@@ -655,9 +655,9 @@ public partial class MainWindow : Window
         var pub = IsPublicTab;
         SetStatus(StatusKind.Info, pub ? "パブリックリストを読み込んでいます" : favorites ? "お気に入りを読み込んでいます" : "自分のアバターを読み込んでいます");
         ShowListState(loading: true);
-        _thumbCts?.Cancel();
-        _thumbCts = new CancellationTokenSource();
-        var ct = _thumbCts.Token;
+        _loadCts?.Cancel();
+        _loadCts = new CancellationTokenSource();
+        var ct = _loadCts.Token;
         try
         {
             int? refreshedEntries = null;
@@ -752,7 +752,7 @@ public partial class MainWindow : Window
         ApplyFilter();
         UpdateUserHeader();
         SetStatus(StatusKind.Info, CountText() + note);
-        QueueThumbnails(_allItems.ToList(), ct);
+        QueueThumbnails(_allItems.ToList());
     }
 
     /// <summary>同じ内容を表示中なので、一覧は作り直さずに読み込み中の表示だけ外す。</summary>
