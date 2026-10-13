@@ -147,6 +147,15 @@ internal sealed class VrOverlay : IDisposable
         _source = source;
         _watch.Tick += async (_, _) => await WatchAsync();
         _frame.Tick += (_, _) => Frame();
+        App.ThemeApplied += OnThemeApplied;
+    }
+
+    /// <summary>アクセント色が変わったら、手首ボタンとパネルを新しい色で描き直す。</summary>
+    private void OnThemeApplied()
+    {
+        if (!_connected) return;
+        UploadButton(_panelOpen);
+        if (_panelOpen) _panelDirty = true;
     }
 
     /// <summary>SteamVR と VRChat の起動を見張り始める。</summary>
@@ -163,7 +172,11 @@ internal sealed class VrOverlay : IDisposable
         Disconnect(null);
     }
 
-    public void Dispose() => Stop();
+    public void Dispose()
+    {
+        App.ThemeApplied -= OnThemeApplied;
+        Stop();
+    }
 
     // ---------------- 接続 / 切断 ----------------
 

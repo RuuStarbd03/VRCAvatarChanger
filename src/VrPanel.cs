@@ -70,13 +70,15 @@ internal sealed class VrPanel
     private static readonly Brush DimBrush = Frozen(Color.FromArgb(0x99, 0x14, 0x14, 0x16));
     private static readonly Brush TextBrush = Frozen(Color.FromRgb(0xF2, 0xF2, 0xF5));
     private static readonly Brush MutedBrush = Frozen(Color.FromRgb(0xA0, 0xA3, 0xAD));
-    private static readonly Brush AccentBrush = Frozen(Color.FromRgb(0x3E, 0x8F, 0xD0));
+    // アクセント色はアプリの設定 (Windows に合わせる / 選んだ色) に従う。VR パネルは常に暗い配色なので、ダーク用の色を使う
+    private static Color _accentColor;
+    private static Brush AccentBrush = Brushes.Transparent;
     private static readonly Brush DangerBrush = Frozen(Color.FromRgb(0xE5, 0x6B, 0x6F));
-    private static readonly Pen AccentPen = FrozenPen(AccentBrush, 4);
+    private static Pen AccentPen = new();
     private static readonly Pen EdgePen = FrozenPen(Frozen(Color.FromArgb(0x40, 0xFF, 0xFF, 0xFF)), 2);
     // 手首ボタン: 塗りつぶさず、暗い半透明の下地に細い輪だけ色を付ける (腕時計の横で主張しすぎないように)
     private static readonly Brush ButtonBackBrush = Frozen(Color.FromArgb(0xD9, 0x1B, 0x1C, 0x21));
-    private static readonly Pen ButtonRingPen = FrozenPen(AccentBrush, 6);
+    private static Pen ButtonRingPen = new();
     private static readonly Pen ButtonRingOpenPen = FrozenPen(MutedBrush, 6);
 
     private static readonly FontFamily UiFont = new("Segoe UI Variable Text, Yu Gothic UI, Segoe UI");
@@ -262,6 +264,7 @@ internal sealed class VrPanel
     /// <summary>描いた画像 (使い回しの描画先。次に描くまでの間だけ有効)。PNG への書き出しなどに使う。</summary>
     public BitmapSource Render()
     {
+        SyncAccent();
         var visual = new DrawingVisual();
         using (var dc = visual.RenderOpen())
         {
@@ -385,13 +388,27 @@ internal sealed class VrPanel
         if (glyph.Length > 0) DrawCentered(dc, glyph, IconFace, 22, enabled ? TextBrush : MutedBrush, Center(r));
     }
 
-    // 手首ボタンは「着替え」「閉じる」の 2 通りしかないので、1 回だけ作って持っておく
+    /// <summary>アクセント色が変わっていたら、それを使うブラシとペン、作り置きの手首ボタンを作り直す。描く前に呼ぶ。</summary>
+    private static void SyncAccent()
+    {
+        var c = App.AccentColor(dark: true);
+        if (c == _accentColor && AccentBrush != Brushes.Transparent) return;
+        _accentColor = c;
+        AccentBrush = Frozen(c);
+        AccentPen = FrozenPen(AccentBrush, 4);
+        ButtonRingPen = FrozenPen(AccentBrush, 6);
+        _buttonRgba = null;
+        _buttonOpenRgba = null;
+    }
+
+    // 手首ボタンは「チェンジ」「閉じる」の 2 通りしかないので、1 回だけ作って持っておく (色が変わったら作り直す)
     private static byte[]? _buttonRgba;
     private static byte[]? _buttonOpenRgba;
 
     /// <summary>手首ボタンの画像 (RGBA)。作るのは最初の 1 回だけ。</summary>
     public static byte[] ButtonRgba(bool panelOpen)
     {
+        SyncAccent();
         ref var cached = ref panelOpen ? ref _buttonOpenRgba : ref _buttonRgba;
         if (cached is null)
         {
@@ -404,6 +421,7 @@ internal sealed class VrPanel
     /// <summary>手首に付けるボタン。暗い半透明の丸に、色付きの細い輪と人のアイコン、「チェンジ」。</summary>
     public static BitmapSource RenderButton(bool panelOpen)
     {
+        SyncAccent();
         var visual = new DrawingVisual();
         using (var dc = visual.RenderOpen())
         {

@@ -11,6 +11,8 @@ public sealed class Settings
     public string ViewMode { get; set; } = "list";   // "list" | "grid"
     /// <summary>配色。"system" (Windows のアプリのモードに合わせる) / "light" / "dark"。</summary>
     public string Theme { get; set; } = "system";
+    /// <summary>アクセント色。"system" (Windows のアクセントカラーに合わせる) か、AccentPalette.Presets のキー。</summary>
+    public string Accent { get; set; } = AccentPalette.System;
     /// <summary>VRChat 連動: Windows 起動時にトレイで待機し、VRChat の起動を検知したらウィンドウを開く。</summary>
     public bool WatchVRChat { get; set; }
     /// <summary>VRChat のプレイ中に使うホットキー全体のオン/オフ(オフにするとキーボードフックを外す)。</summary>
@@ -78,6 +80,7 @@ public sealed class Settings
         s.GridColumns = Math.Clamp(s.GridColumns, MinGridColumns, MaxGridColumns);
         if (s.ViewMode is not ("list" or "grid")) s.ViewMode = "list";
         if (s.Theme is not ("system" or "light" or "dark")) s.Theme = "system";
+        if (!AccentPalette.IsValid(s.Accent)) s.Accent = AccentPalette.System;
         if (s.VrHand is not ("left" or "right")) s.VrHand = "left";
         if (s.VrTab is not (AvatarTab.Own or AvatarTab.Favorites or AvatarTab.Public)) s.VrTab = AvatarTab.Own;
         if (s.VrSortKey is not ("recent_asc" or "name_asc")) s.VrSortKey = "recent_asc";

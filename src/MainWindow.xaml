@@ -52,6 +52,10 @@
                                 <Rectangle x:Name="mark" Width="3" RadiusX="1.5" RadiusY="1.5" HorizontalAlignment="Left" Margin="-10,4,0,4"
                                            Fill="{DynamicResource AccentBrush}" Visibility="Collapsed"/>
                                 <ContentPresenter/>
+                                <!-- 離せばグループ化される状態: 枠に沿って光を流す (RunningLight.cs) -->
+                                <Rectangle x:Name="light" Margin="-10,-8" RadiusX="6" RadiusY="6" StrokeThickness="3.5" StrokeDashCap="Round"
+                                           Stroke="{DynamicResource AccentBrush}" IsHitTestVisible="False" Visibility="Collapsed"
+                                           local:RunningLight.IsActive="{Binding IsDropTarget}"/>
                             </Grid>
                         </Border>
                         <ControlTemplate.Triggers>
@@ -94,6 +98,11 @@
                                 <Setter TargetName="bd" Property="BorderBrush" Value="{DynamicResource AccentBrush}"/>
                                 <Setter TargetName="bd" Property="BorderThickness" Value="1"/>
                             </Trigger>
+                            <DataTrigger Binding="{Binding IsDropPending}" Value="True">
+                                <Setter TargetName="bd" Property="Background" Value="{DynamicResource HoverBrush}"/>
+                                <Setter TargetName="bd" Property="BorderBrush" Value="{DynamicResource BorderStrongBrush}"/>
+                                <Setter TargetName="bd" Property="BorderThickness" Value="1"/>
+                            </DataTrigger>
                             <DataTrigger Binding="{Binding IsDropTarget}" Value="True">
                                 <Setter TargetName="bd" Property="Background" Value="{DynamicResource SelectionBrush}"/>
                                 <Setter TargetName="bd" Property="BorderBrush" Value="{DynamicResource AccentBrush}"/>
@@ -193,6 +202,10 @@
                                     CornerRadius="{StaticResource ControlRadius}" Margin="4" Padding="5" SnapsToDevicePixels="True">
                                 <ContentPresenter/>
                             </Border>
+                            <!-- 離せばグループ化される状態: 枠に沿って光を流す (RunningLight.cs) -->
+                            <Rectangle x:Name="light" Margin="4" RadiusX="6" RadiusY="6" StrokeThickness="3.5" StrokeDashCap="Round"
+                                       Stroke="{DynamicResource AccentBrush}" IsHitTestVisible="False" Visibility="Collapsed"
+                                       local:RunningLight.IsActive="{Binding IsDropTarget}"/>
                             <!-- 現在着ているアバターのチェックマーク (サムネイル右上) -->
                             <Border x:Name="check" Width="24" Height="24" CornerRadius="12" Background="{DynamicResource AccentBrush}"
                                     HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,12,12,0" ToolTip="現在のアバター"
@@ -240,6 +253,10 @@
                             <Trigger Property="IsKeyboardFocused" Value="True">
                                 <Setter TargetName="bd" Property="BorderBrush" Value="{DynamicResource AccentBrush}"/>
                             </Trigger>
+                            <DataTrigger Binding="{Binding IsDropPending}" Value="True">
+                                <Setter TargetName="bd" Property="BorderBrush" Value="{DynamicResource BorderStrongBrush}"/>
+                                <Setter TargetName="bd" Property="Background" Value="{DynamicResource HoverBrush}"/>
+                            </DataTrigger>
                             <DataTrigger Binding="{Binding IsDropTarget}" Value="True">
                                 <Setter TargetName="bd" Property="BorderBrush" Value="{DynamicResource AccentBrush}"/>
                                 <Setter TargetName="bd" Property="Background" Value="{DynamicResource SelectionBrush}"/>
@@ -655,7 +672,9 @@
                 </Grid.ColumnDefinitions>
                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="2,0,12,0">
                     <TextBlock x:Name="StatusIcon" Style="{StaticResource Icon}" FontSize="12" Margin="0,0,6,0" Visibility="Collapsed"/>
-                    <TextBlock x:Name="StatusText" Style="{StaticResource CaptionText}" TextTrimming="CharacterEllipsis"/>
+                    <TextBlock x:Name="StatusText" Style="{StaticResource CaptionText}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
+                    <Button x:Name="UndoButton" Content="元に戻す" Style="{StaticResource SecondaryButton}" Click="UndoButton_Click"
+                            Height="26" Padding="10,0" Margin="10,0,0,0" Visibility="Collapsed" ToolTip="Ctrl+Z"/>
                 </StackPanel>
                 <Button Grid.Column="1" x:Name="ChangeButton" Content="選択したアバターにチェンジ" Click="ChangeSelected_Click"
                         Height="34" MinWidth="220" IsEnabled="False"
@@ -771,6 +790,39 @@
                     <Setter Property="LineHeight" Value="18"/>
                     <Setter Property="Margin" Value="0,4,0,0"/>
                 </Style>
+                <!-- アクセント色を選ぶ丸。選んでいるものに輪を付ける (色は Background に入れる) -->
+                <Style x:Key="AccentSwatch" TargetType="RadioButton">
+                    <Setter Property="Width" Value="28"/>
+                    <Setter Property="Height" Value="28"/>
+                    <Setter Property="Margin" Value="1,0"/>
+                    <Setter Property="Cursor" Value="Hand"/>
+                    <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+                    <Setter Property="Template">
+                        <Setter.Value>
+                            <ControlTemplate TargetType="RadioButton">
+                                <Grid Background="Transparent">
+                                    <Ellipse x:Name="ring" Stroke="{DynamicResource TextBrush}" StrokeThickness="2" Visibility="Hidden"/>
+                                    <Ellipse Margin="5" Fill="{TemplateBinding Background}"/>
+                                </Grid>
+                                <ControlTemplate.Triggers>
+                                    <Trigger Property="IsMouseOver" Value="True">
+                                        <Setter TargetName="ring" Property="Visibility" Value="Visible"/>
+                                        <Setter TargetName="ring" Property="Opacity" Value="0.35"/>
+                                    </Trigger>
+                                    <Trigger Property="IsKeyboardFocused" Value="True">
+                                        <Setter TargetName="ring" Property="Visibility" Value="Visible"/>
+                                        <Setter TargetName="ring" Property="Opacity" Value="0.6"/>
+                                    </Trigger>
+                                    <Trigger Property="IsChecked" Value="True">
+                                        <Setter TargetName="ring" Property="Visibility" Value="Visible"/>
+                                        <Setter TargetName="ring" Property="Opacity" Value="1"/>
+                                    </Trigger>
+                                </ControlTemplate.Triggers>
+                            </ControlTemplate>
+                        </Setter.Value>
+                    </Setter>
+                </Style>
+
                 <Style x:Key="SettingRow" TargetType="Border">
                     <Setter Property="Background" Value="{DynamicResource WindowBrush}"/>
                     <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}"/>
@@ -930,6 +982,26 @@
                                                  Style="{StaticResource SegmentButton}" Checked="Theme_Checked"/>
                                 </StackPanel>
                             </Border>
+                        </Grid>
+                    </Border>
+
+                    <Border Style="{StaticResource SettingRow}">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="アクセント" Style="{StaticResource SettingTitle}" VerticalAlignment="Center"/>
+                            <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="14,0,0,0">
+                                <Border Background="{DynamicResource InputBrush}" BorderBrush="{DynamicResource BorderBrush}"
+                                        BorderThickness="1" CornerRadius="{StaticResource ControlRadius}" Margin="0,0,8,0">
+                                    <RadioButton x:Name="AccentSystem" Content="Windows" Tag="system" GroupName="Accent"
+                                                 Style="{StaticResource SegmentButton}" Checked="Accent_Checked"
+                                                 ToolTip="Windows のアクセントカラー"/>
+                                </Border>
+                                <!-- 色の丸は AccentPalette.Presets から並べる (MainWindow.xaml.cs の ShowAccentSettings) -->
+                                <StackPanel x:Name="AccentSwatches" Orientation="Horizontal" VerticalAlignment="Center"/>
+                            </StackPanel>
                         </Grid>
                     </Border>
 

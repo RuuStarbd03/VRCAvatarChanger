@@ -121,7 +121,15 @@ public partial class MainWindow
 
     private Point _dragStart;
     private AvatarItem? _dragSource;
-    private AvatarItem? _dropTarget;
+    private AvatarItem? _dropTarget;      // 今重ねているタイル
+    private bool _dropArmed;              // 十分な時間重ねて、離せばグループ化される状態か
+    private readonly Stopwatch _dropHover = new(); // 今のタイルに重ねてからの時間
+
+    /// <summary>
+    /// この時間タイルに重ねてから離したときだけグループ化する。通り過ぎただけ・すぐ離しただけの
+    /// 誤操作 (クリックのぶれでドラッグになった場合など) でグループ化しないため。
+    /// </summary>
+    private static readonly TimeSpan DropArmDelay = TimeSpan.FromMilliseconds(500);
 
     private static AvatarItem? ItemAt(DependencyObject? origin)
         => VisualTree.FindAncestor<ListViewItem>(origin)?.DataContext as AvatarItem;
@@ -147,12 +155,24 @@ public partial class MainWindow
         SetDropTarget(null);
     }
 
+    /// <summary>重ねているタイルを替える。替えたら待ち直し (薄いハイライトから)。</summary>
     private void SetDropTarget(AvatarItem? target)
     {
         if (_dropTarget == target) return;
-        if (_dropTarget is not null) _dropTarget.IsDropTarget = false;
+        if (_dropTarget is not null) { _dropTarget.IsDropTarget = false; _dropTarget.IsDropPending = false; }
         _dropTarget = target;
-        if (_dropTarget is not null) _dropTarget.IsDropTarget = true;
+        _dropArmed = false;
+        _dropHover.Restart();
+        if (_dropTarget is not null) _dropTarget.IsDropPending = true;
+    }
+
+    /// <summary>十分重ねたら、離せばグループ化される状態にする (はっきりしたハイライト)。ドラッグ中のタイマーから呼ぶ。</summary>
+    private void ArmDropIfHeld()
+    {
+        if (_dropArmed || _dropTarget is null || _dropHover.Elapsed < DropArmDelay) return;
+        _dropArmed = true;
+        _dropTarget.IsDropPending = false;
+        _dropTarget.IsDropTarget = true;
     }
 
     private void AvatarList_DragOver(object sender, DragEventArgs e)
@@ -202,6 +222,7 @@ public partial class MainWindow
 
     private void DragScrollTick()
     {
+        ArmDropIfHeld(); // カーソルを止めて待っている間は DragOver が来ないことがあるので、こちらで見る
         var dt = _dragScrollClock.Elapsed.TotalSeconds;
         _dragScrollClock.Restart();
         if (_dragScrollY is not { } y || VisualTree.FindDescendant<ScrollViewer>(AvatarList) is not { ScrollableHeight: > 0 } sv) return;
@@ -218,10 +239,47 @@ public partial class MainWindow
     {
         var src = e.Data.GetData(typeof(AvatarItem)) as AvatarItem;
         var target = ItemAt(e.OriginalSource as DependencyObject);
+        var armed = _dropArmed && ReferenceEquals(target, _dropTarget);
         SetDropTarget(null);
         e.Handled = true;
         if (src is null || target is null || ReferenceEquals(src, target)) return;
+        if (!armed)
+        {
+            // 重ねてすぐ離した: 誤操作とみなしてグループ化しない
+            SetStatus(StatusKind.Info, "グループ化キャンセル (タイルに少し重ねてから離すと確定)");
+            return;
+        }
         PerformDrop(src, target);
+    }
+
+    // ---------------- ドラッグでのグループ化を取り消す ----------------
+
+    private List<AvatarGroup>? _groupUndo; // 直前のドラッグでのグループ化の前の状態
+
+    /// <summary>直前のグループ化を取り消せるようにする (画面下の「元に戻す」と Ctrl+Z)。</summary>
+    private void OfferGroupUndo(List<AvatarGroup> before)
+    {
+        _groupUndo = before;
+        UndoButton.Visibility = Visibility.Visible;
+    }
+
+    private void ClearGroupUndo()
+    {
+        _groupUndo = null;
+        UndoButton.Visibility = Visibility.Collapsed;
+    }
+
+    private void UndoButton_Click(object sender, RoutedEventArgs e) => UndoGroupChange();
+
+    /// <summary>直前のドラッグでのグループ化を取り消す。取り消せるものが無ければ何もしない (false)。</summary>
+    private bool UndoGroupChange()
+    {
+        if (_groupUndo is not { } before) return false;
+        _groups.Restore(before);
+        if (_openGroup is not null && !_groups.Groups.Any(g => g.Id == _openGroup.Id)) ResetOpenGroup();
+        SetStatus(StatusKind.Info, "グループ化取り消し完了");
+        ApplyFilter();
+        return true;
     }
 
     /// <summary>src を target に重ねたときのグループ化。</summary>
@@ -230,6 +288,7 @@ public partial class MainWindow
         // 移動元のアバター ID 群
         var srcIds = src.IsGroup ? src.Members.Select(m => m.Id).ToList() : [src.Id];
         var srcGroup = src.Group;
+        var before = _groups.Snapshot(); // 「元に戻す」用
 
         AvatarGroup dest;
         string message;
@@ -253,6 +312,7 @@ public partial class MainWindow
         if (srcGroup is not null && srcGroup != dest) _groups.Delete(srcGroup);
 
         SetStatus(StatusKind.Success, message);
+        OfferGroupUndo(before);
         ApplyFilter();
         if (AvatarList.Items.OfType<AvatarItem>().FirstOrDefault(a => a.Group == dest) is { } tile) AvatarList.SelectedItem = tile;
     }

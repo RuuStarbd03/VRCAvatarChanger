@@ -73,6 +73,7 @@ public partial class MainWindow
                 case Key.G: e.Handled = true; GroupToggle.IsChecked = GroupToggle.IsChecked != true; return;
                 case Key.I: e.Handled = true; ShowDetailOfSelection(); return;
                 case Key.C when !TypingInTextBox: e.Handled = true; MenuCopyId_Click(sender, e); return;
+                case Key.Z when !TypingInTextBox: if (UndoGroupChange()) e.Handled = true; return; // 直前のグループ化を取り消す
             }
         }
         if (mods == (ModifierKeys.Control | ModifierKeys.Shift))

@@ -1,6 +1,7 @@
 using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Interop;
+using System.Windows.Media;
 using Microsoft.Win32;
 
 namespace VRCAvatarChanger;
@@ -32,7 +33,7 @@ public partial class App : Application
         var settings = Settings.Load();
         Log.Enabled = settings.LogEnabled;
         Log.Info($"起動: v{Updater.CurrentVersion.ToString(3)} 引数=[{string.Join(" ", e.Args)}]");
-        ApplyTheme(settings.Theme);
+        ApplyTheme(settings.Theme, settings.Accent);
         // 「システム」を選んでいる間は、Windows 側でモードが変わったら追従する
         // (時間帯で自動的に切り替える設定があるので、開きっぱなしでも合っていてほしい)
         SystemEvents.UserPreferenceChanged += OnUserPreferenceChanged;
@@ -90,19 +91,43 @@ public partial class App : Application
     /// <summary>今選ばれている配色 ("system" / "light" / "dark")。</summary>
     private static string _themeMode = "system";
 
+    /// <summary>今選ばれているアクセント色 (AccentPalette.System = Windows に合わせる、またはプリセットのキー)。</summary>
+    private static string _accent = AccentPalette.System;
+
+    /// <summary>配色 / アクセント色を適用し終えたとき。画面の外で色を使うもの (VR パネル) が描き直すために使う。</summary>
+    public static event Action? ThemeApplied;
+
     private static void OnUserPreferenceChanged(object? sender, UserPreferenceChangedEventArgs e)
     {
-        if (e.Category == UserPreferenceCategory.General && _themeMode == "system")
-            Current?.Dispatcher.BeginInvoke(() => ApplyTheme("system"));
+        // Windows のライト / ダークやアクセントカラーが変わった。どちらかを Windows に合わせていれば追従する
+        if (e.Category == UserPreferenceCategory.General && (_themeMode == "system" || _accent == AccentPalette.System))
+            Current?.Dispatcher.BeginInvoke(() => ApplyTheme(_themeMode));
     }
+
+    /// <summary>アクセント色だけを変える (配色はそのまま)。</summary>
+    public static void ApplyAccent(string accent) => ApplyTheme(_themeMode, accent);
+
+    // 今のアクセント色。適用のたびに計算し直す (VR パネルは何度も描き直すので、そのたびにレジストリを読まない)
+    private static Color _accentLight = AccentPalette.Presets[0].Color;
+    private static Color _accentDark = AccentPalette.Presets[0].Color;
+
+    /// <summary>今のアクセント色 (VR パネルなど、DynamicResource を使えないところ用)。</summary>
+    public static Color AccentColor(bool dark) => dark ? _accentDark : _accentLight;
+
+    /// <summary>今選ばれているアクセント色のキー。</summary>
+    public static string AccentKey => _accent;
 
     /// <summary>
     /// 配色を適用する。mode は "system" (Windows のアプリのモードに合わせる) / "light" / "dark"。
+    /// accent を渡したらアクセント色も替える (省略すると今のまま)。
     /// 色は全て DynamicResource 経由なので、辞書を差し替えれば開いている画面もその場で変わる。
     /// </summary>
-    public static void ApplyTheme(string mode)
+    public static void ApplyTheme(string mode, string? accent = null)
     {
         _themeMode = mode is "light" or "dark" ? mode : "system";
+        if (accent is not null) _accent = AccentPalette.IsValid(accent) ? accent : AccentPalette.System;
+        _accentLight = AccentPalette.AccentFor(_accent, dark: false);
+        _accentDark = AccentPalette.AccentFor(_accent, dark: true);
         IsDarkTheme = _themeMode switch
         {
             "light" => false,
@@ -118,11 +143,14 @@ public partial class App : Application
 
         if (Current is not { } app) return;
         var dict = new ResourceDictionary { Source = new Uri(IsDarkTheme ? "Themes/Dark.xaml" : "Themes/Light.xaml", UriKind.Relative) };
+        // 配色ファイルの青 (既定) を、選ばれたアクセント色で上書きしてから差し替える
+        AccentPalette.ApplyTo(dict, _accent, IsDarkTheme);
         // 差し替えは 1 手で行う (一度空にすると、その瞬間だけ色を引けなくなる)
         if (app.Resources.MergedDictionaries.Count > 0) app.Resources.MergedDictionaries[0] = dict;
         else app.Resources.MergedDictionaries.Add(dict);
         // タイトルバーは DWM 側の設定なので、開いている分を塗り直す
         foreach (Window window in app.Windows) ApplyTitleBarTheme(window);
+        ThemeApplied?.Invoke();
     }
 
     /// <summary>Windows の「アプリのモード」がダークか。</summary>

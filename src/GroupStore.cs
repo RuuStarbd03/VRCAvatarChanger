@@ -41,6 +41,19 @@ public sealed class GroupStore
         return map;
     }
 
+    /// <summary>今のグループ構成の写し (取り消し用)。後から元のグループを変えても写しは変わらない。</summary>
+    public List<AvatarGroup> Snapshot() => _groups.Select(Clone).ToList();
+
+    /// <summary>写しの状態に戻して保存する。</summary>
+    public void Restore(IEnumerable<AvatarGroup> snapshot)
+    {
+        _groups.Clear();
+        _groups.AddRange(snapshot.Select(Clone));
+        Save();
+    }
+
+    private static AvatarGroup Clone(AvatarGroup g) => new() { Id = g.Id, Name = g.Name, AvatarIds = [.. g.AvatarIds] };
+
     public AvatarGroup? FindByName(string name)
         => _groups.FirstOrDefault(g => string.Equals(g.Name, name.Trim(), StringComparison.CurrentCultureIgnoreCase));
 

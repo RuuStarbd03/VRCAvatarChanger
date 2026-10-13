@@ -1,6 +1,8 @@
 ﻿using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Automation;
 using System.Windows.Input;
+using System.Windows.Media;
 
 namespace VRCAvatarChanger;
 
@@ -372,6 +374,7 @@ public partial class MainWindow : Window
 
     private void SetStatus(StatusKind kind, string text)
     {
+        ClearGroupUndo(); // 「元に戻す」は直前の操作のメッセージが出ている間だけ
         StatusText.Text = text;
         switch (kind)
         {
@@ -560,6 +563,7 @@ public partial class MainWindow : Window
         KeepLoginToggle.IsChecked = _settings.KeepBrowserLogin;
         ShowVrSettings();
         (_settings.Theme switch { "light" => ThemeLight, "dark" => ThemeDark, _ => ThemeSystem }).IsChecked = true;
+        ShowAccentSettings();
         AccountDesc.Text = string.IsNullOrEmpty(_user?.DisplayName) ? "" : $"{_user.DisplayName} としてログイン中";
         Overlay.Open(SettingsOverlay, SettingsCardScale);
     }
@@ -584,6 +588,46 @@ public partial class MainWindow : Window
         _settings.Theme = mode;
         SaveSettings();
         App.ApplyTheme(mode);
+        ShowAccentSettings(); // 色の丸を、新しい配色で見える色に塗り直す
+    }
+
+    /// <summary>
+    /// アクセント色の丸を並べ、今の設定に印を付ける。丸の色は今の配色で実際に使われる色にする
+    /// (ライトでは少し濃く、ダークでは少し明るく調整されるので、選んだ後の見え方と合わせる)。
+    /// </summary>
+    private void ShowAccentSettings()
+    {
+        if (AccentSwatches.Children.Count == 0)
+            foreach (var (key, label, _) in AccentPalette.Presets)
+            {
+                var swatch = new RadioButton
+                {
+                    Tag = key,
+                    GroupName = "Accent",
+                    Style = (Style)AccentSwatches.FindResource("AccentSwatch"), // 設定画面の中で定義したスタイルなので、その中の要素から探す
+                    ToolTip = label,
+                };
+                AutomationProperties.SetName(swatch, "アクセント: " + label);
+                swatch.Checked += Accent_Checked;
+                AccentSwatches.Children.Add(swatch);
+            }
+        foreach (RadioButton swatch in AccentSwatches.Children)
+        {
+            var color = AccentPalette.AccentFor((string)swatch.Tag, App.IsDarkTheme);
+            swatch.Background = new SolidColorBrush(color);
+            swatch.IsChecked = (string)swatch.Tag == _settings.Accent;
+        }
+        AccentSystem.IsChecked = _settings.Accent == AccentPalette.System;
+    }
+
+    private void Accent_Checked(object sender, RoutedEventArgs e)
+    {
+        if (!_ready) return;
+        var key = (sender as RadioButton)?.Tag as string ?? AccentPalette.System;
+        if (_settings.Accent == key) return; // 設定画面を開いたときの初期化では何もしない
+        _settings.Accent = key;
+        SaveSettings();
+        App.ApplyAccent(key);
     }
 
     private void OpenDataFolder_Click(object sender, RoutedEventArgs e)

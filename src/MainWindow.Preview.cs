@@ -21,6 +21,7 @@ public partial class MainWindow
     {
         // 見た目の確認は両テーマで行いたいので、設定を書き換えずにここだけ切り替えられるようにする
         if (Environment.GetEnvironmentVariable("VRCAC_UI_PREVIEW_THEME") is { Length: > 0 } theme) App.ApplyTheme(theme);
+        if (Environment.GetEnvironmentVariable("VRCAC_UI_PREVIEW_ACCENT") is { Length: > 0 } accentKey) { _settings.Accent = accentKey; App.ApplyAccent(accentKey); }
         _user = new CurrentUser { DisplayName = "Preview User", CurrentAvatar = "avtr_00000000-0000-4000-8000-000000000001" };
         LoginPanel.Visibility = Visibility.Collapsed;
         MainPanel.Visibility = Visibility.Visible;
@@ -111,6 +112,8 @@ public partial class MainWindow
         // VR パネルの確認: VRCAC_UI_PREVIEW_VR=フォルダ で、パネルと手首ボタンの画像と、当たり判定・座標計算の結果を書き出して終了する
         // (SteamVR は使わないので、SteamVR の無い PC でも確かめられる)
         if (Environment.GetEnvironmentVariable("VRCAC_UI_PREVIEW_VR") is { Length: > 0 } vrDir) { _ = RunVrTestAsync(vrDir); return; }
+        // 誤操作でのグループ化対策の確認: VRCAC_UI_PREVIEW_GROUPSAFETY=フォルダ (重ねて待つと確定 / 元に戻す)
+        if (Environment.GetEnvironmentVariable("VRCAC_UI_PREVIEW_GROUPSAFETY") is { Length: > 0 } gsDir) { _ = RunGroupSafetyTestAsync(gsDir); return; }
 
         // 見た目確認: VRCAC_UI_PREVIEW_SHOT=path でウィンドウを画面外に置いたまま PNG に描画して終了する
         // (実画面をキャプチャしないので、ゲーム中でも邪魔にならない)。SETTINGS=1 なら設定オーバーレイを開いた状態で撮る
@@ -886,14 +889,15 @@ public partial class MainWindow
             var outside = Vector3.Transform(new Vector3(w * 0.6f, 0, 0), panelWorld); // 面の外
             Expect("面の外は触れていない", !VrOverlay.TouchPoint(panelWorld, w, VrPanel.Width, VrPanel.Height, outside, out _));
 
-            // SteamVR に渡す並び (RGBA) になっているか: 「グループ化: オン」のボタンの色 #3E8FD0 の画素を見る
+            // SteamVR に渡す並び (RGBA) になっているか: 「グループ化: オン」のボタンの色 (今のアクセント色) の画素を見る
+            var accent = App.AccentColor(dark: true);
             var rgba = panel.RenderRgba();
             var px = (102 * VrPanel.Width + 430) * 4; // (430, 102) = グループ化ボタンの左端寄り (文字の無いところ)
-            Expect("RGBA の並び (R=3E G=8F B=D0 A=FF)", rgba[px] == 0x3E && rgba[px + 1] == 0x8F && rgba[px + 2] == 0xD0 && rgba[px + 3] == 0xFF,
+            Expect($"RGBA の並び (アクセント {accent})", rgba[px] == accent.R && rgba[px + 1] == accent.G && rgba[px + 2] == accent.B && rgba[px + 3] == 0xFF,
                 $"{rgba[px]:X2} {rgba[px + 1]:X2} {rgba[px + 2]:X2} {rgba[px + 3]:X2}");
             var btn = VrPanel.ButtonRgba(panelOpen: false);
             var bAt = (6 * VrPanel.ButtonSize + 96) * 4; // 手首ボタンの輪の一番上 (アクセント色)
-            Expect("手首ボタンも RGBA", btn[bAt] == 0x3E && btn[bAt + 2] == 0xD0, $"{btn[bAt]:X2} {btn[bAt + 1]:X2} {btn[bAt + 2]:X2}");
+            Expect("手首ボタンも RGBA", btn[bAt] == accent.R && btn[bAt + 1] == accent.G && btn[bAt + 2] == accent.B, $"{btn[bAt]:X2} {btn[bAt + 1]:X2} {btn[bAt + 2]:X2}");
             var inner = (96 * VrPanel.ButtonSize + 40) * 4; // 輪の内側でアイコンの無いところ
             Expect("手首ボタンの下地は塗りつぶさず半透明", btn[inner + 3] < 0xFF && btn[inner + 2] < 0x40,
                 $"{btn[inner]:X2} {btn[inner + 1]:X2} {btn[inner + 2]:X2} {btn[inner + 3]:X2}");
@@ -937,6 +941,119 @@ public partial class MainWindow
                 Expect($"距離 {d:F2}m: 正面にその距離だけ離れて置かれる", MathF.Abs(flat.Length() - d) < 1e-4f && Vector3.Dot(Vector3.Normalize(flat), fwd) > 0.999f);
                 Expect($"距離 {d:F2}m: 表がこちらを向く", Vector3.Dot(face, -fwd) > 0.9f);
             }
+        }
+        catch (Exception ex) { failures++; report.AppendLine("EXCEPTION: " + ex); }
+        report.Insert(0, failures == 0 ? "RESULT: all passed\n" : $"RESULT: {failures} failed\n");
+        File.WriteAllText(Path.Combine(dir, "report.txt"), report.ToString());
+        Application.Current.Shutdown();
+    }
+
+    /// <summary>
+    /// 誤操作でのグループ化対策の自己診断 (VRCAC_UI_PREVIEW_GROUPSAFETY=フォルダ)。
+    /// ドラッグそのものは OS の処理なので再現せず、重ねたときの判定と「元に戻す」を直接呼んで確かめる。
+    /// </summary>
+    private async Task RunGroupSafetyTestAsync(string dir)
+    {
+        Left = -4000; Top = 0;
+        var report = new System.Text.StringBuilder();
+        var failures = 0;
+        void Expect(string label, bool ok, string detail = "")
+        {
+            if (!ok) failures++;
+            report.AppendLine($"{(ok ? "OK  " : "NG  ")}{label}{(detail.Length > 0 ? "  " + detail : "")}");
+        }
+        try
+        {
+            Directory.CreateDirectory(dir);
+            await Task.Delay(500);
+            var tiles = AvatarList.Items.OfType<AvatarItem>().ToList();
+
+            // 重ねて待つと確定
+            SetDropTarget(tiles[2]);
+            ArmDropIfHeld();
+            Expect("重ねた直後は確定しない (薄いハイライト)", !_dropArmed && tiles[2].IsDropPending && !tiles[2].IsDropTarget);
+            await Task.Delay(DropArmDelay + TimeSpan.FromMilliseconds(100));
+            ArmDropIfHeld();
+            Expect("少し待つと確定 (はっきりしたハイライト)", _dropArmed && tiles[2].IsDropTarget && !tiles[2].IsDropPending);
+            // 確定できる状態の合図: 枠を光が流れる (リスト表示とボックス表示の両方)
+            System.Windows.Shapes.Rectangle? Light(AvatarItem item)
+                => AvatarList.ItemContainerGenerator.ContainerFromItem(item) is ListViewItem c
+                    ? c.Template.FindName("light", c) as System.Windows.Shapes.Rectangle : null;
+            void Shot(string name, AvatarItem item)
+            {
+                if (AvatarList.ItemContainerGenerator.ContainerFromItem(item) is not FrameworkElement c) return;
+                var pad = 12;
+                var rtb = new RenderTargetBitmap((int)c.ActualWidth + pad * 2, (int)c.ActualHeight + pad * 2, 96, 96, PixelFormats.Pbgra32);
+                var dv = new DrawingVisual();
+                using (var dc = dv.RenderOpen())
+                {
+                    dc.DrawRectangle((Brush)FindResource("PanelBrush"), null, new Rect(0, 0, rtb.Width, rtb.Height));
+                    dc.DrawRectangle(new VisualBrush(c), null, new Rect(pad, pad, c.ActualWidth, c.ActualHeight));
+                }
+                rtb.Render(dv);
+                using var fs = File.Create(Path.Combine(dir, name));
+                var enc = new PngBitmapEncoder();
+                enc.Frames.Add(BitmapFrame.Create(rtb));
+                enc.Save(fs);
+            }
+            foreach (var view in new[] { "list", "grid" })
+            {
+                (view == "grid" ? ViewGrid : ViewList).IsChecked = true;
+                AvatarList.UpdateLayout();
+                await Task.Delay(300);
+                var target = AvatarList.Items.OfType<AvatarItem>().ElementAt(2);
+                SetDropTarget(target);
+                await Task.Delay(DropArmDelay + TimeSpan.FromMilliseconds(100));
+                ArmDropIfHeld();
+                await Task.Delay(100);
+                var light = Light(target);
+                var perimeter = light is null ? 0 : RunningLight.Perimeter(light.ActualWidth, light.ActualHeight, light.RadiusX, light.StrokeThickness);
+                var lap = light?.StrokeDashArray is { Count: 2 } d ? (d[0] + d[1]) * light.StrokeThickness : 0;
+                Expect($"{view}: 確定できると枠に光が流れる", light is { Visibility: Visibility.Visible, HasAnimatedProperties: true },
+                    $"visible={light?.Visibility} animated={light?.HasAnimatedProperties}");
+                Expect($"{view}: 光の筋はちょうど 1 周に 1 本", perimeter > 0 && Math.Abs(lap - perimeter) < 0.5, $"1 周 {perimeter:F1} / 破線の繰り返し {lap:F1}");
+                Shot($"light-{view}-1.png", target);
+                await Task.Delay(350);
+                Shot($"light-{view}-2.png", target);
+                SetDropTarget(null);
+                Expect($"{view}: 外れると光が消える", light is { Visibility: Visibility.Collapsed, HasAnimatedProperties: false });
+            }
+            ViewList.IsChecked = true;
+            AvatarList.UpdateLayout();
+            tiles = AvatarList.Items.OfType<AvatarItem>().ToList();
+
+            SetDropTarget(tiles[2]);
+            SetDropTarget(tiles[3]);
+            Expect("別のタイルへ移ると待ち直し", !_dropArmed && !tiles[2].IsDropTarget && !tiles[2].IsDropPending && tiles[3].IsDropPending);
+            SetDropTarget(null);
+            Expect("離れるとハイライトが消える", !tiles[3].IsDropPending && !tiles[3].IsDropTarget);
+
+            // 元に戻す
+            string Groups() => string.Join(" / ", _groups.Groups.Select(g => $"{g.Name}:{string.Join(",", g.AvatarIds.Select(id => id[^2..]))}"));
+            var before = Groups();
+            PerformDrop(tiles[1], tiles[2]);
+            var grouped = Groups();
+            Expect("グループ化される", grouped != before && _groups.Groups.Count == 1, grouped);
+            Expect("「元に戻す」が出る", UndoButton.Visibility == Visibility.Visible);
+            await Task.Delay(300);
+            var rtb = new RenderTargetBitmap((int)ActualWidth, (int)ActualHeight, 96, 96, PixelFormats.Pbgra32);
+            rtb.Render(this);
+            using (var fs = File.Create(Path.Combine(dir, "undo.png")))
+            {
+                var enc = new PngBitmapEncoder();
+                enc.Frames.Add(BitmapFrame.Create(rtb));
+                enc.Save(fs);
+            }
+            Expect("Ctrl+Z / 元に戻すで取り消せる", UndoGroupChange() && Groups() == before, Groups());
+            Expect("取り消したら「元に戻す」は消える", UndoButton.Visibility != Visibility.Visible);
+            Expect("2 回目は何もしない", !UndoGroupChange());
+            Expect("取り消しはファイルにも残る", GroupStore.Load().Groups.Count == _groups.Groups.Count);
+
+            // 別のメッセージが出たら取り消しの対象から外れる
+            tiles = AvatarList.Items.OfType<AvatarItem>().ToList();
+            PerformDrop(tiles[1], tiles[2]);
+            SetStatus(StatusKind.Info, "ID コピー完了");
+            Expect("別の操作のあとは取り消せない", !UndoGroupChange() && UndoButton.Visibility != Visibility.Visible);
         }
         catch (Exception ex) { failures++; report.AppendLine("EXCEPTION: " + ex); }
         report.Insert(0, failures == 0 ? "RESULT: all passed\n" : $"RESULT: {failures} failed\n");

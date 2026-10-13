@@ -162,7 +162,15 @@ public sealed class AvatarItem : INotifyPropertyChanged
         set { if (_isCurrent != value) { _isCurrent = value; OnPropertyChanged(); } }
     }
 
-    /// <summary>ドラッグ中に重ねられているとき true(見た目のハイライト用)。</summary>
+    private bool _isDropPending;
+    /// <summary>ドラッグ中に重ねられたが、まだ確定していない (少し待つと IsDropTarget になる)。薄いハイライト用。</summary>
+    public bool IsDropPending
+    {
+        get => _isDropPending;
+        set { if (_isDropPending != value) { _isDropPending = value; OnPropertyChanged(); } }
+    }
+
+    /// <summary>ドラッグ中に重ねられていて、離せばグループ化されるとき true(見た目のハイライト用)。</summary>
     public bool IsDropTarget
     {
         get => _isDropTarget;
