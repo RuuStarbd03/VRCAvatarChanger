@@ -47,7 +47,7 @@ public partial class MainWindow
         MenuAddFavorite.Items.Clear();
         if (_favoriteGroups.Count == 0)
         {
-            MenuAddFavorite.Items.Add(new MenuItem { Header = "グループを取得できていません(再読み込みしてください)", IsEnabled = false });
+            MenuAddFavorite.Items.Add(new MenuItem { Header = "グループ未取得 (F5 で再読み込み)", IsEnabled = false });
             return;
         }
         foreach (var group in _favoriteGroups)
@@ -62,18 +62,18 @@ public partial class MainWindow
     private async Task AddFavoriteAsync(AvatarItem item, FavoriteGroup group)
     {
         var groupName = VRChatApi.FriendlyGroupName(group);
-        SetStatus(StatusKind.Info, $"{item.Name} を「{groupName}」に登録しています");
+        SetStatus(StatusKind.Info, $"お気に入り登録中… ({item.Name} → {groupName})");
         try
         {
             _favoriteRecords[item.Id] = await _api.AddFavoriteAsync(item.Id, group.Name);
             AvatarListCache.Invalidate(AvatarListCache.Favorites); // 次に開いたときは取り直す
-            SetStatus(StatusKind.Success, $"{item.Name} をお気に入り「{groupName}」に追加しました");
+            SetStatus(StatusKind.Success, $"お気に入り登録完了: {item.Name} → {groupName}");
             if (IsFavoritesTab) await LoadAvatarsAsync();
         }
         catch (Exception ex)
         {
             Log.Warn($"お気に入りに追加できませんでした: {item.Id} → {group.Name}", ex);
-            if (!HandleSessionExpired(ex)) SetStatus(StatusKind.Error, "お気に入りに追加できませんでした: " + FriendlyError.Of(ex));
+            if (!HandleSessionExpired(ex)) SetStatus(StatusKind.Error, "お気に入り登録失敗: " + FriendlyError.Of(ex));
         }
     }
 
@@ -81,21 +81,21 @@ public partial class MainWindow
     {
         if (SelectedAvatar is not { } item) return;
         if (!_favoriteRecords.TryGetValue(item.Id, out var record)) return;
-        SetStatus(StatusKind.Info, $"{item.Name} をお気に入りから外しています");
+        SetStatus(StatusKind.Info, $"お気に入り解除中… ({item.Name})");
         try
         {
             await _api.RemoveFavoriteAsync(record.Id);
-            SetStatus(StatusKind.Success, $"{item.Name} をお気に入りから外しました");
+            SetStatus(StatusKind.Success, $"お気に入り解除完了: {item.Name}");
         }
         catch (VRChatApiException gone) when (gone.Status == HttpStatusCode.NotFound)
         {
             // ゲーム内や Web 側で先に外されていた。こちらの記録を合わせるだけでよい
-            SetStatus(StatusKind.Info, $"{item.Name} はすでにお気に入りから外れていました");
+            SetStatus(StatusKind.Info, $"お気に入り解除済み: {item.Name}");
         }
         catch (Exception ex)
         {
             Log.Warn($"お気に入りから外せませんでした: {item.Id}", ex);
-            if (!HandleSessionExpired(ex)) SetStatus(StatusKind.Error, "お気に入りから外せませんでした: " + FriendlyError.Of(ex));
+            if (!HandleSessionExpired(ex)) SetStatus(StatusKind.Error, "お気に入り解除失敗: " + FriendlyError.Of(ex));
             return;
         }
         _favoriteRecords.Remove(item.Id);

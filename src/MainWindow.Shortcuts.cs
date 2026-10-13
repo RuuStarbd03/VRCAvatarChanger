@@ -152,7 +152,7 @@ public partial class MainWindow
     private async Task RemoveSelectedFromPublicAsync()
     {
         if (SelectedAvatar is not { } item) return;
-        if (!Dialogs.Confirm(this, $"{item.Name} をパブリックから外しますか?\n(もう一度 ID か URL で追加すれば戻せます)")) return;
+        if (!Dialogs.Confirm(this, $"{item.Name} をパブリックから外しますか?")) return;
         var index = AvatarList.SelectedIndex;
         await RemoveFromPublicAsync(item);
         // 消した位置の次を選んでおくと、続けて Delete で片付けられる

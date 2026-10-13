@@ -77,7 +77,7 @@ public partial class MainWindow
             var from = _groups.GroupOf(item.Id);
             _groups.Assign(item.Id, win.Result);
             if (from is not null && from != win.Result) PruneGroup(from);
-            SetStatus(StatusKind.Success, $"{item.Name} を「{win.Result.Name}」に入れました");
+            SetStatus(StatusKind.Success, $"グループ追加完了: {item.Name} → {win.Result.Name}");
             ApplyFilter();
         }
     }
@@ -88,7 +88,7 @@ public partial class MainWindow
         var from = _groups.GroupOf(item.Id);
         _groups.Unassign(item.Id);
         if (from is not null) PruneGroup(from);
-        SetStatus(StatusKind.Info, $"{item.Name} をグループから外しました");
+        SetStatus(StatusKind.Info, $"グループ除外完了: {item.Name}");
         ApplyFilter();
     }
 
@@ -101,7 +101,7 @@ public partial class MainWindow
             var dup = _groups.FindByName(newName);
             if (dup is not null && dup != group)
             {
-                SetStatus(StatusKind.Error, $"「{newName}」という名前のグループはすでにあります");
+                SetStatus(StatusKind.Error, $"同名のグループあり: {newName}");
                 return;
             }
             _groups.Rename(group, newName);
@@ -113,7 +113,7 @@ public partial class MainWindow
     {
         if (AvatarList.SelectedItem is not AvatarItem { Group: { } group }) return;
         _groups.Delete(group);
-        SetStatus(StatusKind.Info, $"グループ「{group.Name}」を解除しました");
+        SetStatus(StatusKind.Info, $"グループ解散完了: {group.Name}");
         ApplyFilter();
     }
 
@@ -237,8 +237,8 @@ public partial class MainWindow
         {
             dest = target.Group!;
             message = src.IsGroup
-                ? $"「{src.Name}」を「{dest.Name}」に統合しました"
-                : $"{src.Name} を「{dest.Name}」に入れました";
+                ? $"グループ統合完了: {src.Name} → {dest.Name}"
+                : $"グループ追加完了: {src.Name} → {dest.Name}";
         }
         else
         {
@@ -246,8 +246,8 @@ public partial class MainWindow
             dest = _groups.FindByName(target.Name) ?? _groups.Create(target.Name);
             _groups.Assign(target.Id, dest);
             message = src.IsGroup
-                ? $"「{src.Name}」と {target.Name} を「{dest.Name}」にまとめました"
-                : $"{src.Name} と {target.Name} を「{dest.Name}」にまとめました。名前は右クリックで変えられます";
+                ? $"グループ統合完了: {src.Name} + {target.Name} → {dest.Name}"
+                : $"グループ作成完了: {dest.Name} ({src.Name} + {target.Name})";
         }
         _groups.Assign(srcIds, dest);
         if (srcGroup is not null && srcGroup != dest) _groups.Delete(srcGroup);

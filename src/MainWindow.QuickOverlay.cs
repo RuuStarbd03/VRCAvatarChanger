@@ -34,8 +34,8 @@ public partial class MainWindow
             InstallKeyHook();
             var quick = Hotkey.Parse(_settings.QuickHotkey);
             SetStatus(StatusKind.Info, quick.IsSet
-                ? $"ホットキー: オン。VRChat のプレイ中に {quick.Display} でクイック着替えを開きます"
-                : "ホットキー: オン。割り当ては設定の「ホットキー」から行えます");
+                ? $"ホットキー: オン ({quick.Display} でクイックチェンジ)"
+                : "ホットキー: オン (キー未割り当て)");
         }
         else
         {

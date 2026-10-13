@@ -30,7 +30,7 @@ public partial class MainWindow
         }
         catch (Exception ex)
         {
-            OscStatusText.Text = "OSC 待ち受けできません";
+            OscStatusText.Text = "OSC 待ち受け失敗";
             OscStatusText.ToolTip = $"ポート {OscListener.DefaultPort} を開けませんでした ({ex.Message})。\n" +
                 "VRCX など他のツールが同じポートを使っている可能性があります。OSC ルーター (VOR 等) で分配するか、そのツールを閉じてください。\n" +
                 "30 秒ごとに再試行します。";
@@ -59,7 +59,7 @@ public partial class MainWindow
         // 一覧に無いアバターの名前・サムネは UpdateUserHeader 内 (ResolveCurrentAvatarAsync) が API から引く
         UpdateUserHeader();
         // アプリ発のエコーは「ゲーム内で着替えた」わけではないので、検知メッセージは出さない
-        if (!isEcho) OscStatusText.Text = $"OSC 連携中 ({DateTime.Now:HH:mm} にゲーム内の着替えを検知)";
+        if (!isEcho) OscStatusText.Text = $"OSC 連携中 ({DateTime.Now:HH:mm} ゲーム内でチェンジを検知)";
     }
 
     // ---------------- OSC でのローカル着替え ----------------

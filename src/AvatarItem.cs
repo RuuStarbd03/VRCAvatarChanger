@@ -139,14 +139,14 @@ public sealed class AvatarItem : INotifyPropertyChanged
     /// <summary>使えない理由。"deleted" / "private"。</summary>
     public string? UnavailableReason { get; set; }
 
-    /// <summary>ツールチップや詳細に出す 1 行。「2026/09/01 に確認: 削除されたか非公開になりました」。</summary>
+    /// <summary>ツールチップや詳細に出す 1 行。「削除または非公開 (2026/09/01 12:00 に確認)」。</summary>
     public string UnavailableText
     {
         get
         {
             if (!IsUnavailable) return "";
-            var what = UnavailableReason == "private" ? "非公開になりました" : "削除されたか非公開になりました";
-            return TimeText.DateTime(UnavailableSince) is { } at ? $"{at} に確認: {what}" : what;
+            var what = UnavailableReason == "private" ? "非公開" : "削除または非公開";
+            return TimeText.DateTime(UnavailableSince) is { } at ? $"{what} ({at} に確認)" : what;
         }
     }
 

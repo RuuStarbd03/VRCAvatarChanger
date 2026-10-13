@@ -12,9 +12,7 @@
         </Grid.RowDefinitions>
         <Border Background="{DynamicResource PanelBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,0,0,1" Padding="16,12">
             <StackPanel>
-                <TextBlock Text="いつもの方法で VRChat にログインしてください" FontWeight="SemiBold"/>
-                <TextBlock Text="Discord、Google、Apple、Steam などの連携ログインが使えます。ログインが完了すると、このウィンドウは自動で閉じます。"
-                           Style="{StaticResource MutedText}" TextWrapping="Wrap" Margin="0,4,0,0"/>
+                <TextBlock Text="VRChat にログイン" FontWeight="SemiBold"/>
                 <TextBlock x:Name="StatusText" Style="{StaticResource CaptionText}" Foreground="{DynamicResource FaintTextBrush}" Margin="0,8,0,0" TextWrapping="Wrap"/>
             </StackPanel>
         </Border>

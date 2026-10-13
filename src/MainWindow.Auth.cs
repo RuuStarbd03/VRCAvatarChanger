@@ -9,7 +9,7 @@ public partial class MainWindow
     private async Task TryRestoreSessionAsync()
     {
         if (!_api.HasSavedSession) return;
-        SetLoginBusy(true, "保存されたセッションを確認中...");
+        SetLoginBusy(true, "セッション確認中…");
         try
         {
             var user = await _api.TryGetCurrentUserAsync();
@@ -31,10 +31,10 @@ public partial class MainWindow
         var pass = PasswordBox.Password;
         if (user.Length == 0 || pass.Length == 0)
         {
-            SetLoginStatus("ユーザー名とパスワードを入力してください", error: true);
+            SetLoginStatus("ユーザー名とパスワードが未入力", error: true);
             return;
         }
-        SetLoginBusy(true, "ログイン中...");
+        SetLoginBusy(true, "ログイン中…");
         try
         {
             var me = await _api.LoginAsync(user, pass);
@@ -57,11 +57,14 @@ public partial class MainWindow
         var win = new BrowserLoginWindow(_api, _settings.KeepBrowserLogin) { Owner = this };
         var ok = win.ShowDialog() == true && win.Result is not null;
         if (ok) await EnterMainAsync(win.Result!);
-        else SetLoginStatus("ブラウザでのログインを中止しました", error: false);
+        else SetLoginStatus("ブラウザログイン中止", error: false);
     }
 
     // ---------------- 外部ブラウザ (Chrome など) でのログイン ----------------
-    // ふだん使うブラウザで VRChat にログイン済みなら、/api/1/auth が返す token をコピーするだけで入れる。
+    // ① まず VRChat のログインページ (vrchat.com) を開き、そのブラウザでログインしてもらう (済みならそのまま)。
+    // ② アプリの「token のページを開く」で /api/1/auth を開き、表示された token をコピーしてもらう。
+    // 以前は最初から /api/1/auth を開いていたが、ブラウザでログインしていないと英語の 1 行
+    // (Missing Credentials) だけの白いページになり、VRChat のページが開かなかったように見えていた。
     // 他アプリのクッキーは読まない (読めない)。トークンの受け渡しは利用者のコピー操作だけを経由する。
 
     private const string AuthTokenUrl = "https://api.vrchat.cloud/api/1/auth";
@@ -78,7 +81,7 @@ public partial class MainWindow
         AuthTokenBox.Clear();
         _clipboardSeen = ReadClipboard(); // 開いた時点の内容は「コピーされた」とみなさない
         StartClipboardWatch();
-        OpenInBrowser(AuthTokenUrl);
+        OpenInBrowser(VRChatLoginUrl); // ① から。token のページ (②) は利用者がログインしてから開く
     }
 
     private void OpenAuthPage_Click(object sender, RoutedEventArgs e) => OpenInBrowser(AuthTokenUrl);
@@ -88,7 +91,11 @@ public partial class MainWindow
     private void OpenInBrowser(string url)
     {
         try { Shell.Open(url); }
-        catch (Exception ex) { SetLoginStatus("ブラウザを開けませんでした: " + ex.Message, error: true); }
+        catch (Exception ex)
+        {
+            Log.Warn($"ブラウザを開けませんでした: {url}", ex);
+            SetLoginStatus("ブラウザ起動失敗: " + ex.Message, error: true);
+        }
     }
 
     private void StartClipboardWatch()
@@ -136,7 +143,7 @@ public partial class MainWindow
     {
         if (!VRChatApi.TryParseAuthToken(AuthTokenBox.Text, out var token))
         {
-            SetLoginStatus("token を貼り付けてください(ページに表示された token の値、または表示内容をそのまま)。", error: true);
+            SetLoginStatus("token が未入力、または形式が違います", error: true);
             return;
         }
         await LoginWithTokenAsync(token);
@@ -145,7 +152,7 @@ public partial class MainWindow
     private async Task LoginWithTokenAsync(string token)
     {
         StopClipboardWatch();
-        SetLoginBusy(true, "ログイン中...");
+        SetLoginBusy(true, "ログイン中…");
         try
         {
             var me = await _api.LoginWithAuthTokenAsync(token);
@@ -174,8 +181,8 @@ public partial class MainWindow
         CredentialsPanel.Visibility = Visibility.Collapsed;
         TwoFactorPanel.Visibility = Visibility.Visible;
         TwoFactorHint.Text = _twoFactorMethods.Contains("totp")
-            ? "認証アプリに表示されている 6 桁のコードを入力してください(リカバリーコードも可)。"
-            : "VRChat に登録したメールアドレスに届いた 6 桁のコードを入力してください。";
+            ? "認証アプリの 6 桁コード (リカバリーコードも可)"
+            : "メールに届いた 6 桁コード";
         LoginStatus.Text = "";
         TwoFactorCodeBox.Clear();
         TwoFactorCodeBox.Focus();
@@ -199,7 +206,7 @@ public partial class MainWindow
     {
         var code = TwoFactorCodeBox.Text.Trim();
         if (code.Length == 0) return;
-        SetLoginBusy(true, "認証中...");
+        SetLoginBusy(true, "認証中…");
         try
         {
             string method;
@@ -245,7 +252,7 @@ public partial class MainWindow
         AvatarListCache.Invalidate(AvatarListCache.Favorites);
         _favoriteGroups = [];
         _favoriteRecords.Clear();
-        ReturnToLogin("ログアウトしました。");
+        ReturnToLogin("ログアウト完了");
     }
 
     /// <summary>ログイン成功後にメイン画面へ切り替える。</summary>
@@ -286,7 +293,7 @@ public partial class MainWindow
         if (ex is not VRChatApiException { IsUnauthorized: true }) return false;
         Log.Warn("セッションが切れました (401)。ログイン画面に戻します");
         _api.LogoutAsync().Forget();
-        ReturnToLogin("VRChat のセッションが切れました。もう一度ログインしてください。");
+        ReturnToLogin("セッション切れ: 再ログインしてください");
         return true;
     }
 }

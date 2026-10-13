@@ -307,7 +307,7 @@ internal sealed class VrPanel
             }
 
             if (_items.Count == 0 && Status.Length == 0)
-                DrawText(dc, Filter is not null ? "この絞り込みに一致するアバターがありません。" : "このタブにはアバターがありません。",
+                DrawText(dc, Filter is not null ? "一致するアバターなし" : "アバターなし",
                     UiFace, 20, MutedBrush, new Point(Pad, GridTop + 20), Width - Pad * 2, maxLines: 3);
 
             for (var slot = 0; slot < PageItemCount; slot++)
@@ -350,7 +350,7 @@ internal sealed class VrPanel
         {
             // 使えなくなったもの (パブリック): 暗くして印を付ける。押せば着替えは試せる
             dc.DrawRectangle(DimBrush, null, thumbRect);
-            DrawBadge(dc, "使えません", DangerBrush, new Point(r.X + 8, r.Y + 8));
+            DrawBadge(dc, "使用不可", DangerBrush, new Point(r.X + 8, r.Y + 8));
         }
         if (item.IsGroup)
             DrawBadge(dc, $"グループ · {item.Count} 体", TextBrush, new Point(r.X + 8, thumbRect.Bottom - 34));
@@ -401,7 +401,7 @@ internal sealed class VrPanel
         return cached;
     }
 
-    /// <summary>手首に付けるボタン。暗い半透明の丸に、色付きの細い輪と人のアイコン、「着替え」。</summary>
+    /// <summary>手首に付けるボタン。暗い半透明の丸に、色付きの細い輪と人のアイコン、「チェンジ」。</summary>
     public static BitmapSource RenderButton(bool panelOpen)
     {
         var visual = new DrawingVisual();
@@ -411,7 +411,7 @@ internal sealed class VrPanel
             var r = ButtonSize / 2.0 - 6; // 輪の太さぶん内側に (外に切れないように)
             dc.DrawEllipse(ButtonBackBrush, panelOpen ? ButtonRingOpenPen : ButtonRingPen, c, r, r);
             DrawCentered(dc, panelOpen ? GlyphClose : GlyphPerson, IconFace, 70, panelOpen ? TextBrush : AccentBrush, new Point(c.X, c.Y - 16));
-            DrawCentered(dc, panelOpen ? "閉じる" : "着替え", UiBoldFace, 28, TextBrush, new Point(c.X, c.Y + 46));
+            DrawCentered(dc, panelOpen ? "閉じる" : "チェンジ", UiBoldFace, 28, TextBrush, new Point(c.X, c.Y + 46));
         }
         return ToBitmap(visual, ButtonSize, ButtonSize);
     }

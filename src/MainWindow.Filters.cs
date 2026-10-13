@@ -35,7 +35,7 @@ public partial class MainWindow
 
             AddChip("すべて", null);
             foreach (var v in values) AddChip(v, v);
-            if (unavailable > 0) AddChip($"使えなくなったもの ({unavailable})", UnavailableFilter);
+            if (unavailable > 0) AddChip($"使用不可 ({unavailable})", UnavailableFilter);
             FilterBar.Visibility = Visibility.Visible;
             // チップ数が変わってもサイズが変わらない場合があるので、レイアウト後にあふれ判定を行う
             Dispatcher.BeginInvoke(UpdateFilterOverflow, System.Windows.Threading.DispatcherPriority.Loaded);
@@ -129,13 +129,13 @@ public partial class MainWindow
                 .Select(m => (IEnumerable<string>)m.Tags)
                 .Aggregate((a, b) => a.Intersect(b, StringComparer.CurrentCultureIgnoreCase))
                 .ToList();
-            var win = new TagPickerWindow($"グループ「{item.Name}」の {item.Members.Count} 体すべてに適用します", _tags.AllTags(), common) { Owner = this };
+            var win = new TagPickerWindow($"グループ「{item.Name}」({item.Members.Count} 体) に一括設定", _tags.AllTags(), common) { Owner = this };
             if (win.ShowDialog() != true || win.Result is null) return;
             _tags.SetTags(item.Members.Select(m => m.Id), win.Result);
             foreach (var m in item.Members) m.Tags = win.Result;
             SetStatus(StatusKind.Info, win.Result.Count > 0
-                ? $"「{item.Name}」の {item.Members.Count} 体にタグを付けました: {string.Join(", ", win.Result)}"
-                : $"「{item.Name}」の {item.Members.Count} 体からタグを外しました");
+                ? $"タグ設定完了: {item.Name} ({item.Members.Count} 体) → {string.Join(", ", win.Result)}"
+                : $"タグ解除完了: {item.Name} ({item.Members.Count} 体)");
         }
         else
         {
@@ -143,7 +143,7 @@ public partial class MainWindow
             if (win.ShowDialog() != true || win.Result is null) return;
             _tags.SetTags(item.Id, win.Result);
             item.Tags = win.Result;
-            SetStatus(StatusKind.Info, win.Result.Count > 0 ? $"{item.Name} のタグ: {string.Join(", ", win.Result)}" : $"{item.Name} のタグを外しました");
+            SetStatus(StatusKind.Info, win.Result.Count > 0 ? $"タグ設定完了: {item.Name} → {string.Join(", ", win.Result)}" : $"タグ解除完了: {item.Name}");
         }
         BuildFilterChips();
         ApplyFilter();

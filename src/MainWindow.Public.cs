@@ -25,17 +25,17 @@ public partial class MainWindow
         var id = ExtractAvatarId(PublicIdBox.Text);
         if (id is null)
         {
-            SetStatus(StatusKind.Error, "avtr_ で始まるアバター ID か、アバターページの URL を入力してください。");
+            SetStatus(StatusKind.Error, "アバター ID (avtr_…) か URL を入力してください");
             return;
         }
         PublicAddButton.IsEnabled = false;
         try
         {
-            SetStatus(StatusKind.Info, "アバター情報を取得しています");
+            SetStatus(StatusKind.Info, "アバター情報を取得中…");
             var av = await _api.GetAvatarAsync(id);
             if (await TryAddPublicAsync(av)) PublicIdBox.Clear();
         }
-        catch (Exception ex) { Log.Warn($"パブリックに追加するアバター {id} の情報を取得できませんでした", ex); SetStatus(StatusKind.Error, "アバター情報を取得できませんでした: " + FriendlyError.Of(ex)); }
+        catch (Exception ex) { Log.Warn($"パブリックに追加するアバター {id} の情報を取得できませんでした", ex); SetStatus(StatusKind.Error, "アバター情報の取得失敗: " + FriendlyError.Of(ex)); }
         finally { PublicAddButton.IsEnabled = true; }
     }
 
@@ -44,11 +44,11 @@ public partial class MainWindow
     {
         if (av.ReleaseStatus != "public")
         {
-            SetStatus(StatusKind.Error, $"{av.Name} は非公開アバターのため追加できません");
+            SetStatus(StatusKind.Error, $"追加不可: {av.Name} (非公開アバター)");
             return false;
         }
         var added = _public.Add(av);
-        SetStatus(added ? StatusKind.Success : StatusKind.Info, added ? $"{av.Name} をパブリックに追加しました" : $"{av.Name} はすでにパブリックにあります");
+        SetStatus(added ? StatusKind.Success : StatusKind.Info, added ? $"パブリック追加完了: {av.Name}" : $"パブリック登録済み: {av.Name}");
         if (IsPublicTab) await LoadAvatarsAsync();
         return added;
     }
@@ -138,8 +138,8 @@ public partial class MainWindow
         if (item.IsUnavailable && IsPublicTab)
         {
             var r = Dialogs.AskOrCancel(this,
-                $"{item.Name} は使えなくなっています。\n{item.UnavailableText}\n\n" +
-                "パブリックから外しますか?\n(「いいえ」でそのまま着替えを試します)");
+                $"{item.Name} は使用不可です ({item.UnavailableText})。\n\n" +
+                "パブリックから外しますか?\n(「いいえ」でそのままチェンジを試します)");
             if (r == MessageBoxResult.Cancel) return;
             if (r == MessageBoxResult.Yes)
             {
@@ -157,10 +157,9 @@ public partial class MainWindow
         var names = string.Join("\n", targets.Take(8).Select(t => "・" + t.Avatar.Name));
         if (targets.Count > 8) names += $"\n・ほか {targets.Count - 8} 件";
         if (!Dialogs.Confirm(this,
-                $"使えなくなった {targets.Count} 件をパブリックから外します。\n\n{names}\n\n" +
-                "外したあとは、もう一度 ID か URL で追加すれば戻せます。")) return;
+                $"使用不可の {targets.Count} 件をパブリックから外しますか?\n\n{names}")) return;
         var n = _public.RemoveUnavailable();
-        SetStatus(StatusKind.Info, $"使えなくなった {n} 件をパブリックから外しました");
+        SetStatus(StatusKind.Info, $"パブリック除外完了: 使用不可 {n} 件");
         await LoadAvatarsAsync();
     }
 
@@ -178,7 +177,7 @@ public partial class MainWindow
     private async Task RemoveFromPublicAsync(AvatarItem item)
     {
         _public.Remove(item.Id);
-        SetStatus(StatusKind.Info, $"{item.Name} をパブリックから外しました");
+        SetStatus(StatusKind.Info, $"パブリック除外完了: {item.Name}");
         await LoadAvatarsAsync();
     }
 }

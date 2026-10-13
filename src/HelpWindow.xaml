@@ -131,7 +131,7 @@
             <Grid>
                 <!-- ===== 使い方 ===== -->
                 <StackPanel x:Name="HowToPanel" MaxWidth="620">
-                    <TextBlock Text="VRChat を開かずにアバターを着替えられます" Style="{StaticResource H1}"/>
+                    <TextBlock Text="VRChat を開かずにアバターチェンジできます" Style="{StaticResource H1}"/>
                     <TextBlock Style="{StaticResource Body}" Margin="0,0,0,14"
                                Text="起動中ならすぐ切り替わります。起動していなければ、次に VRChat を開いたときにそのアバターになります。"/>
 
@@ -161,9 +161,9 @@
                         <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
                             <Border Style="{StaticResource StepNo}"><TextBlock Text="3" Style="{StaticResource StepNoText}"/></Border>
                             <StackPanel Grid.Column="1">
-                                <TextBlock Text="着替える" FontWeight="SemiBold"/>
+                                <TextBlock Text="アバターチェンジ" FontWeight="SemiBold"/>
                                 <TextBlock Style="{StaticResource Body}" Margin="0,4,0,0"
-                                           Text="右下の「選択したアバターに着替える」を押すか、アバターをダブルクリックします。左上の「現在:」が変われば完了です。"/>
+                                           Text="右下の「選択したアバターにチェンジ」を押すか、アバターをダブルクリックします。左上の「現在:」が変われば完了です。"/>
                             </StackPanel>
                         </Grid>
                     </Border>
@@ -173,11 +173,11 @@
                                Text="気に入ったパブリックアバターを溜めておく、このアプリ独自のリストです (上限なし)。ID や URL を貼って「追加」するか、他のタブで右クリック →「パブリックに追加」。"/>
 
                     <TextBlock Style="{StaticResource Body}"
-                               Text="再読み込みのたびに登録したアバターを確かめ、削除されたり非公開になったりして着替えられなくなったものには「使えません」の印を付けます (一覧の末尾に寄せます)。自動では外さないので、右クリック →「使えなくなったものをまとめて外す...」か、詳細画面から外してください。"/>
+                               Text="再読み込みのたびに登録したアバターを確かめ、削除されたり非公開になったりしてチェンジできなくなったものには「使えません」の印を付けます (一覧の末尾に寄せます)。自動では外さないので、右クリック →「使用不可をまとめて外す...」か、詳細画面から外してください。"/>
 
                     <TextBlock Text="アバターの詳細" Style="{StaticResource H2}"/>
                     <TextBlock Style="{StaticResource Body}"
-                               Text="アバターを右クリック →「詳細を見る...」で、大きい画像・説明文・対応プラットフォーム・パフォーマンスランク・ダウンロードサイズ・日付をまとめて確認できます。似た衣装違いの見分けや、着替える前の確認に。"/>
+                               Text="アバターを右クリック →「詳細を見る...」で、大きい画像・説明文・対応プラットフォーム・パフォーマンスランク・ダウンロードサイズ・日付をまとめて確認できます。似た衣装違いの見分けや、チェンジする前の確認に。"/>
 
                     <TextBlock Text="お気に入り・タグ" Style="{StaticResource H2}"/>
                     <TextBlock Style="{StaticResource Body}"
@@ -187,23 +187,23 @@
                     <TextBlock Style="{StaticResource Body}"
                                Text="衣装違いなどを 1 つにまとめられます。アバターを別のアバターにドラッグ&amp;ドロップするか、右クリック →「グループに入れる...」。ツールバーのグループ化ボタンでまとめ表示を切り替え、ダブルクリックで中身を開きます。"/>
 
-                    <TextBlock Text="ゲーム中にサッと着替える (ホットキー)" Style="{StaticResource H2}"/>
+                    <TextBlock Text="ゲーム中にサッとチェンジする (ホットキー)" Style="{StaticResource H2}"/>
                     <TextBlock Style="{StaticResource Body}"
-                               Text="VRChat のプレイ中に Shift+1 を押すと、画面の右にアバター選択が出ます。クリックで着替えて閉じ、VRChat に操作が戻ります。反応するのは VRChat が手前のときだけです。"/>
+                               Text="VRChat のプレイ中に Shift+1 を押すと、画面の右にアバター選択が出ます。クリックでチェンジして閉じ、VRChat に操作が戻ります。反応するのは VRChat が手前のときだけです。"/>
                     <TextBlock Style="{StaticResource Body}"
                                Text="設定 →「ホットキーの割り当て」で、このキーの変更と、次の 3 つの割り当てができます。"/>
                     <TextBlock Style="{StaticResource Body}"
                                Text="・直前のアバターに戻す&#x0a;・グループ内の次のアバター&#x0a;・特定のアバターを直接呼び出す(一覧で右クリック)"/>
 
-                    <TextBlock Text="ゲーム内の着替えを反映する (OSC)" Style="{StaticResource H2}"/>
+                    <TextBlock Text="ゲーム内のアバターチェンジを反映する (OSC)" Style="{StaticResource H2}"/>
                     <TextBlock Style="{StaticResource Body}"
-                               Text="VRChat で OSC を有効にすると(アクションメニュー → Options → OSC → Enabled)、ゲーム内で着替えたときも左上の「現在:」が更新されます。無くても着替えはできます。"/>
+                               Text="VRChat で OSC を有効にすると(アクションメニュー → Options → OSC → Enabled)、ゲーム内でチェンジしたときも左上の「現在:」が更新されます。無くてもアバターチェンジはできます。"/>
 
                     <TextBlock Text="キーボードで操作する" Style="{StaticResource H2}"/>
                     <TextBlock Style="{StaticResource Body}"
                                Text="このウィンドウが手前のときに使えるキーです (VRChat のプレイ中に使うホットキーとは別です)。"/>
                     <TextBlock Style="{StaticResource Body}"
-                               Text="Enter: 選んだアバターに着替える / グループを開く&#x0a;Ctrl+I または Alt+Enter: 詳細を見る&#x0a;Ctrl+F: 検索欄へ (Enter で一覧に戻る、Esc で消す)&#x0a;Ctrl+1 / 2 / 3: 自分のアバター / お気に入り / パブリック&#x0a;Ctrl+Tab / Ctrl+Shift+Tab: 次 / 前のタブ&#x0a;Ctrl+G: グループ化のオン / オフ&#x0a;Ctrl+Shift+L: リスト表示 / ボックス表示の切り替え&#x0a;Ctrl+C: アバター ID をコピー&#x0a;Delete: パブリックから外す (確認が出ます)&#x0a;Esc / Backspace: グループから一覧に戻る&#x0a;F5: 再読み込み&#x0a;Ctrl+,: 設定&#x0a;F1: この画面"/>
+                               Text="Enter: 選んだアバターにチェンジ / グループを開く&#x0a;Ctrl+I または Alt+Enter: 詳細を見る&#x0a;Ctrl+F: 検索欄へ (Enter で一覧に戻る、Esc で消す)&#x0a;Ctrl+1 / 2 / 3: 自分のアバター / お気に入り / パブリック&#x0a;Ctrl+Tab / Ctrl+Shift+Tab: 次 / 前のタブ&#x0a;Ctrl+G: グループ化のオン / オフ&#x0a;Ctrl+Shift+L: リスト表示 / ボックス表示の切り替え&#x0a;Ctrl+C: アバター ID をコピー&#x0a;Delete: パブリックから外す (確認が出ます)&#x0a;Esc / Backspace: グループから一覧に戻る&#x0a;F5: 再読み込み&#x0a;Ctrl+,: 設定&#x0a;F1: この画面"/>
                 </StackPanel>
 
                 <!-- ===== FAQ ===== -->
@@ -211,25 +211,25 @@
                     <TextBlock Text="よくある質問" Style="{StaticResource H1}"/>
                     <TextBlock Style="{StaticResource Body}" Margin="0,0,0,8" Text="項目を押すと答えが開きます。"/>
 
-                    <Expander Style="{StaticResource Faq}" Header="着替えたのにゲーム内で変わらない">
+                    <Expander Style="{StaticResource Faq}" Header="チェンジしたのにゲーム内で変わらない">
                         <TextBlock Style="{StaticResource Body}"
                                    Text="通常は数秒で反映されます。変わらないときは、ゲーム内でメニューを開閉するか、ワールドを移動してみてください。"/>
                     </Expander>
 
                     <Expander Style="{StaticResource Faq}" Header="「非公開アバターのため使用できません」と出る">
                         <TextBlock Style="{StaticResource Body}"
-                                   Text="他の人の非公開(Private)アバターには着替えられません(VRChat の仕様)。自分のアバターなら非公開でも使えます。"/>
+                                   Text="他の人の非公開(Private)アバターにはチェンジできません(VRChat の仕様)。自分のアバターなら非公開でも使えます。"/>
                     </Expander>
 
-                    <Expander Style="{StaticResource Faq}" Header="パブリックタブに「使えません」と出るものがある">
+                    <Expander Style="{StaticResource Faq}" Header="パブリックタブに「使用不可」と出るものがある">
                         <TextBlock Style="{StaticResource Body}"
-                                   Text="そのアバターが削除されたか、作者が非公開にしたため、着替えられなくなっています。誤検出を避けるため、時間を空けて 2 回続けて確認できなかったものだけをこう表示し、自動では外しません。非公開が一時的なら、次の再読み込みで印は消えます。外すときは右クリック →「使えなくなったものをまとめて外す...」。"/>
+                                   Text="そのアバターが削除されたか、作者が非公開にしたため、チェンジできなくなっています。誤検出を避けるため、時間を空けて 2 回続けて確認できなかったものだけをこう表示し、自動では外しません。非公開が一時的なら、次の再読み込みで印は消えます。外すときは右クリック →「使用不可をまとめて外す...」。"/>
                     </Expander>
 
                     <Expander Style="{StaticResource Faq}" Header="ログインが面倒 / いつものブラウザのログインを使いたい">
                         <StackPanel>
                             <TextBlock Style="{StaticResource Body}"
-                                       Text="「ふだん使うブラウザでログイン」を押すと、既定のブラウザで VRChat のページが開きます。ログイン済みなら token が表示されるので、コピーすれば自動で続行します。"/>
+                                       Text="「ふだん使うブラウザでログイン」を押すと、既定のブラウザで VRChat のログインページが開きます。そこでログインしたら (ログイン済みならそのまま)、アプリの「token のページを開く」を押し、表示された token をコピーすれば自動で続行します。"/>
                             <TextBlock Style="{StaticResource Body}"
                                        Text="ブラウザに保存されたパスワードやクッキーを読むことはありません。受け取るのは、コピーした token だけです。"/>
                         </StackPanel>
@@ -298,7 +298,7 @@
 
                     <Expander Style="{StaticResource Faq}" Header="不具合を報告したい / 何が起きたか調べたい">
                         <TextBlock Style="{StaticResource Body}"
-                                   Text="設定 →「ログの記録」をオンにして、問題を再現してから「開く」で app.log を開いてください。着替え・一覧の取得・OSC・キャッシュなど、裏で起きたことが時刻つきで残ります。オフのときもエラーだけは記録します。ログにパスワードやログイン状態は書きません (アバターの ID と名前、通信の結果は書きます)。"/>
+                                   Text="設定 →「ログの記録」をオンにして、問題を再現してから「開く」で app.log を開いてください。アバターチェンジ・一覧の取得・OSC・キャッシュなど、裏で起きたことが時刻つきで残ります。オフのときもエラーだけは記録します。ログにパスワードやログイン状態は書きません (アバターの ID と名前、通信の結果は書きます)。"/>
                     </Expander>
 
                     <Expander Style="{StaticResource Faq}" Header="アップデートはどうやるの?">
@@ -317,7 +317,7 @@
                     <TextBlock Text="VRCAvatarChanger" Style="{StaticResource H1}" Margin="0,0,0,2"/>
                     <TextBlock x:Name="VersionText" Style="{StaticResource Body}"/>
                     <TextBlock Style="{StaticResource Body}" Margin="0,10,0,0"
-                               Text="VRChat のアバターを外部から着替える Windows 用アプリです。VRChat 公式ではありません。VRChat の仕様変更で動かなくなることがあります。"/>
+                               Text="VRChat のアバターを外部からチェンジする Windows 用アプリです。VRChat 公式ではありません。VRChat の仕様変更で動かなくなることがあります。"/>
                     <TextBlock Text="保存先" Style="{StaticResource H2}"/>
                     <TextBlock x:Name="DataPathText" Style="{StaticResource Body}" FontFamily="Cascadia Mono, Consolas"/>
                     <StackPanel Orientation="Horizontal" Margin="0,6,0,0">

@@ -53,7 +53,7 @@ public static class JsonFile
             var backup = path + ".broken-" + DateTime.Now.ToString("yyyyMMdd-HHmmss");
             try { File.Move(path, backup, overwrite: true); } catch (Exception mv) { Log.Error($"壊れたファイルを退避できませんでした: {path}", mv); backup = "(退避できず)"; }
             Log.Error($"読み込めませんでした (既定値から始めます): {path} → 退避先 {backup}", ex);
-            Notify($"{Path.GetFileName(path)} を読めなかったため、既定の状態から始めました (元のファイルは {Path.GetFileName(backup)} として残しています)");
+            Notify($"{Path.GetFileName(path)} の読み込み失敗: 既定の状態で起動 (元のファイルは {Path.GetFileName(backup)} に退避)");
             return null;
         }
     }
@@ -68,7 +68,7 @@ public static class JsonFile
         catch (Exception ex)
         {
             Log.Error($"保存できませんでした: {path}", ex);
-            Notify($"{Path.GetFileName(path)} を保存できませんでした ({ex.Message})");
+            Notify($"{Path.GetFileName(path)} の保存失敗: {ex.Message}");
         }
     }
 }

@@ -43,7 +43,7 @@ public partial class MainWindow
             "private" => a.AuthorId == _user?.Id ? "非公開 (自分のアバター)" : "非公開",
             _ => "",
         };
-        DetailDescription.Text = string.IsNullOrWhiteSpace(a.Description) ? "(説明はありません)" : a.Description.Trim();
+        DetailDescription.Text = string.IsNullOrWhiteSpace(a.Description) ? "(説明なし)" : a.Description.Trim();
         DetailCurrentBadge.Visibility = Vis(a.Id == _user?.CurrentAvatar);
 
         // 使えなくなったもの: 理由と確認日時。外す操作はパブリックタブでだけ意味がある
@@ -51,7 +51,7 @@ public partial class MainWindow
         DetailUnavailable.Visibility = Vis(unavailable);
         DetailUnavailableText.Text = item.UnavailableText;
         DetailRemoveButton.Visibility = Vis(unavailable && IsPublicTab);
-        DetailChangeButton.Content = unavailable ? "それでも着替えを試す" : "このアバターに着替える";
+        DetailChangeButton.Content = unavailable ? "それでもチェンジを試す" : "このアバターにチェンジ";
 
         DetailRows.ItemsSource = BuildDetailRows(item);
 
@@ -113,7 +113,7 @@ public partial class MainWindow
     private static string SizeText(Avatar a)
     {
         if (a.WindowsAssetRef is not { } r) return "不明";
-        return AssetSizeCache.TryGet(r.FileId, r.Version, out var b) ? SizeLabel(b) : "取得中...";
+        return AssetSizeCache.TryGet(r.FileId, r.Version, out var b) ? SizeLabel(b) : "取得中…";
     }
 
     private static string SizeLabel(long bytes) => $"{AssetSizeCache.Format(bytes)} (PC)";
@@ -188,6 +188,6 @@ public partial class MainWindow
         if (_detailItem is not { } item || !VRChatApi.IsValidAvatarId(item.Id)) return;
         var url = "https://vrchat.com/home/avatar/" + item.Id;
         try { Shell.Open(url); }
-        catch (Exception ex) { SetStatus(StatusKind.Error, "ブラウザを開けませんでした: " + url); Log.Warn("ブラウザを開けませんでした", ex); }
+        catch (Exception ex) { SetStatus(StatusKind.Error, "ブラウザ起動失敗: " + url); Log.Warn("ブラウザを開けませんでした", ex); }
     }
 }

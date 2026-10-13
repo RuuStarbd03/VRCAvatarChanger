@@ -8,7 +8,7 @@
         <TextBlock x:Name="SubjectText" Style="{StaticResource MutedText}" TextTrimming="CharacterEllipsis" Margin="0,0,0,14"/>
 
         <StackPanel x:Name="TagListPanel" Margin="0,0,0,4">
-            <TextBlock Text="タグ (チェックしたものが付きます)" Style="{StaticResource FieldLabel}"/>
+            <TextBlock Text="タグ" Style="{StaticResource FieldLabel}"/>
             <Border Background="{DynamicResource InputBrush}" BorderBrush="{DynamicResource BorderStrongBrush}" BorderThickness="1"
                     CornerRadius="{StaticResource ControlRadius}" Padding="10,8" MaxHeight="240" Margin="0,0,0,14">
                 <ScrollViewer VerticalScrollBarVisibility="Auto">

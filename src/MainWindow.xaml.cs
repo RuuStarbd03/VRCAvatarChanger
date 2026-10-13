@@ -120,8 +120,8 @@ public partial class MainWindow : Window
     /// <summary>アバター ID をクリップボードへ。他のアプリが掴んでいて失敗することがあるので、結果はステータスに出す。</summary>
     private void CopyAvatarId(string avatarId)
     {
-        try { Clipboard.SetText(avatarId); SetStatus(StatusKind.Info, "アバター ID をコピーしました"); }
-        catch (Exception ex) { SetStatus(StatusKind.Error, "クリップボードにコピーできませんでした (他のアプリが使用中の可能性があります)"); Log.Warn("クリップボードへのコピーに失敗", ex); }
+        try { Clipboard.SetText(avatarId); SetStatus(StatusKind.Info, "ID コピー完了"); }
+        catch (Exception ex) { SetStatus(StatusKind.Error, "コピー失敗 (他のアプリがクリップボードを使用中)"); Log.Warn("クリップボードへのコピーに失敗", ex); }
     }
 
     // ---------------- 表示形式 ----------------
@@ -407,27 +407,23 @@ public partial class MainWindow : Window
         var filtering = SearchBox.Text.Trim().Length > 0 || _filterValue is not null;
         if (filtering)
         {
-            EmptyTitle.Text = "一致するアバターがありません";
-            EmptyHint.Text = _filterValue == UnavailableFilter
-                ? "使えなくなったアバターはありません。"
-                : _filterValue is not null
-                ? $"「{_filterValue}」に一致するアバターがありません。「すべて」に戻すか、別のフィルタを試してください。"
-                : "別の名前や作者名、ID で試してください。";
+            EmptyTitle.Text = "一致するアバターなし";
+            EmptyHint.Text = "";
         }
         else if (IsFavoritesTab)
         {
-            EmptyTitle.Text = "お気に入りのアバターがありません";
-            EmptyHint.Text = "VRChat でお気に入りに登録したアバターがここに表示されます。";
+            EmptyTitle.Text = "お気に入りなし";
+            EmptyHint.Text = "";
         }
         else if (SourcePublic.IsChecked == true)
         {
-            EmptyTitle.Text = "パブリックアバターはまだ登録されていません";
-            EmptyHint.Text = "上の欄にアバターの ID か URL を貼って「追加」するか、他のタブで右クリック →「パブリックに追加」。上限はありません。";
+            EmptyTitle.Text = "パブリック未登録";
+            EmptyHint.Text = "上の欄にアバター ID か URL を貼って追加";
         }
         else
         {
-            EmptyTitle.Text = "アップロードしたアバターがありません";
-            EmptyHint.Text = "自分でアップロードしたアバターがここに表示されます。「お気に入り」タブも試してみてください。";
+            EmptyTitle.Text = "アップロードしたアバターなし";
+            EmptyHint.Text = "";
         }
         EmptyPanel.Visibility = Visibility.Visible;
     }
@@ -525,11 +521,11 @@ public partial class MainWindow : Window
         {
             // オフにした時点で、残っていたブラウザデータも消す
             BrowserLoginWindow.DeleteBrowserProfile();
-            SetStatus(StatusKind.Info, "ブラウザのログイン状態を消去しました。今後はログイン成功のたびに消去します");
+            SetStatus(StatusKind.Info, "ブラウザのログイン状態を保持: オフ (保存済みデータを消去)");
         }
         else
         {
-            SetStatus(StatusKind.Info, "ブラウザのログイン状態を保持: オン。次回のブラウザログインから状態が残ります");
+            SetStatus(StatusKind.Info, "ブラウザのログイン状態を保持: オン");
         }
     }
 
@@ -542,7 +538,7 @@ public partial class MainWindow : Window
         SaveSettings();
         if (enabled) { Log.Enabled = true; Log.Info("ログの記録: オン"); }
         else { Log.Info("ログの記録: オフ"); Log.Enabled = false; }
-        SetStatus(StatusKind.Info, enabled ? "ログの記録: オン。app.log に動作を書きます" : "ログの記録: オフ (エラーだけ記録します)");
+        SetStatus(StatusKind.Info, enabled ? "ログの記録: オン" : "ログの記録: オフ");
     }
 
     /// <summary>app.log を既定のテキストエディタで開く。まだ無ければ見出しだけ作ってから開く。</summary>
@@ -553,7 +549,7 @@ public partial class MainWindow : Window
             Log.EnsureFile();
             Shell.Open(Log.FilePath);
         }
-        catch (Exception ex) { SetStatus(StatusKind.Error, "ログを開けませんでした: " + Log.FilePath); Log.Warn("ログファイルを開けませんでした", ex); }
+        catch (Exception ex) { SetStatus(StatusKind.Error, "ログを開けません: " + Log.FilePath); Log.Warn("ログファイルを開けませんでした", ex); }
     }
 
     private void OpenSettings()
@@ -564,8 +560,7 @@ public partial class MainWindow : Window
         KeepLoginToggle.IsChecked = _settings.KeepBrowserLogin;
         ShowVrSettings();
         (_settings.Theme switch { "light" => ThemeLight, "dark" => ThemeDark, _ => ThemeSystem }).IsChecked = true;
-        AccountDesc.Text = (string.IsNullOrEmpty(_user?.DisplayName) ? "" : $"{_user.DisplayName} としてログイン中。")
-            + "ログイン状態を消して戻ります。";
+        AccountDesc.Text = string.IsNullOrEmpty(_user?.DisplayName) ? "" : $"{_user.DisplayName} としてログイン中";
         Overlay.Open(SettingsOverlay, SettingsCardScale);
     }
 
@@ -598,7 +593,7 @@ public partial class MainWindow : Window
             System.IO.Directory.CreateDirectory(AppPaths.DataDir);
             Shell.Open(AppPaths.DataDir);
         }
-        catch (Exception ex) { SetStatus(StatusKind.Error, "フォルダを開けませんでした: " + AppPaths.DataDir); Log.Warn("データフォルダを開けませんでした", ex); }
+        catch (Exception ex) { SetStatus(StatusKind.Error, "フォルダを開けません: " + AppPaths.DataDir); Log.Warn("データフォルダを開けませんでした", ex); }
     }
 
     private void SettingsLogout_Click(object sender, RoutedEventArgs e)
@@ -653,7 +648,7 @@ public partial class MainWindow : Window
         RefreshButton.IsEnabled = false;
         var favorites = IsFavoritesTab;
         var pub = IsPublicTab;
-        SetStatus(StatusKind.Info, pub ? "パブリックリストを読み込んでいます" : favorites ? "お気に入りを読み込んでいます" : "自分のアバターを読み込んでいます");
+        SetStatus(StatusKind.Info, pub ? "パブリックを読み込み中…" : favorites ? "お気に入りを読み込み中…" : "自分のアバターを読み込み中…");
         ShowListState(loading: true);
         _loadCts?.Cancel();
         _loadCts = new CancellationTokenSource();
@@ -676,7 +671,7 @@ public partial class MainWindow : Window
                 // 「再読み込み」は常に取りに行くので、新しくアップロードしたアバターもすぐ出せる
                 if (!refresh && cached is not null && DateTimeOffset.Now - cached.FetchedAt < ListCacheFreshFor)
                 {
-                    var note = $" ({cached.FetchedAt:HH:mm} 時点・F5 で取り直し)";
+                    var note = $" ({cached.FetchedAt:HH:mm} 時点)";
                     // すでに同じものを出しているなら作り直さない (トレイから開き直したときなど)
                     if (AlreadyShowing(cached.Avatars)) KeepShowing(note);
                     else ShowItems(ItemsOf(cached.Avatars, favorites), ct, note);
@@ -686,7 +681,7 @@ public partial class MainWindow : Window
                 if (cached is not null)
                 {
                     if (AlreadyShowing(cached.Avatars)) ShowListState(loading: false);
-                    else ShowItems(ItemsOf(cached.Avatars, favorites), ct, " (前回の一覧・最新を確認しています)");
+                    else ShowItems(ItemsOf(cached.Avatars, favorites), ct, " (前回の一覧・最新を確認中…)");
                 }
                 try
                 {
@@ -709,15 +704,15 @@ public partial class MainWindow : Window
                     // 出せる一覧はもう出してある。最新に追いつけなかったことだけ伝える
                     Log.Warn($"一覧 ({kind}) を取り直せませんでした。{cached.FetchedAt:M/d HH:mm} 時点のキャッシュを表示", ex);
                     SetStatus(StatusKind.Error,
-                        $"最新の一覧を取得できませんでした ({FriendlyError.Of(ex)}) {cached.FetchedAt:M/d HH:mm} 時点の一覧を表示しています。");
+                        $"最新の一覧の取得失敗: {FriendlyError.Of(ex)} ({cached.FetchedAt:M/d HH:mm} 時点の一覧を表示中)");
                     return;
                 }
             }
             ShowItems(items, ct, refreshedEntries switch
             {
                 null => "",
-                0 => " (情報は最新です)",
-                var n => $" ({n} 件の情報を更新しました)",
+                0 => " (最新)",
+                var n => $" ({n} 件更新)",
             } + UnavailableNote(newlyUnavailable));
             Log.Info($"一覧を表示: {(pub ? "パブリック" : favorites ? "お気に入り" : "自分のアバター")} {_allItems.Count} 件"
                      + (refreshedEntries is { } rn ? $" (パブリック {rn} 件を取り直し)" : ""));
@@ -730,7 +725,7 @@ public partial class MainWindow : Window
             UpdateEmptyState(0);
             if (HandleSessionExpired(ex)) return;
             Log.Error("一覧を読み込めませんでした", ex);
-            SetStatus(StatusKind.Error, "読み込めませんでした: " + FriendlyError.Of(ex));
+            SetStatus(StatusKind.Error, "読み込み失敗: " + FriendlyError.Of(ex));
         }
         finally { RefreshButton.IsEnabled = true; }
     }
@@ -791,8 +786,8 @@ public partial class MainWindow : Window
         var total = _public.Unavailable.Count();
         if (total == 0) return "";
         return newly > 0
-            ? $" ・使えなくなったものが {total} 件 (新たに {newly} 件)"
-            : $" ・使えなくなったものが {total} 件";
+            ? $" ・使用不可 {total} 件 (新規 {newly})"
+            : $" ・使用不可 {total} 件";
     }
 
     /// <summary>
@@ -805,8 +800,8 @@ public partial class MainWindow : Window
         var groups = tiles.Count(i => i.IsGroup);
         var folded = tiles.Where(i => i.IsGroup).Sum(i => i.Count) - groups;
         return folded > 0
-            ? $"{_allItems.Count} 件 (うち {folded} 体は {groups} 個のグループにまとめて表示)"
-            : $"{_allItems.Count} 件";
+            ? $"{_allItems.Count} 体 (うち {folded} 体はグループ {groups} 個に集約)"
+            : $"{_allItems.Count} 体";
     }
 
     // ---------------- 検索と絞り込みの適用 ----------------
@@ -922,7 +917,7 @@ public partial class MainWindow : Window
     private async void ChangeSelected_Click(object sender, RoutedEventArgs e)
     {
         if (SelectedAvatar is { } item) await ChangeFromListAsync(item);
-        else SetStatus(StatusKind.Info, "一覧からアバターを選んでください");
+        else SetStatus(StatusKind.Info, "アバター未選択");
     }
 
     private async void AvatarList_MouseDoubleClick(object sender, MouseButtonEventArgs e)
@@ -937,7 +932,7 @@ public partial class MainWindow : Window
     private async Task<bool> ChangeAvatarAsync(string avatarId, string name)
     {
         ChangeButton.IsEnabled = false;
-        SetStatus(StatusKind.Info, $"{name} に着替えています");
+        SetStatus(StatusKind.Info, $"アバターチェンジ中… ({name})");
         try
         {
             // VRChat が OSC で繋がっていればローカルで即切替 (ヘッダーはエコー受信側が更新する)。
@@ -949,14 +944,14 @@ public partial class MainWindow : Window
                 UpdateUserHeader();
             }
             Log.Info($"着替え: {name} ({avatarId}) {(viaOsc ? "OSC" : "API")}");
-            SetStatus(StatusKind.Success, $"{name} に着替えました");
+            SetStatus(StatusKind.Success, $"アバターチェンジ完了: {name}");
             TouchRecentAvatar(avatarId);
             return true;
         }
         catch (Exception ex)
         {
             Log.Warn($"着替えに失敗: {name} ({avatarId})", ex);
-            if (!HandleSessionExpired(ex)) SetStatus(StatusKind.Error, "着替えられませんでした: " + FriendlyError.Of(ex));
+            if (!HandleSessionExpired(ex)) SetStatus(StatusKind.Error, "アバターチェンジ失敗: " + FriendlyError.Of(ex));
             return false;
         }
         finally { ChangeButton.IsEnabled = SelectedAvatar is { }; }

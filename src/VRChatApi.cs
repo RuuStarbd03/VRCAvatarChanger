@@ -28,12 +28,14 @@ public static class FriendlyError
     public static string Of(Exception ex) => ex switch
     {
         VRChatApiException api => api.Message,
-        System.Net.Http.HttpRequestException => "VRChat に接続できませんでした。インターネット接続を確認してください。",
-        TaskCanceledException or TimeoutException => "VRChat からの応答がありません。しばらくしてからもう一度お試しください。",
-        System.Net.Sockets.SocketException => "ネットワークに接続できませんでした。",
-        JsonException => "VRChat の応答を解釈できませんでした (仕様が変わった可能性があります)。",
-        IOException io => "ファイルの読み書きに失敗しました: " + io.Message,
-        UnauthorizedAccessException => "ファイルにアクセスできませんでした (権限がありません)。",
+        System.Net.Http.HttpRequestException => "VRChat に接続できません (インターネット接続を確認)",
+        TaskCanceledException or TimeoutException => "VRChat から応答がありません",
+        System.Net.Sockets.SocketException => "ネットワークに接続できません",
+        JsonException => "VRChat の応答を読めません (仕様変更の可能性)",
+        IOException io => "ファイルの読み書きエラー (" + io.Message + ")",
+        UnauthorizedAccessException => "ファイルへのアクセス権がありません",
+        // このアプリが利用者向けの一言を入れて投げているもの (アップデート・SteamVR など)
+        InvalidOperationException op => op.Message,
         // 想定外のものは、何が起きたか分かるよう種類も添える (詳細はログにある)
         _ => $"予期しないエラー ({ex.GetType().Name}): {ex.Message}",
     };
@@ -257,10 +259,10 @@ public sealed class VRChatApi : IDisposable
 
         using var doc = JsonDocument.Parse(res.Body);
         if (!(doc.RootElement.TryGetProperty("verified", out var v) && v.GetBoolean()))
-            throw new VRChatApiException("認証コードが正しくありません。");
+            throw new VRChatApiException("認証コードが違います");
 
         SaveCookies();
-        return (await TryGetCurrentUserAsync(ct)) ?? throw new VRChatApiException("2FA 後のユーザー取得に失敗しました。");
+        return (await TryGetCurrentUserAsync(ct)) ?? throw new VRChatApiException("2 段階認証後のユーザー取得失敗");
     }
 
     public async Task LogoutAsync()
@@ -369,7 +371,7 @@ public sealed class VRChatApi : IDisposable
         }, ct);
         EnsureSuccess(res);
         return JsonSerializer.Deserialize<Favorite>(res.Body, JsonOptions)
-               ?? throw new VRChatApiException("API の応答を解釈できませんでした。");
+               ?? throw new VRChatApiException("VRChat の応答を読めません");
     }
 
     /// <summary>お気に入りから外す。favoriteId は GetFavoriteRecordsAsync が返す登録 ID (fvrt_...)。</summary>
@@ -388,13 +390,13 @@ public sealed class VRChatApi : IDisposable
 
     // URL パスに埋め込む前に必ず形式を検証し、パス操作を防ぐ
     private static string RequireAvatarId(string id)
-        => IsValidAvatarId(id) ? id : throw new VRChatApiException("アバター ID の形式が不正です。");
+        => IsValidAvatarId(id) ? id : throw new VRChatApiException("アバター ID の形式が不正");
 
     // お気に入り ID (fvrt_...) やグループ名 (avatars1) 用。記号を含まないことだけを確かめる
     private static readonly Regex SafeTokenPattern = new(@"^[A-Za-z0-9_-]{1,64}$", RegexOptions.CultureInvariant);
 
     private static string RequireToken(string value)
-        => SafeTokenPattern.IsMatch(value) ? value : throw new VRChatApiException("ID の形式が不正です。");
+        => SafeTokenPattern.IsMatch(value) ? value : throw new VRChatApiException("ID の形式が不正");
 
     public async Task<Avatar> GetAvatarAsync(string avatarId, CancellationToken ct = default)
         => await GetJsonAsync<Avatar>($"/avatars/{RequireAvatarId(avatarId)}", ct);
@@ -563,7 +565,7 @@ public sealed class VRChatApi : IDisposable
         var res = await SendAsync(() => new HttpRequestMessage(HttpMethod.Get, BaseUrl + pathAndQuery), ct);
         EnsureSuccess(res);
         return JsonSerializer.Deserialize<T>(res.Body, JsonOptions)
-               ?? throw new VRChatApiException("API の応答を解釈できませんでした。");
+               ?? throw new VRChatApiException("VRChat の応答を読めません");
     }
 
     /// <summary>VRChat のエラー応答を、利用者向けの日本語メッセージにする。英語の生メッセージはそのまま見せない。</summary>
@@ -584,33 +586,33 @@ public sealed class VRChatApi : IDisposable
         {
             var s = server.ToLowerInvariant();
             if (s.Contains("user-agent") || s.Contains("identify yourself"))
-                return "VRChat がこのアプリからの通信を受け付けませんでした(アプリの識別情報が未設定)。配布された最新版を使うか、配布者に連絡してください。";
+                return "VRChat に通信を拒否されました (アプリの識別情報が未設定。最新版を使うか、配布者に連絡してください)";
             if (s.Contains("invalid username") || s.Contains("invalid password") || s.Contains("email or password"))
-                return "ユーザー名(メールアドレス)またはパスワードが違います。";
+                return "ユーザー名 (メールアドレス) またはパスワードが違います";
             if (s.Contains("two-factor") || s.Contains("2fa") || s.Contains("verification code") || s.Contains("invalid code"))
-                return "認証コードが正しくありません。もう一度入力してください。";
+                return "認証コードが違います";
             if (s.Contains("avatar not found"))
-                return "そのアバターは見つかりませんでした(削除されたか、ID が違う可能性があります)。";
+                return "アバターが見つかりません (削除済み、または ID 違い)";
             if (s.Contains("not public") || s.Contains("private"))
-                return "このアバターは非公開のため使用できません。";
+                return "非公開アバターのため使用不可";
             if (s.Contains("too many favorites") || s.Contains("maximum number of favorites"))
-                return "そのお気に入りグループは上限に達しています。別のグループを選ぶか、いらないものを外してください。";
+                return "お気に入りグループが上限です";
             if (s.Contains("already") && s.Contains("favorite"))
-                return "そのアバターはすでにお気に入りに登録されています。";
+                return "お気に入り登録済み";
             if (s.Contains("too many") || s.Contains("rate limit"))
-                return "VRChat へのアクセスが多すぎます。1 分ほど待ってからもう一度お試しください。";
+                return "アクセス過多 (1 分ほど待って再試行)";
             if (s.Contains("banned") || s.Contains("suspended"))
-                return "このアカウントは現在 VRChat で制限されています。";
+                return "アカウントが VRChat で制限中";
         }
 
         var jp = status switch
         {
-            HttpStatusCode.Unauthorized => "ログイン情報が正しくないか、セッションの期限が切れています。もう一度ログインしてください。",
-            HttpStatusCode.Forbidden => "VRChat に操作を拒否されました(非公開アバター、または権限がない可能性があります)。",
-            HttpStatusCode.NotFound => "見つかりませんでした(削除されたか、ID が違う可能性があります)。",
-            HttpStatusCode.TooManyRequests => "VRChat へのアクセスが多すぎます。1 分ほど待ってからもう一度お試しください。",
-            >= HttpStatusCode.InternalServerError => "VRChat 側で問題が起きているようです。しばらくしてからもう一度お試しください。",
-            _ => "VRChat からエラーが返されました。",
+            HttpStatusCode.Unauthorized => "ログイン情報が無効 (再ログインが必要)",
+            HttpStatusCode.Forbidden => "VRChat に拒否されました (非公開アバター、または権限なし)",
+            HttpStatusCode.NotFound => "見つかりません (削除済み、または ID 違い)",
+            HttpStatusCode.TooManyRequests => "アクセス過多 (1 分ほど待って再試行)",
+            >= HttpStatusCode.InternalServerError => "VRChat 側の障害 (しばらくして再試行)",
+            _ => "VRChat がエラーを返しました",
         };
         // 問い合わせ対応のため、原文は小さく後ろに添える
         return string.IsNullOrEmpty(server) ? $"{jp} (HTTP {(int)status})" : $"{jp} (HTTP {(int)status}: {server})";

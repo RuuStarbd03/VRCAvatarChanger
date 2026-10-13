@@ -82,7 +82,7 @@ public partial class MainWindow
     {
         if (PreviousAvatarId() is not { } id)
         {
-            NotifyHotkey("直前のアバターがありません", error: true, toast);
+            NotifyHotkey("直前のアバターなし", error: true, toast);
             return;
         }
         await ChangeByHotkeyAsync(id, null, toast);
@@ -96,7 +96,7 @@ public partial class MainWindow
         var group = current is null ? null : _groups.GroupOf(current);
         if (group is null || group.AvatarIds.Count < 2)
         {
-            NotifyHotkey("今のアバターはグループに入っていません", error: true, toast: true);
+            NotifyHotkey("現在のアバターはグループ未所属", error: true, toast: true);
             return;
         }
         var index = group.AvatarIds.IndexOf(current!);
@@ -111,13 +111,13 @@ public partial class MainWindow
     {
         if (_user is null)
         {
-            NotifyHotkey("VRChat にログインしていません", error: true, toast);
+            NotifyHotkey("未ログイン", error: true, toast);
             return;
         }
         var name = NameOf(avatarId) ?? fallbackName ?? avatarId;
-        NotifyHotkey($"{name} に着替えています", error: false, toast);
+        NotifyHotkey($"アバターチェンジ中… ({name})", error: false, toast);
         var ok = await ChangeAvatarAsync(avatarId, name);
-        NotifyHotkey(ok ? $"{name} に着替えました" : $"{name} に着替えられませんでした", error: !ok, toast);
+        NotifyHotkey(ok ? $"アバターチェンジ完了: {name}" : $"アバターチェンジ失敗: {name}", error: !ok, toast);
     }
 
     /// <summary>分かる範囲でアバターの表示名を引く(一覧 → 単体取得のキャッシュ)。</summary>

@@ -33,7 +33,7 @@ public partial class MainWindow
         // リリースに自動更新用の zip が添付されていない場合は、通知だけして何もしない
         if (_update.ZipUrl is null)
         {
-            SetStatus(StatusKind.Info, $"v{_update.Version.ToString(3)} が公開されていますが、自動更新用のファイルがまだ添付されていません");
+            SetStatus(StatusKind.Info, $"v{_update.Version.ToString(3)} 公開済み (自動更新ファイル未添付)");
             return;
         }
         var notes = string.IsNullOrWhiteSpace(_update.Notes) ? "" : "\n\n" + _update.Notes.Trim();
@@ -41,8 +41,8 @@ public partial class MainWindow
         if (!Dialogs.Ask(this, $"バージョン {_update.Version.ToString(3)} に更新しますか?\n更新後、アプリは自動で再起動します。{notes}")) return;
 
         UpdateButton.IsEnabled = false;
-        UpdateButtonText.Text = "更新しています";
-        SetStatus(StatusKind.Info, "新しいバージョンをダウンロードしています");
+        UpdateButtonText.Text = "アップデート中…";
+        SetStatus(StatusKind.Info, "新バージョンをダウンロード中…");
         try
         {
             await Updater.DownloadAndApplyAsync(_update); // 成功したら再起動して戻らない
@@ -52,7 +52,7 @@ public partial class MainWindow
             Log.Error($"更新 (v{_update.Version.ToString(3)}) に失敗", ex);
             UpdateButton.IsEnabled = true;
             UpdateButtonText.Text = $"v{_update.Version.ToString(3)} に更新";
-            SetStatus(StatusKind.Error, "更新できませんでした: " + FriendlyError.Of(ex));
+            SetStatus(StatusKind.Error, "アップデート失敗: " + FriendlyError.Of(ex));
         }
     }
 }

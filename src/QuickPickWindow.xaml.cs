@@ -78,7 +78,7 @@ public partial class QuickPickWindow : Window
         // 前回の検索語が残っていれば消す (消すと TextChanged で絞り込み直されるので、ここでは呼ばない)
         if (SearchBox.Text.Length > 0) SearchBox.Text = "";
         else ApplyFilter();
-        StatusText.Text = _all.Count == 0 ? "一覧が空です。AvatarChanger でログインして一覧を読み込んでください。" : "";
+        StatusText.Text = _all.Count == 0 ? "アバターなし (メイン画面で読み込み)" : "";
 
         var wPx = (int)Math.Round(DesignWidthDip * scale);
         var hPx = areaPx.Bottom - areaPx.Top;
@@ -200,12 +200,12 @@ public partial class QuickPickWindow : Window
     {
         if (_busy) return;
         _busy = true;
-        StatusText.Text = $"{item.Name} に着替えています...";
+        StatusText.Text = $"アバターチェンジ中… ({item.Name})";
         var ok = false;
         try { ok = await _change(item); }
         finally { _busy = false; }
         if (ok) CloseOverlay(refocus: true);
-        else StatusText.Text = "着替えられませんでした。メイン画面のステータスを確認してください。";
+        else StatusText.Text = "アバターチェンジ失敗 (詳細はメイン画面)";
     }
 
     private void Window_PreviewKeyDown(object sender, KeyEventArgs e)

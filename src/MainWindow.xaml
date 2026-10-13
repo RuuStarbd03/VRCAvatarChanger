@@ -159,7 +159,7 @@
                             Visibility="{Binding IsUnavailable, Converter={StaticResource BoolToVis}}">
                         <StackPanel Orientation="Horizontal">
                             <TextBlock Text="&#xE733;" Style="{StaticResource Icon}" FontSize="11" Foreground="{DynamicResource DangerBrush}" Margin="0,0,5,0"/>
-                            <TextBlock Text="使えません" FontSize="11" FontWeight="SemiBold" Foreground="{DynamicResource DangerBrush}"/>
+                            <TextBlock Text="使用不可" FontSize="11" FontWeight="SemiBold" Foreground="{DynamicResource DangerBrush}"/>
                         </StackPanel>
                     </Border>
                     <TextBlock Text="{Binding Badge}" Style="{StaticResource CaptionText}" VerticalAlignment="Center"/>
@@ -284,7 +284,7 @@
                                     Visibility="{Binding IsUnavailable, Converter={StaticResource BoolToVis}}">
                                 <StackPanel Orientation="Horizontal">
                                     <TextBlock Text="&#xE733;" Style="{StaticResource Icon}" FontSize="11" Foreground="{DynamicResource DangerBrush}" Margin="0,0,5,0"/>
-                                    <TextBlock Text="使えません" FontSize="11" FontWeight="SemiBold" Foreground="{DynamicResource DangerBrush}"/>
+                                    <TextBlock Text="使用不可" FontSize="11" FontWeight="SemiBold" Foreground="{DynamicResource DangerBrush}"/>
                                 </StackPanel>
                             </Border>
                             <!-- グループ: 枚数バッジ -->
@@ -350,25 +350,21 @@
                     </Grid>
                     <Button x:Name="ExternalLoginButton" Style="{StaticResource SecondaryButton}" Click="ExternalLoginButton_Click" Height="36"
                             Content="ふだん使うブラウザでログイン"
-                            ToolTip="Chrome など既定のブラウザで VRChat を開きます。そのブラウザで VRChat にログイン済みなら、コピーするだけで完了します。"/>
+                            ToolTip="既定のブラウザ (Chrome など) でログイン"/>
                     <Button x:Name="BrowserLoginButton" Style="{StaticResource GhostButton}" Click="BrowserLoginButton_Click" Height="32" Margin="0,8,0,0"
                             Content="アプリ内ブラウザでログイン"
-                            ToolTip="アプリに内蔵したブラウザで vrchat.com のログイン画面を開きます。Discord / Google / Apple / Steam でログインできます。"/>
+                            ToolTip="内蔵ブラウザでログイン (Discord / Google / Apple / Steam も可)"/>
                 </StackPanel>
 
                 <!-- 外部ブラウザ(Chrome など)から token を受け取るログイン -->
                 <StackPanel x:Name="ExternalLoginPanel" Visibility="Collapsed">
-                    <TextBlock Style="{StaticResource MutedText}" TextWrapping="Wrap" Margin="0,0,0,16"
-                               Text="ブラウザで VRChat のページを開きました。表示された token をコピーしてください。コピーするとこのアプリが自動で続行します。"/>
-                    <Button Content="ブラウザをもう一度開く" Style="{StaticResource SecondaryButton}" Click="OpenAuthPage_Click" Height="34"/>
+                    <Button Content="token のページを開く" Click="OpenAuthPage_Click" Height="36"/>
 
                     <TextBlock Text="token を貼り付け" Style="{StaticResource FieldLabel}" Margin="0,18,0,0"/>
-                    <TextBox x:Name="AuthTokenBox" Margin="0,0,0,16" KeyDown="AuthTokenField_KeyDown" FontFamily="Cascadia Mono, Consolas"/>
-                    <Button x:Name="AuthTokenButton" Content="ログイン" Click="AuthTokenLogin_Click" Height="36"/>
+                    <TextBox x:Name="AuthTokenBox" Margin="0,0,0,12" KeyDown="AuthTokenField_KeyDown" FontFamily="Cascadia Mono, Consolas"/>
+                    <Button x:Name="AuthTokenButton" Content="貼り付けた token でログイン" Style="{StaticResource SecondaryButton}" Click="AuthTokenLogin_Click" Height="34"/>
 
-                    <TextBlock Style="{StaticResource CaptionText}" TextWrapping="Wrap" Margin="0,14,0,0" Foreground="{DynamicResource FaintTextBrush}"
-                               Text="「Missing Credentials」と表示された場合は、先に vrchat.com にログインしてから、もう一度開いてください。"/>
-                    <Button Content="vrchat.com を開く" Style="{StaticResource GhostButton}" Click="OpenVRChatSite_Click" Height="30" Margin="0,6,0,0"/>
+                    <Button Content="VRChat のログインページを開く" Style="{StaticResource GhostButton}" Click="OpenVRChatSite_Click" Height="30" Margin="0,12,0,0"/>
                     <Button Content="戻る" Style="{StaticResource GhostButton}" Click="BackToLogin_Click" Height="32" Margin="0,6,0,0"/>
                 </StackPanel>
 
@@ -382,9 +378,7 @@
                 </StackPanel>
 
                 <TextBlock x:Name="LoginStatus" Foreground="{DynamicResource DangerBrush}" TextWrapping="Wrap" Margin="0,14,0,0"/>
-                <TextBlock Style="{StaticResource CaptionText}" TextWrapping="Wrap" Margin="0,18,0,0" Foreground="{DynamicResource FaintTextBrush}"
-                           Text="パスワードは保存しません。ログイン状態だけを暗号化して保存します。"/>
-                <Button Content="使い方とよくある質問を見る" Style="{StaticResource GhostButton}" Click="HelpButton_Click" Height="30" Margin="0,10,0,0" HorizontalAlignment="Center"/>
+                <Button Content="使い方とよくある質問を見る" Style="{StaticResource GhostButton}" Click="HelpButton_Click" Height="30" Margin="0,18,0,0" HorizontalAlignment="Center"/>
             </StackPanel>
         </Border>
 
@@ -415,15 +409,15 @@
                                    TextTrimming="CharacterEllipsis" MaxWidth="360"/>
                         <TextBlock x:Name="OscStatusText" Style="{StaticResource CaptionText}" Foreground="{DynamicResource FaintTextBrush}"
                                    VerticalAlignment="Center" Margin="12,0,0,0"
-                                   ToolTip="VRChat で OSC を有効にすると(アクションメニュー → Options → OSC → Enabled)、着替えがローカル通信で即座に反映され、ゲーム内で着替えたときも「現在:」が更新されます。"/>
+                                   ToolTip="VRChat で OSC を有効にすると(アクションメニュー → Options → OSC → Enabled)、アバターチェンジがローカル通信で即座に反映され、ゲーム内でチェンジしたときも「現在:」が更新されます。"/>
                     </StackPanel>
                     <StackPanel Grid.Column="1" Orientation="Horizontal">
                         <Button x:Name="UpdateButton" Style="{StaticResource GhostButton}" Click="UpdateButton_Click" Visibility="Collapsed"
                                 AutomationProperties.Name="更新" Height="30" Padding="10,0" Margin="0,0,4,0"
-                                Foreground="{DynamicResource AccentBrush}" ToolTip="新しいバージョンをダウンロードして更新します">
+                                Foreground="{DynamicResource AccentBrush}" ToolTip="新しいバージョンにアップデート">
                             <StackPanel Orientation="Horizontal">
                                 <TextBlock Text="&#xE896;" Style="{StaticResource Icon}" Foreground="{DynamicResource AccentBrush}" Margin="0,0,8,0"/>
-                                <TextBlock x:Name="UpdateButtonText" Text="更新があります" Foreground="{DynamicResource AccentBrush}"/>
+                                <TextBlock x:Name="UpdateButtonText" Text="アップデートあり" Foreground="{DynamicResource AccentBrush}"/>
                             </StackPanel>
                         </Button>
                         <Button Style="{StaticResource GhostButton}" Click="SettingsButton_Click" AutomationProperties.Name="設定"
@@ -615,7 +609,7 @@
                               local:SmoothScroll.IsEnabled="True">
                         <ListView.ContextMenu>
                             <ContextMenu>
-                                <MenuItem x:Name="MenuChange" Header="このアバターに着替える" InputGestureText="Enter" Click="MenuChange_Click"/>
+                                <MenuItem x:Name="MenuChange" Header="このアバターにチェンジ" InputGestureText="Enter" Click="MenuChange_Click"/>
                                 <MenuItem x:Name="MenuOpenGroup" Header="グループを開く" InputGestureText="Enter" Click="MenuOpenGroup_Click"/>
                                 <MenuItem x:Name="MenuDetails" Header="詳細を見る..." InputGestureText="Ctrl+I" Click="MenuDetails_Click"/>
                                 <Separator/>
@@ -630,7 +624,7 @@
                                 <Separator/>
                                 <MenuItem x:Name="MenuAddPublic" Header="パブリックに追加" Click="MenuAddPublic_Click"/>
                                 <MenuItem x:Name="MenuRemovePublic" Header="パブリックから削除" InputGestureText="Delete" Click="MenuRemovePublic_Click"/>
-                                <MenuItem x:Name="MenuRemoveUnavailable" Header="使えなくなったものをまとめて外す..." Click="MenuRemoveUnavailable_Click"/>
+                                <MenuItem x:Name="MenuRemoveUnavailable" Header="使用不可をまとめて外す..." Click="MenuRemoveUnavailable_Click"/>
                                 <MenuItem x:Name="MenuEditTags" Header="タグを編集..." Click="MenuEditTags_Click"/>
                                 <Separator/>
                                 <MenuItem x:Name="MenuAssignHotkey" Header="ホットキーに割り当てる..." Click="MenuAssignHotkey_Click"/>
@@ -647,7 +641,7 @@
                     </ItemsControl>
 
                     <StackPanel Grid.Row="2" x:Name="EmptyPanel" Visibility="Collapsed" VerticalAlignment="Center" HorizontalAlignment="Center" MaxWidth="380">
-                        <TextBlock x:Name="EmptyTitle" Text="アバターがありません" FontWeight="SemiBold" FontSize="15" HorizontalAlignment="Center"/>
+                        <TextBlock x:Name="EmptyTitle" Text="アバターなし" FontWeight="SemiBold" FontSize="15" HorizontalAlignment="Center"/>
                         <TextBlock x:Name="EmptyHint" Style="{StaticResource MutedText}" TextWrapping="Wrap" TextAlignment="Center" Margin="0,6,0,0"/>
                     </StackPanel>
                 </Grid>
@@ -663,9 +657,9 @@
                     <TextBlock x:Name="StatusIcon" Style="{StaticResource Icon}" FontSize="12" Margin="0,0,6,0" Visibility="Collapsed"/>
                     <TextBlock x:Name="StatusText" Style="{StaticResource CaptionText}" TextTrimming="CharacterEllipsis"/>
                 </StackPanel>
-                <Button Grid.Column="1" x:Name="ChangeButton" Content="選択したアバターに着替える" Click="ChangeSelected_Click"
+                <Button Grid.Column="1" x:Name="ChangeButton" Content="選択したアバターにチェンジ" Click="ChangeSelected_Click"
                         Height="34" MinWidth="220" IsEnabled="False"
-                        ToolTip="一覧のダブルクリック、または Enter でも着替えられます"/>
+                        ToolTip="ダブルクリック / Enter でもチェンジ"/>
             </Grid>
             </Grid>
         </Grid>
@@ -840,10 +834,10 @@
                                 <ColumnDefinition Width="*"/>
                                 <ColumnDefinition Width="Auto"/>
                             </Grid.ColumnDefinitions>
-                            <TextBlock Text="クイック着替え / ホットキー" Style="{StaticResource SettingTitle}" VerticalAlignment="Center"/>
+                            <TextBlock Text="クイックチェンジ / ホットキー" Style="{StaticResource SettingTitle}" VerticalAlignment="Center"/>
                             <ToggleButton Grid.Column="1" x:Name="QuickToggle" Style="{StaticResource OnOffToggle}"
                                           Checked="QuickToggle_Changed" Unchecked="QuickToggle_Changed"
-                                          VerticalAlignment="Top" Margin="14,0,0,0" AutomationProperties.Name="クイック着替え"/>
+                                          VerticalAlignment="Top" Margin="14,0,0,0" AutomationProperties.Name="クイックチェンジ"/>
                         </Grid>
                     </Border>
 
@@ -979,7 +973,7 @@
                                 <TextBlock x:Name="AccountDesc" Style="{StaticResource SettingDesc}"/>
                             </StackPanel>
                             <Button Grid.Column="1" Content="ログアウト" Style="{StaticResource DangerButton}" Click="SettingsLogout_Click"
-                                    ToolTip="保存したログイン状態を消してログイン画面に戻る"
+                                    ToolTip="ログアウトしてログイン画面へ"
                                     MinWidth="80" Height="32" VerticalAlignment="Top" Margin="14,0,0,0"/>
                         </Grid>
                     </Border>
@@ -1060,11 +1054,9 @@
                                     <StackPanel>
                                         <StackPanel Orientation="Horizontal">
                                             <TextBlock Text="&#xE733;" Style="{StaticResource Icon}" Foreground="{DynamicResource DangerBrush}" Margin="0,0,8,0"/>
-                                            <TextBlock Text="このアバターは使えなくなっています" FontWeight="SemiBold" Foreground="{DynamicResource DangerBrush}"/>
+                                            <TextBlock Text="使用不可" FontWeight="SemiBold" Foreground="{DynamicResource DangerBrush}"/>
                                         </StackPanel>
                                         <TextBlock x:Name="DetailUnavailableText" Style="{StaticResource CaptionText}" TextWrapping="Wrap" Margin="0,6,0,0"/>
-                                        <TextBlock Style="{StaticResource CaptionText}" TextWrapping="Wrap" Margin="0,4,0,0" Foreground="{DynamicResource FaintTextBrush}"
-                                                   Text="再読み込みのたびに確認し、時間を空けて 2 回続けて取れなかったものだけをこう表示します。自動では外しません。"/>
                                         <Button x:Name="DetailRemoveButton" Content="パブリックから外す" Style="{StaticResource DangerButton}" Click="DetailRemove_Click"
                                                 Height="30" HorizontalAlignment="Left" Margin="0,10,0,0"/>
                                     </StackPanel>
@@ -1104,7 +1096,7 @@
                     <Grid Grid.Row="2" Margin="0,14,0,0">
                         <StackPanel Orientation="Horizontal">
                             <Button Style="{StaticResource SecondaryButton}" Click="DetailOpenWeb_Click" Height="34" Padding="12,0"
-                                    ToolTip="ブラウザで vrchat.com のアバターページを開きます">
+                                    ToolTip="vrchat.com のアバターページを開く">
                                 <StackPanel Orientation="Horizontal">
                                     <TextBlock Text="&#xE774;" Style="{StaticResource Icon}" Margin="0,0,8,0"/>
                                     <TextBlock Text="VRChat で開く"/>
@@ -1119,7 +1111,7 @@
                         </StackPanel>
                         <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
                             <Button Content="閉じる" Style="{StaticResource SecondaryButton}" Click="DetailClose_Click" MinWidth="90" Height="34" Margin="0,0,8,0"/>
-                            <Button x:Name="DetailChangeButton" Content="このアバターに着替える" Click="DetailChange_Click" MinWidth="180" Height="34"/>
+                            <Button x:Name="DetailChangeButton" Content="このアバターにチェンジ" Click="DetailChange_Click" MinWidth="180" Height="34"/>
                         </StackPanel>
                     </Grid>
                 </Grid>

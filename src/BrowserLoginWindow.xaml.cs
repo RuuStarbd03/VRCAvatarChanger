@@ -73,7 +73,7 @@ public partial class BrowserLoginWindow : Window
             core.NavigationCompleted += async (_, _) => await CheckCookiesAsync();
             core.Navigate(LoginUrl);
             _poll.Start();
-            StatusText.Text = "ログインを待っています";
+            StatusText.Text = "ログイン待ち…";
         }
         catch (Exception ex)
         {
@@ -103,7 +103,7 @@ public partial class BrowserLoginWindow : Window
             if (auth is null || (auth, twoFactor) == _lastTried) return;
             _lastTried = (auth, twoFactor);
 
-            StatusText.Text = "セッションを確認しています";
+            StatusText.Text = "セッション確認中…";
             _api.SetSessionCookies(auth, twoFactor);
             var user = await _api.TryGetCurrentUserAsync();
             if (user is not null)
@@ -117,11 +117,11 @@ public partial class BrowserLoginWindow : Window
                 Close();
                 return;
             }
-            StatusText.Text = "ログインを待っています。2 段階認証が必要な場合は、そのままブラウザ内で入力してください。";
+            StatusText.Text = "ログイン待ち… (2 段階認証はこの画面で入力)";
         }
         catch (Exception ex)
         {
-            StatusText.Text = "セッションを確認できませんでした: " + FriendlyError.Of(ex);
+            StatusText.Text = "セッション確認失敗: " + FriendlyError.Of(ex);
         }
         finally { _verifying = false; }
     }

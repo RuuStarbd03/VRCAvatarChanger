@@ -97,7 +97,7 @@ public partial class MainWindow
         if (Environment.GetEnvironmentVariable("VRCAC_UI_PREVIEW_OPEN") == "1" && _groups.Groups.Count > 0) OpenGroup(_groups.Groups[0]);
         UpdateUserHeader();
         OscStatusText.Text = "OSC 連携中";
-        SetStatus(StatusKind.Success, "Kikyo に着替えました");
+        SetStatus(StatusKind.Success, "アバターチェンジ完了: Kikyo");
         // 仮想化の自己診断: スクロールしながら実体化済みコンテナ数を VRCAC_UI_PREVIEW_REPORT のファイルに書いて終了する
         if (Environment.GetEnvironmentVariable("VRCAC_UI_PREVIEW_SCROLLTEST") == "1") _ = RunScrollTestAsync();
         if (Environment.GetEnvironmentVariable("VRCAC_UI_PREVIEW_THUMBTEST") == "1") _ = RunThumbTestAsync();
@@ -192,7 +192,7 @@ public partial class MainWindow
             // ホットキーでの着替え結果を出す通知を画面外で撮る
             Left = -4000; Top = 0;
             var toast = new ToastWindow();
-            toast.ShowMessage("Selestia に着替えました",
+            toast.ShowMessage("アバターチェンジ完了: Selestia",
                 new Win32.NativeRect { Left = -4400, Top = 0, Right = -4000, Bottom = 400 }, 1.0, error: false);
             if (!string.IsNullOrEmpty(shotPath)) _ = CaptureWindowAsync(toast, shotPath);
         }
@@ -841,7 +841,7 @@ public partial class MainWindow
             vr.ClickForTest(114, 44);
             Expect("自分のタブに戻る", _settings.VrTab == AvatarTab.Own && panel.Items.Count > 0);
 
-            panel.Status = "Kikyo 9 に着替えられませんでした";
+            panel.Status = "アバターチェンジ失敗: Kikyo 9";
             panel.StatusIsError = true;
             panel.Hover = new VrPanel.Hit(VrPanel.HitKind.Tile, panel.PageStart + 4);
             Save(panel.Render(), "panel-hover-error.png");

@@ -254,7 +254,7 @@ internal sealed class VrOverlay : IDisposable
 
     private static void Check(EVROverlayError err, string what)
     {
-        if (err != EVROverlayError.None) throw new InvalidOperationException($"{what}に失敗しました ({err})");
+        if (err != EVROverlayError.None) throw new InvalidOperationException($"{what}失敗 ({err})");
     }
 
     /// <summary>SteamVR のレーザーで指して押せるようにする (ダッシュボードを開いていなくても)。</summary>
@@ -645,7 +645,7 @@ internal sealed class VrOverlay : IDisposable
     {
         if (_loadingTab == tab) return;
         _loadingTab = tab;
-        SetStatus("一覧を読み込んでいます...");
+        SetStatus("読み込み中…");
         try
         {
             await _source.LoadAsync(tab);
@@ -656,7 +656,7 @@ internal sealed class VrOverlay : IDisposable
         catch (Exception ex)
         {
             Log.Warn($"VR パネル: 一覧 ({tab}) を読み込めませんでした", ex);
-            if (_connected && _panelOpen && _settings.VrTab == tab) SetStatus("一覧を読み込めませんでした: " + FriendlyError.Of(ex), error: true);
+            if (_connected && _panelOpen && _settings.VrTab == tab) SetStatus("読み込み失敗: " + FriendlyError.Of(ex), error: true);
         }
         finally { _loadingTab = null; }
     }
@@ -780,12 +780,12 @@ internal sealed class VrOverlay : IDisposable
     {
         if (_busy) return;
         _busy = true;
-        SetStatus($"{item.Name} に着替えています...");
+        SetStatus($"アバターチェンジ中… ({item.Name})");
         bool ok;
         try { ok = await _source.ChangeAsync(item); }
         finally { _busy = false; }
         if (!_connected || !_panelOpen) return;
-        SetStatus(ok ? $"{item.Name} に着替えました" : $"{item.Name} に着替えられませんでした", error: !ok);
+        SetStatus(ok ? $"アバターチェンジ完了: {item.Name}" : $"アバターチェンジ失敗: {item.Name}", error: !ok);
         // 「今着ている」の印を付け直す (グループのタイルにも)。ページはそのまま
         if (ok) Reload(resetPage: false);
         // 着替えても閉じない。見比べながら続けて着替えられるよう、閉じるのは利用者の操作 (閉じるボタン / 手首ボタン) だけ

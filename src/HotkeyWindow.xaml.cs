@@ -71,24 +71,24 @@ public partial class HotkeyWindow : Window
 
         AddRow(ActionRows, new HotkeyRow
         {
-            Title = "クイック着替えを開く",
+            Title = "クイックチェンジを開く",
             Get = () => Hotkey.Parse(_settings.QuickHotkey),
             Set = h => _settings.QuickHotkey = h.ToString(),
-        }, "画面の右にアバター選択を重ねて出します。");
+        });
 
         AddRow(ActionRows, new HotkeyRow
         {
             Title = "直前のアバターに戻す",
             Get = () => Hotkey.Parse(_settings.PreviousHotkey),
             Set = h => _settings.PreviousHotkey = h.ToString(),
-        }, "1 つ前に着ていたアバターと行き来できます。");
+        });
 
         AddRow(ActionRows, new HotkeyRow
         {
             Title = "グループ内の次のアバター",
             Get = () => Hotkey.Parse(_settings.NextInGroupHotkey),
             Set = h => _settings.NextInGroupHotkey = h.ToString(),
-        }, "今のアバターが入っているグループの中で、衣装違いを順に送ります。");
+        });
 
         foreach (var entry in _settings.AvatarHotkeys.ToList())
         {
@@ -102,12 +102,12 @@ public partial class HotkeyWindow : Window
             AddRow(AvatarRows, row, entry.AvatarId);
             _avatarRows[entry] = row;
         }
-        AvatarHint.Text = _settings.AvatarHotkeys.Count > 0
-            ? "一覧でアバターを右クリック →「ホットキーに割り当てる...」で追加できます。"
-            : "まだありません。一覧でアバターを右クリック →「ホットキーに割り当てる...」で追加できます。";
+        // 1 つも無いときだけ、追加のしかたを短く出す
+        AvatarHint.Text = _settings.AvatarHotkeys.Count > 0 ? "" : "未登録 (一覧で右クリック →「ホットキーに割り当てる...」)";
+        AvatarHint.Visibility = AvatarHint.Text.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
     }
 
-    private void AddRow(Panel host, HotkeyRow row, string description)
+    private void AddRow(Panel host, HotkeyRow row, string description = "")
     {
         var grid = new Grid();
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
@@ -124,7 +124,8 @@ public partial class HotkeyWindow : Window
         };
         title.SetResourceReference(ForegroundProperty, "TextBrush"); // 配色を切り替えても追従するように
         titles.Children.Add(title);
-        titles.Children.Add(new TextBlock
+        // 固定の説明は置かない。アバターの行だけ、どのアバターか分かるよう ID を添える
+        if (description.Length > 0) titles.Children.Add(new TextBlock
         {
             Text = description,
             Style = (Style)FindResource("CaptionText"),
@@ -185,9 +186,9 @@ public partial class HotkeyWindow : Window
     {
         CancelCapture();
         _capturing = row;
-        row.KeyText.Text = "キーを押してください...";
+        row.KeyText.Text = "キー入力待ち…";
         row.KeyText.SetResourceReference(ForegroundProperty, "AccentBrush");
-        CaptureHint.Text = "使いたいキーの組み合わせを押してください(Esc で中止、Backspace で解除)。";
+        CaptureHint.Text = "キー入力待ち… (Esc: 中止 / Backspace: 解除)";
         Focus();
     }
 
@@ -228,7 +229,7 @@ public partial class HotkeyWindow : Window
         {
             _capturing = null;
             Apply(row, Hotkey.None);
-            CaptureHint.Text = $"「{row.Title}」の割り当てを解除しました。";
+            CaptureHint.Text = $"割り当て解除: {row.Title}";
             return;
         }
         if (Hotkey.IsModifierKey(key)) return; // 修飾キーだけでは決まらない。本命のキーを待つ
@@ -237,7 +238,7 @@ public partial class HotkeyWindow : Window
         // 修飾キー無しだと、ゲーム中の普通の操作(移動など)を奪ってしまう。ファンクションキーだけ例外
         if (hotkey.Modifiers == ModifierKeys.None && key is not (>= Key.F1 and <= Key.F24))
         {
-            CaptureHint.Text = "Ctrl / Shift / Alt と組み合わせるか、ファンクションキーを使ってください。";
+            CaptureHint.Text = "Ctrl / Shift / Alt との組み合わせか、ファンクションキーのみ設定可";
             return;
         }
         var conflict = _rows.FirstOrDefault(r => !ReferenceEquals(r, row) && r.Get() == hotkey);
@@ -248,7 +249,7 @@ public partial class HotkeyWindow : Window
         }
         _capturing = null;
         Apply(row, hotkey);
-        CaptureHint.Text = $"「{row.Title}」を {hotkey.Display} にしました。";
+        CaptureHint.Text = $"割り当て完了: {row.Title} → {hotkey.Display}";
     }
 
     private void Close_Click(object sender, RoutedEventArgs e) => Close();

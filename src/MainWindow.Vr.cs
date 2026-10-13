@@ -134,7 +134,7 @@ public partial class MainWindow : IVrAvatarSource
         if (enabled && !_preview) _vr?.Start();
         else _vr?.Stop();
         SetStatus(StatusKind.Info, enabled
-            ? "VR の手首ボタン: オン。SteamVR と VRChat を起動していると、手首を見たときにボタンが出ます"
+            ? "VR の手首ボタン: オン"
             : "VR の手首ボタン: オフ");
     }
 

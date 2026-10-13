@@ -52,12 +52,12 @@ public partial class MainWindow
         if (enabled)
         {
             EnableWatch();
-            SetStatus(StatusKind.Info, "VRChat 連動: オン。Windows 起動時にトレイで待機し、VRChat が起動したら自動で開きます");
+            SetStatus(StatusKind.Info, "VRChat 連動: オン");
         }
         else
         {
             DisableWatch();
-            SetStatus(StatusKind.Info, "VRChat 連動: オフ。スタートアップ登録も解除しました");
+            SetStatus(StatusKind.Info, "VRChat 連動: オフ");
         }
     }
 

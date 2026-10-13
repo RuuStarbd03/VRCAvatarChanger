@@ -96,10 +96,10 @@ public static class Updater
     /// </summary>
     public static async Task DownloadAndApplyAsync(UpdateInfo info)
     {
-        if (info.ZipUrl is null) throw new InvalidOperationException("このリリースには自動更新用のファイルが添付されていません。");
+        if (info.ZipUrl is null) throw new InvalidOperationException("自動更新用のファイルが未添付");
         // publish.ps1 は必ず SHA256SUMS.txt を添付する。無いリリースは添付物が不完全なので、検証なしで進めない
-        if (info.ShaUrl is null) throw new InvalidOperationException("このリリースには更新ファイルの検証情報 (SHA256SUMS.txt) が添付されていません。更新を中止します。");
-        var exe = Environment.ProcessPath ?? throw new InvalidOperationException("実行ファイルの場所が分かりません。");
+        if (info.ShaUrl is null) throw new InvalidOperationException("検証情報 (SHA256SUMS.txt) が未添付のため中止");
+        var exe = Environment.ProcessPath ?? throw new InvalidOperationException("実行ファイルの場所が不明");
         var workDir = AppPaths.In("update");
         Directory.CreateDirectory(workDir);
         var zipPath = Path.Combine(workDir, "update.zip");
@@ -126,12 +126,12 @@ public static class Updater
                     .FirstOrDefault()
                     // SHA256SUMS.txt があるのに対象 zip のエントリが無いのは、添付物がちぐはぐな証拠。
                     // 黙ってスキップせず中止する
-                    ?? throw new InvalidOperationException("更新ファイルの検証情報が見つかりません(リリースの添付物が不完全な可能性)。更新を中止します。");
+                    ?? throw new InvalidOperationException("検証情報が見つからないため中止");
                 await using (var fs = File.OpenRead(zipPath))
                 {
                     var actual = Convert.ToHexString(await SHA256.HashDataAsync(fs)).ToLowerInvariant();
                     if (actual != expected)
-                        throw new InvalidOperationException("ダウンロードしたファイルの検証に失敗しました。更新を中止します。");
+                        throw new InvalidOperationException("ダウンロードしたファイルの検証に失敗したため中止");
                 }
             }
         }
