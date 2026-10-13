@@ -759,6 +759,7 @@ public partial class MainWindow
             _settings.VrTab = AvatarTab.Own;
             _settings.VrSortKey = "recent_asc";
             _settings.VrGroupView = true;
+            _settings.VrColumns = 3;
 
             var vr = _vr!;
             var panel = vr.PanelForTest;
@@ -788,16 +789,38 @@ public partial class MainWindow
             panel.TurnPage(-panel.Page);
             var first = panel.HitTest(121, 269);
             Expect("左上のタイル", first is { Kind: VrPanel.HitKind.Tile, Index: 0 }, first.ToString());
-            var last = panel.HitTest(518, 621);
-            Expect("右下のタイル", last is { Kind: VrPanel.HitKind.Tile, Index: 8 }, last.ToString());
+            var lastSlot = panel.PageItemCount - 1;
+            var lastRect = panel.TileRect(lastSlot);
+            var last = panel.HitTest(lastRect.X + lastRect.Width / 2, lastRect.Y + lastRect.Height / 2);
+            Expect("ページの最後のタイル", last.Kind == VrPanel.HitKind.Tile && last.Index == lastSlot, last.ToString());
             Expect("先頭ページでは「前へ」は押せない", panel.HitTest(88, 770).Kind == VrPanel.HitKind.None);
-            Expect("次へ", panel.HitTest(552, 770).Kind == VrPanel.HitKind.Next);
+            Expect(panel.PageCount > 1 ? "次へ" : "1 ページなら「次へ」は押せない",
+                panel.HitTest(552, 770).Kind == (panel.PageCount > 1 ? VrPanel.HitKind.Next : VrPanel.HitKind.None));
+
+            // 列数: 3 列では減らせない。増やすと 1 ページの数が増え、設定にも残る
+            Expect("3 列では「−」は押せない", panel.HitTest(302, 102).Kind == VrPanel.HitKind.None);
+            vr.ClickForTest(410, 102);
+            Expect("「+」で 4 列", _settings.VrColumns == 4 && panel.Columns == 4 && panel.PageSize > 9, $"columns={panel.Columns} page={panel.PageSize}");
+            vr.ClickForTest(302, 102);
+            Expect("「−」で 3 列に戻る", _settings.VrColumns == 3 && panel.Columns == 3 && panel.PageSize == 9, $"columns={panel.Columns} page={panel.PageSize}");
+            for (var cols = 4; cols <= VrPanel.MaxColumns; cols++)
+            {
+                panel.SetColumns(cols);
+                var bottom = panel.TileRect(panel.PageSize - 1);
+                Expect($"{cols} 列: タイルがパネルに収まる ({panel.PageSize} 体/ページ)", bottom.Right <= VrPanel.Width - 27 && bottom.Bottom <= 710,
+                    $"right={bottom.Right:F0} bottom={bottom.Bottom:F0}");
+            }
+            Expect("10 列では「+」は押せない", panel.HitTest(410, 102).Kind == VrPanel.HitKind.None);
+            Save(panel.Render(), "panel-10cols.png");
+            panel.SetColumns(5);
+            Save(panel.Render(), "panel-5cols.png");
+            panel.SetColumns(3);
 
             // グループのタイルを押すと中身だけになり、「戻る」で元のページへ
             (double X, double Y) TileCenter(int index)
             {
-                var slot = index - panel.PageStart;
-                return (28 + slot % 3 * (186.667 + 10) + 93, 186 + slot / 3 * (166 + 10) + 83);
+                var r = panel.TileRect(index - panel.PageStart);
+                return (r.X + r.Width / 2, r.Y + r.Height / 2);
             }
             panel.ShowPageOf(t => t.IsGroup);
             var groupIndex = panel.Items.ToList().FindIndex(t => t.IsGroup);
@@ -890,7 +913,7 @@ public partial class MainWindow
             // SteamVR に渡す並び (RGBA) になっているか: 「グループ化: オン」のボタンの色 (今のアクセント色) の画素を見る
             var accent = App.AccentColor(dark: true);
             var rgba = panel.RenderRgba();
-            var px = (102 * VrPanel.Width + 430) * 4; // (430, 102) = グループ化ボタンの左端寄り (文字の無いところ)
+            var px = (102 * VrPanel.Width + 452) * 4; // (452, 102) = グループ化ボタンの左端寄り (文字の無いところ)
             Expect($"RGBA の並び (アクセント {accent})", rgba[px] == accent.R && rgba[px + 1] == accent.G && rgba[px + 2] == accent.B && rgba[px + 3] == 0xFF,
                 $"{rgba[px]:X2} {rgba[px + 1]:X2} {rgba[px + 2]:X2} {rgba[px + 3]:X2}");
             var btn = VrPanel.ButtonRgba(panelOpen: false);

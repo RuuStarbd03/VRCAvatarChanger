@@ -129,7 +129,7 @@ internal sealed class VrOverlay : IDisposable
     private readonly Stopwatch _frameClock = new();
     private bool _panelDirty;
     private DateTime _lastRender;
-    private readonly BitmapSource?[] _renderedThumbs = new BitmapSource?[VrPanel.PageSize]; // 描いたときのサムネイル
+    private readonly BitmapSource?[] _renderedThumbs = new BitmapSource?[VrPanel.MaxPageSize]; // 描いたときのサムネイル
     private DateTime _lastPress;
     private DateTime _lastStickMove;        // 最後にスティックでパネルを動かした時刻
     private readonly byte[] _uploadedPanel = new byte[VrPanel.Width * VrPanel.Height * 4]; // 最後に SteamVR へ渡したパネルの画像
@@ -630,6 +630,7 @@ internal sealed class VrOverlay : IDisposable
         _panel.Tab = tab;
         _panel.SortKey = _settings.VrSortKey;
         _panel.GroupView = _settings.VrGroupView;
+        _panel.SetColumns(_settings.VrColumns);
         _panel.OpenGroupName = _openGroup?.Name;
 
         var items = _source.ItemsOf(tab);
@@ -747,6 +748,14 @@ internal sealed class VrOverlay : IDisposable
                 _source.SaveSettings();
                 Reload(resetPage: true);
                 break;
+            case VrPanel.HitKind.ColumnsLess:
+            case VrPanel.HitKind.ColumnsMore:
+                _settings.VrColumns = Math.Clamp(_settings.VrColumns + (hit.Kind == VrPanel.HitKind.ColumnsLess ? -1 : 1),
+                    VrPanel.MinColumns, VrPanel.MaxColumns);
+                _source.SaveSettings();
+                _panel.SetColumns(_settings.VrColumns);
+                RequestPageThumbnails();
+                break;
             case VrPanel.HitKind.GroupToggle:
                 _settings.VrGroupView = !_settings.VrGroupView;
                 _openGroup = null;
@@ -819,7 +828,7 @@ internal sealed class VrOverlay : IDisposable
     /// <summary>描いたあとに、今のページのサムネイルが届いた (差し替わった) か。</summary>
     private bool ThumbnailsChanged()
     {
-        for (var slot = 0; slot < VrPanel.PageSize; slot++)
+        for (var slot = 0; slot < _renderedThumbs.Length; slot++)
         {
             var now = slot < _panel.PageItemCount ? _panel.PageItem(slot).Thumbnail : null;
             if (!ReferenceEquals(now, _renderedThumbs[slot])) return true;
@@ -836,7 +845,7 @@ internal sealed class VrOverlay : IDisposable
             Upload(_panelHandle, rgba, VrPanel.Width, VrPanel.Height, () => _panel.Render());
             _uploadedPanelValid = true;
         }
-        for (var slot = 0; slot < VrPanel.PageSize; slot++)
+        for (var slot = 0; slot < _renderedThumbs.Length; slot++)
             _renderedThumbs[slot] = slot < _panel.PageItemCount ? _panel.PageItem(slot).Thumbnail : null;
         _panelDirty = false;
         _lastRender = DateTime.UtcNow;

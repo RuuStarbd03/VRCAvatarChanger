@@ -37,6 +37,8 @@ public sealed class Settings
     public string VrSortKey { get; set; } = "recent_asc";
     /// <summary>VR パネルでグループを 1 枚にまとめるか。</summary>
     public bool VrGroupView { get; set; } = true;
+    /// <summary>VR パネルの列数 (3〜10)。段の数は列数から決まる。</summary>
+    public int VrColumns { get; set; } = 3;
     /// <summary>クイック着替えのオーバーレイを開くキー。空 = 割り当てなし。</summary>
     public string QuickHotkey { get; set; } = "Shift+D1";
     /// <summary>直前に着ていたアバターに戻すキー。空 = 割り当てなし。</summary>
@@ -84,6 +86,7 @@ public sealed class Settings
         if (s.VrHand is not ("left" or "right")) s.VrHand = "left";
         if (s.VrTab is not (AvatarTab.Own or AvatarTab.Favorites or AvatarTab.Public)) s.VrTab = AvatarTab.Own;
         if (s.VrSortKey is not ("recent_asc" or "name_asc")) s.VrSortKey = "recent_asc";
+        s.VrColumns = Math.Clamp(s.VrColumns, MinGridColumns, MaxGridColumns);
         s.VrButtonAlongCm = Math.Clamp(s.VrButtonAlongCm, MinVrAlongCm, MaxVrAlongCm);
         s.VrButtonHeightCm = Math.Clamp(s.VrButtonHeightCm, MinVrHeightCm, MaxVrHeightCm);
         return s;

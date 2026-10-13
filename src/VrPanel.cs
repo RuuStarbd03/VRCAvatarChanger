@@ -14,7 +14,8 @@ namespace VRCAvatarChanger;
 ///
 /// PC の画面を触らずに VR の中だけで探せるよう、タブ (自分 / お気に入り / パブリック)・並び順・
 /// グループ化・絞り込み (お気に入りグループ / タグ) をパネルの中で切り替えられる。
-/// 文字入力や細かいスクロールはしにくいので、検索は置かず、大きいタイルをページ送りで見せる。
+/// 文字入力や細かいスクロールはしにくいので、検索は置かず、タイルをページ送りで見せる。
+/// 列数 (3〜10) もパネルの中で変えられる。段の数は列数から、パネルに収まるだけ決まる。
 ///
 /// ホバーやサムネイルの到着のたびに描き直すので、描画先の画像と SteamVR に渡す配列 (2MB) は使い回す
 /// (毎回作ると大きなオブジェクトとして積み上がり、GC の負担になる)。
@@ -26,9 +27,8 @@ internal sealed class VrPanel
     public const int Height = 800;
     public const int ButtonSize = 192;
 
-    private const int Columns = 3;
-    private const int Rows = 3;
-    public const int PageSize = Columns * Rows;
+    public const int MinColumns = Settings.MinGridColumns;
+    public const int MaxColumns = Settings.MaxGridColumns;
 
     /// <summary>タブの値と表示名 (並びは画面の左から)。</summary>
     public static readonly string[] Tabs = [AvatarTab.Own, AvatarTab.Favorites, AvatarTab.Public];
@@ -41,23 +41,22 @@ internal sealed class VrPanel
     private static readonly Point CloseCenter = new(Width - Pad - 24, 44);
     private const double CloseRadius = 24;
     // 2 段目: 並び順 + グループ化
-    private static readonly Rect SortRecentRect = new(Pad, 80, 150, 44);
-    private static readonly Rect SortNameRect = new(Pad + 158, 80, 110, 44);
-    private static readonly Rect GroupToggleRect = new(Width - Pad - 190, 80, 190, 44);
+    private static readonly Rect SortRecentRect = new(Pad, 80, 140, 44);
+    private static readonly Rect SortNameRect = new(Pad + 146, 80, 96, 44);
+    private static readonly Rect ColumnsLessRect = new(282, 82, 40, 40);
+    private static readonly Rect ColumnsMoreRect = new(390, 82, 40, 40);
+    private static readonly Rect GroupToggleRect = new(Width - Pad - 170, 80, 170, 44);
     // 3 段目: 絞り込みのチップ (グループを開いているときは「戻る」)
     private const double ChipTop = 134;
     private const double ChipHeight = 40;
     private const double ChipGap = 8;
     private const double ChipArrowWidth = 40;
     private static readonly Rect BackRect = new(Pad, ChipTop, 110, ChipHeight);
-    // タイル
+    // タイル (大きさは列数で決まる: GridLayout)
     private const double GridTop = 186;
-    private const double TileGap = 10;
-    private const double ThumbHeight = 128;
-    private const double TileHeight = 166;
-    private static readonly double TileWidth = (Width - Pad * 2 - TileGap * (Columns - 1)) / Columns;
     // 下: 状態の一言 + ページ送り
     private const double StatusY = 722;
+    private const double GridBottom = StatusY - 14;
     private static readonly Rect PrevRect = new(Pad, 748, 120, 44);
     private static readonly Rect NextRect = new(Width - Pad - 120, 748, 120, 44);
 
@@ -77,6 +76,7 @@ internal sealed class VrPanel
     private static Brush OnAccentBrush = Brushes.White;
     private static readonly Brush DangerBrush = Frozen(Color.FromRgb(0xE5, 0x6B, 0x6F));
     private static Pen AccentPen = new();
+    private static Pen AccentThinPen = new(); // 小さいタイルの「今着ている」枠
     private static readonly Pen EdgePen = FrozenPen(Frozen(Color.FromArgb(0x40, 0xFF, 0xFF, 0xFF)), 2);
     // 手首ボタン: 塗りつぶさず、暗い半透明の下地に細い輪だけ色を付ける (腕時計の横で主張しすぎないように)
     private static readonly Brush ButtonBackBrush = Frozen(Color.FromArgb(0xD9, 0x1B, 0x1C, 0x21));
@@ -95,9 +95,11 @@ internal sealed class VrPanel
     private const string GlyphCheck = "";
     private const string GlyphLeft = "";
     private const string GlyphRight = "";
+    private const string GlyphMinus = "\uE738";
+    private const string GlyphPlus = "\uE710";
 
     /// <summary>押された場所の意味。Index はタブ / チップ / タイルの番号 (タイルは一覧全体での番号)。</summary>
-    public enum HitKind { None, Close, Tab, SortRecent, SortName, GroupToggle, Chip, ChipPrev, ChipNext, Back, Tile, Prev, Next }
+    public enum HitKind { None, Close, Tab, SortRecent, SortName, ColumnsLess, ColumnsMore, GroupToggle, Chip, ChipPrev, ChipNext, Back, Tile, Prev, Next }
 
     public readonly record struct Hit(HitKind Kind, int Index = -1);
 
@@ -118,6 +120,61 @@ internal sealed class VrPanel
     public IReadOnlyList<AvatarItem> Items => _items;
     public IReadOnlyList<string> Chips => _chips;
     public int Page { get; private set; }
+
+    /// <summary>
+    /// 列数で決まるタイルの並べ方。3 列で 3 段 (大きいタイル)、10 列では 13 段 (サムネイルだけの小さいタイル)。
+    /// 名前は読める大きさのときだけ載せる (小さいときはホバーで下に出す)。
+    /// </summary>
+    private readonly record struct GridLayout(int Columns, int Rows, double Gap, double TileWidth, double ThumbHeight, double TileHeight,
+        double NameSize, bool ShowName)
+    {
+        /// <summary>3 列のときのタイル幅。文字やバッジの大きさは、これとの比で縮める。</summary>
+        private const double BaseWidth = 188;
+        public double Scale => TileWidth / BaseWidth;
+        public int PageSize => Columns * Rows;
+
+        public static GridLayout For(int columns)
+        {
+            var gap = columns <= 4 ? 10 : columns <= 6 ? 8 : 6;
+            var w = (Width - Pad * 2 - gap * (columns - 1)) / columns;
+            var thumb = Math.Round(w * 0.68);
+            var nameSize = Math.Clamp(w * 17 / BaseWidth, 11, 17);
+            var showName = w >= 70;
+            var nameHeight = showName ? Math.Round(nameSize * 2.24) : 0;
+            var h = thumb + nameHeight;
+            var fit = (GridBottom - GridTop + gap) / (h + gap);
+            var rows = Math.Max(1, (int)fit);
+            // あと少しでもう 1 段入るなら、サムネイルを少し低くして詰める (下に大きな空きを残さない)
+            var squeezed = Math.Floor((GridBottom - GridTop + gap) / (rows + 1) - gap - nameHeight);
+            if (fit - rows >= 0.5 && squeezed >= w * 0.6)
+            {
+                rows++;
+                thumb = squeezed;
+                h = thumb + nameHeight;
+            }
+            return new GridLayout(columns, rows, gap, w, thumb, h, nameSize, showName);
+        }
+    }
+
+    private GridLayout _grid = GridLayout.For(MinColumns);
+
+    /// <summary>1 ページに並ぶ数の最大 (10 列のとき)。描いたサムネイルを覚えておく配列の大きさに使う。</summary>
+    public static readonly int MaxPageSize = GridLayout.For(MaxColumns).PageSize;
+
+    public int Columns => _grid.Columns;
+    public int PageSize => _grid.PageSize;
+
+    /// <summary>列数を変える。今のページの先頭に見えていたタイルが、変えたあとも見えるページへ移る。</summary>
+    public void SetColumns(int columns)
+    {
+        columns = Math.Clamp(columns, MinColumns, MaxColumns);
+        if (columns == _grid.Columns) return;
+        var first = PageStart;
+        _grid = GridLayout.For(columns);
+        Page = Math.Clamp(first / PageSize, 0, PageCount - 1);
+        Hover = default;
+    }
+
     public int PageCount => Math.Max(1, (_items.Count + PageSize - 1) / PageSize);
     /// <summary>チップが 1 行に収まらないとき、何番目のチップから見せているか (0 = 「すべて」)。</summary>
     public int ChipStart { get; private set; }
@@ -125,7 +182,7 @@ internal sealed class VrPanel
     /// <summary>今のページの先頭が一覧の何番目か。</summary>
     public int PageStart => Page * PageSize;
 
-    /// <summary>今のページに並んでいる数 (最後のページは 9 に満たないことがある)。</summary>
+    /// <summary>今のページに並んでいる数 (最後のページは 1 ページぶんに満たないことがある)。</summary>
     public int PageItemCount => Math.Clamp(_items.Count - PageStart, 0, PageSize);
 
     /// <summary>今のページの slot 番目 (左上から 0)。</summary>
@@ -185,6 +242,8 @@ internal sealed class VrPanel
             if (TabRect(i).Contains(p)) return new Hit(HitKind.Tab, i);
         if (SortRecentRect.Contains(p)) return new Hit(HitKind.SortRecent);
         if (SortNameRect.Contains(p)) return new Hit(HitKind.SortName);
+        if (ColumnsLessRect.Contains(p)) return Columns > MinColumns ? new Hit(HitKind.ColumnsLess) : default;
+        if (ColumnsMoreRect.Contains(p)) return Columns < MaxColumns ? new Hit(HitKind.ColumnsMore) : default;
         if (GroupToggleRect.Contains(p)) return new Hit(HitKind.GroupToggle);
         if (OpenGroupName is not null)
         {
@@ -208,11 +267,13 @@ internal sealed class VrPanel
         return new Rect(TabsRect.X + i * w, TabsRect.Y, w, TabsRect.Height);
     }
 
-    private static Rect TileRect(int slot)
+    /// <summary>今のページの slot 番目 (左上から 0) のタイルの場所。</summary>
+    public Rect TileRect(int slot)
     {
-        var col = slot % Columns;
-        var row = slot / Columns;
-        return new Rect(Pad + col * (TileWidth + TileGap), GridTop + row * (TileHeight + TileGap), TileWidth, TileHeight);
+        var g = _grid;
+        var col = slot % g.Columns;
+        var row = slot / g.Columns;
+        return new Rect(Pad + col * (g.TileWidth + g.Gap), GridTop + row * (g.TileHeight + g.Gap), g.TileWidth, g.TileHeight);
     }
 
     private readonly record struct ChipSlot(Rect Rect, Hit Hit, string Label, bool Selected);
@@ -288,6 +349,11 @@ internal sealed class VrPanel
             // 並び順とグループ化
             DrawPill(dc, SortRecentRect, "最近使った順", SortKey.StartsWith("recent", StringComparison.Ordinal), Hover.Kind == HitKind.SortRecent);
             DrawPill(dc, SortNameRect, "名前順", SortKey.StartsWith("name", StringComparison.Ordinal), Hover.Kind == HitKind.SortName);
+            // 列数: [−] n 列 [+]
+            DrawNav(dc, ColumnsLessRect, GlyphMinus, Columns > MinColumns, Hover.Kind == HitKind.ColumnsLess);
+            DrawNav(dc, ColumnsMoreRect, GlyphPlus, Columns < MaxColumns, Hover.Kind == HitKind.ColumnsMore);
+            DrawCentered(dc, $"{Columns} 列", UiBoldFace, 16, TextBrush,
+                Center(new Rect(ColumnsLessRect.Right, ColumnsLessRect.Y, ColumnsMoreRect.X - ColumnsLessRect.Right, ColumnsLessRect.Height)));
             DrawPill(dc, GroupToggleRect, GroupView ? "グループ化: オン" : "グループ化: オフ", GroupView, Hover.Kind == HitKind.GroupToggle);
 
             // 絞り込み / 開いているグループ
@@ -316,10 +382,12 @@ internal sealed class VrPanel
                     UiFace, 20, MutedBrush, new Point(Pad, GridTop + 20), Width - Pad * 2, maxLines: 3);
 
             for (var slot = 0; slot < PageItemCount; slot++)
-                DrawTile(dc, TileRect(slot), PageItem(slot), Hover.Kind == HitKind.Tile && Hover.Index == PageStart + slot);
+                DrawTile(dc, _grid, TileRect(slot), PageItem(slot), Hover.Kind == HitKind.Tile && Hover.Index == PageStart + slot);
 
             if (Status.Length > 0)
                 DrawCentered(dc, Status, UiFace, 16, StatusIsError ? DangerBrush : MutedBrush, new Point(Width / 2.0, StatusY), Width - Pad * 2);
+            else if (!_grid.ShowName && Hover.Kind == HitKind.Tile && Hover.Index >= 0 && Hover.Index < _items.Count)
+                DrawCentered(dc, _items[Hover.Index].Name, UiBoldFace, 16, TextBrush, new Point(Width / 2.0, StatusY), Width - Pad * 2); // 名前を載せないほど小さいとき
 
             if (PageCount > 1)
             {
@@ -333,11 +401,14 @@ internal sealed class VrPanel
         return _target;
     }
 
-    private static void DrawTile(DrawingContext dc, Rect r, AvatarItem item, bool hover)
+    private static void DrawTile(DrawingContext dc, GridLayout g, Rect r, AvatarItem item, bool hover)
     {
-        dc.PushClip(new RectangleGeometry(r, 14, 14));
+        var s = g.Scale;
+        var radius = Math.Clamp(14 * s, 6, 14);
+        var inset = Math.Clamp(8 * s, 3, 8);
+        dc.PushClip(new RectangleGeometry(r, radius, radius));
         dc.DrawRectangle(hover ? TileHoverBrush : TileBrush, null, r);
-        var thumbRect = new Rect(r.X, r.Y, r.Width, ThumbHeight);
+        var thumbRect = new Rect(r.X, r.Y, r.Width, g.ThumbHeight);
         dc.DrawRectangle(ThumbBackBrush, null, thumbRect);
         if (item.Thumbnail is { } image) // グループは代表のサムネイル
         {
@@ -349,33 +420,47 @@ internal sealed class VrPanel
             dc.DrawImage(image, new Rect(thumbRect.X + (thumbRect.Width - w) / 2, thumbRect.Y + (thumbRect.Height - h) / 2, w, h));
             dc.Pop();
         }
-        else DrawCentered(dc, GlyphPerson, IconFace, 40, MutedBrush, Center(thumbRect));
+        else DrawCentered(dc, GlyphPerson, IconFace, Math.Max(16, 40 * s), MutedBrush, Center(thumbRect));
 
         if (item.IsUnavailable)
         {
             // 使えなくなったもの (パブリック): 暗くして印を付ける。押せば着替えは試せる
             dc.DrawRectangle(DimBrush, null, thumbRect);
-            DrawBadge(dc, "使用不可", DangerBrush, new Point(r.X + 8, r.Y + 8));
+            DrawBadge(dc, "使用不可", DangerBrush, new Point(r.X + inset, r.Y + inset), s, r.Width - inset * 2);
         }
         if (item.IsGroup)
-            DrawBadge(dc, $"グループ · {item.Count} 体", TextBrush, new Point(r.X + 8, thumbRect.Bottom - 34));
-        DrawText(dc, item.Name, UiBoldFace, 17, TextBrush, new Point(r.X + 10, r.Y + ThumbHeight + 7), r.Width - 20);
+        {
+            DrawBadge(dc, g.TileWidth >= 120 ? $"グループ · {item.Count} 体" : $"{item.Count} 体", TextBrush,
+                new Point(r.X + inset, thumbRect.Bottom - inset - BadgeHeight(s)), s, r.Width - inset * 2);
+        }
+        if (g.ShowName)
+            DrawText(dc, item.Name, UiBoldFace, g.NameSize, TextBrush, new Point(r.X + 10 * s, r.Y + g.ThumbHeight + 7 * s), r.Width - 20 * s);
         dc.Pop();
 
         if (item.IsCurrent)
         {
-            dc.DrawRoundedRectangle(null, AccentPen, new Rect(r.X + 2, r.Y + 2, r.Width - 4, r.Height - 4), 12, 12);
-            var badge = new Point(r.Right - 22, r.Y + 22);
-            dc.DrawEllipse(AccentBrush, null, badge, 15, 15);
-            DrawCentered(dc, GlyphCheck, IconFace, 16, OnAccentBrush, badge);
+            var thin = g.TileWidth < 120;
+            var edge = thin ? 1.25 : 2;
+            dc.DrawRoundedRectangle(null, thin ? AccentThinPen : AccentPen,
+                new Rect(r.X + edge, r.Y + edge, r.Width - edge * 2, r.Height - edge * 2), radius - 2, radius - 2);
+            var markRadius = Math.Clamp(15 * s, 7, 15);
+            var mark = new Point(r.Right - inset - markRadius + 1, r.Y + inset + markRadius - 1);
+            dc.DrawEllipse(AccentBrush, null, mark, markRadius, markRadius);
+            DrawCentered(dc, GlyphCheck, IconFace, markRadius * 1.07, OnAccentBrush, mark);
         }
     }
 
-    private static void DrawBadge(DrawingContext dc, string text, Brush foreground, Point at)
+    private static double BadgeHeight(double scale) => Math.Round(Math.Clamp(14 * scale, 9, 14) * 1.86);
+
+    /// <summary>サムネイルの上に載せる小さな札 (使用不可 / グループ)。タイルが小さいほど小さく描く。</summary>
+    private static void DrawBadge(DrawingContext dc, string text, Brush foreground, Point at, double scale, double maxWidth)
     {
-        var ft = Text(text, UiBoldFace, 14, foreground, 0);
-        dc.DrawRoundedRectangle(BadgeBrush, null, new Rect(at.X, at.Y, ft.Width + 16, 26), 8, 8);
-        dc.DrawText(ft, new Point(at.X + 8, at.Y + (26 - ft.Height) / 2));
+        var size = Math.Clamp(14 * scale, 9, 14);
+        var pad = Math.Clamp(8 * scale, 3, 8);
+        var ft = Text(text, UiBoldFace, size, foreground, Math.Max(1, maxWidth - pad * 2));
+        var height = BadgeHeight(scale);
+        dc.DrawRoundedRectangle(BadgeBrush, null, new Rect(at.X, at.Y, Math.Min(ft.Width + pad * 2, maxWidth), height), pad, pad);
+        dc.DrawText(ft, new Point(at.X + pad, at.Y + (height - ft.Height) / 2));
     }
 
     private static void DrawPill(DrawingContext dc, Rect r, string label, bool selected, bool hover)
@@ -399,6 +484,7 @@ internal sealed class VrPanel
         AccentBrush = Frozen(c);
         OnAccentBrush = Frozen(AccentPalette.OnAccentFor(c, dark: true));
         AccentPen = FrozenPen(AccentBrush, 4);
+        AccentThinPen = FrozenPen(AccentBrush, 2.5);
         ButtonRingPen = FrozenPen(AccentBrush, 6);
         _buttonRgba = null;
         _buttonOpenRgba = null;
