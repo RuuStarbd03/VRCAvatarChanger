@@ -11,7 +11,7 @@ namespace VRCAvatarChanger;
 /// 1 色から、テーマ (ライト / ダーク) に合わせて使う色一式を作る:
 ///   ・アクセント本体は、ライトでは白い文字が、ダークでは暗い背景の上で読める明るさに寄せる
 ///   ・ホバー / 押した時の色、選択中の行の背景色 (背景にアクセントを薄く混ぜたもの)
-///   ・アクセントの上に載せる文字色 (白か黒の、読みやすい方)
+///   ・アクセントの上に載せる文字色 (白か黒の、読みやすい方。明るいアクセントなら黒)
 /// Windows に合わせる場合は、Windows が持つ濃淡の段から Windows 自身と同じ段を使う
 /// (ライトは濃いめの Dark1、ダークは明るめの Light2)。
 /// </summary>
@@ -56,10 +56,17 @@ public static class AccentPalette
         dict["AccentBrush"] = Frozen(accent);
         dict["AccentHoverBrush"] = Frozen(dark ? Mix(accent, Colors.White, 0.12) : Mix(accent, Colors.Black, 0.10));
         dict["AccentPressedBrush"] = Frozen(Mix(accent, Colors.Black, dark ? 0.12 : 0.20));
-        dict["OnAccentBrush"] = Frozen(Contrast(Colors.White, accent) >= Contrast(Color.FromRgb(0x11, 0x11, 0x13), accent)
-            ? (dark ? Color.FromRgb(0xF6, 0xFA, 0xFE) : Colors.White)
-            : Color.FromRgb(0x11, 0x11, 0x13));
+        dict["OnAccentBrush"] = Frozen(OnAccentFor(accent, dark));
         dict["SelectionBrush"] = Frozen(dark ? Mix(DarkBack, accent, 0.35) : Mix(LightBack, accent, 0.24));
+    }
+
+    /// <summary>アクセントの上に載せる文字色。白と黒のうち、アクセントとの差 (コントラスト) が大きい方。</summary>
+    public static Color OnAccentFor(Color accent, bool dark)
+    {
+        var black = Color.FromRgb(0x11, 0x11, 0x13);
+        return Contrast(Colors.White, accent) >= Contrast(black, accent)
+            ? (dark ? Color.FromRgb(0xF6, 0xFA, 0xFE) : Colors.White)
+            : black;
     }
 
     // ---------------- Windows のアクセントカラー ----------------

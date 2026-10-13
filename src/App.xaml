@@ -155,7 +155,10 @@
                                 <Border.RenderTransform>
                                     <ScaleTransform x:Name="sc"/>
                                 </Border.RenderTransform>
-                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" RecognizesAccessKey="True"/>
+                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" RecognizesAccessKey="True">
+                                    <!-- アプリ全体の TextBlock の既定 (文字色 = TextBrush) を打ち消し、ボタンの文字色 (OnAccentBrush) を受け継がせる -->
+                                    <ContentPresenter.Resources><Style TargetType="TextBlock"/></ContentPresenter.Resources>
+                                </ContentPresenter>
                             </Border>
                             <ControlTemplate.Triggers>
                                 <Trigger Property="IsMouseOver" Value="True">

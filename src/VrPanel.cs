@@ -73,6 +73,8 @@ internal sealed class VrPanel
     // アクセント色はアプリの設定 (Windows に合わせる / 選んだ色) に従う。VR パネルは常に暗い配色なので、ダーク用の色を使う
     private static Color _accentColor;
     private static Brush AccentBrush = Brushes.Transparent;
+    // アクセントの上の文字色 (明るいアクセントなら黒、暗ければ白)
+    private static Brush OnAccentBrush = Brushes.White;
     private static readonly Brush DangerBrush = Frozen(Color.FromRgb(0xE5, 0x6B, 0x6F));
     private static Pen AccentPen = new();
     private static readonly Pen EdgePen = FrozenPen(Frozen(Color.FromArgb(0x40, 0xFF, 0xFF, 0xFF)), 2);
@@ -278,7 +280,7 @@ internal sealed class VrPanel
                 var selected = Tab == Tabs[i];
                 if (selected || (Hover.Kind == HitKind.Tab && Hover.Index == i))
                     dc.DrawRoundedRectangle(selected ? AccentBrush : TileHoverBrush, null, new Rect(r.X + 4, r.Y + 4, r.Width - 8, r.Height - 8), 10, 10);
-                DrawCentered(dc, TabLabels[i], UiBoldFace, 19, selected ? Brushes.White : TextBrush, Center(r));
+                DrawCentered(dc, TabLabels[i], UiBoldFace, 19, selected ? OnAccentBrush : TextBrush, Center(r));
             }
             dc.DrawEllipse(Hover.Kind == HitKind.Close ? TileHoverBrush : TileBrush, null, CloseCenter, CloseRadius, CloseRadius);
             DrawCentered(dc, GlyphClose, IconFace, 20, TextBrush, CloseCenter);
@@ -304,7 +306,7 @@ internal sealed class VrPanel
                     var hover = Hover == chip.Hit;
                     var arrow = chip.Hit.Kind is HitKind.ChipPrev or HitKind.ChipNext;
                     dc.DrawRoundedRectangle(chip.Selected ? AccentBrush : hover ? TileHoverBrush : TileBrush, null, chip.Rect, ChipHeight / 2, ChipHeight / 2);
-                    DrawCentered(dc, chip.Label, arrow ? IconFace : UiBoldFace, 16, chip.Selected ? Brushes.White : TextBrush,
+                    DrawCentered(dc, chip.Label, arrow ? IconFace : UiBoldFace, 16, chip.Selected ? OnAccentBrush : TextBrush,
                         Center(chip.Rect), arrow ? 0 : chip.Rect.Width - 16);
                 }
             }
@@ -365,7 +367,7 @@ internal sealed class VrPanel
             dc.DrawRoundedRectangle(null, AccentPen, new Rect(r.X + 2, r.Y + 2, r.Width - 4, r.Height - 4), 12, 12);
             var badge = new Point(r.Right - 22, r.Y + 22);
             dc.DrawEllipse(AccentBrush, null, badge, 15, 15);
-            DrawCentered(dc, GlyphCheck, IconFace, 16, Brushes.White, badge);
+            DrawCentered(dc, GlyphCheck, IconFace, 16, OnAccentBrush, badge);
         }
     }
 
@@ -379,7 +381,7 @@ internal sealed class VrPanel
     private static void DrawPill(DrawingContext dc, Rect r, string label, bool selected, bool hover)
     {
         dc.DrawRoundedRectangle(selected ? AccentBrush : hover ? TileHoverBrush : TileBrush, null, r, r.Height / 2, r.Height / 2);
-        DrawCentered(dc, label, UiBoldFace, 18, selected ? Brushes.White : TextBrush, Center(r));
+        DrawCentered(dc, label, UiBoldFace, 18, selected ? OnAccentBrush : TextBrush, Center(r));
     }
 
     private static void DrawNav(DrawingContext dc, Rect r, string glyph, bool enabled, bool hover)
@@ -395,6 +397,7 @@ internal sealed class VrPanel
         if (c == _accentColor && AccentBrush != Brushes.Transparent) return;
         _accentColor = c;
         AccentBrush = Frozen(c);
+        OnAccentBrush = Frozen(AccentPalette.OnAccentFor(c, dark: true));
         AccentPen = FrozenPen(AccentBrush, 4);
         ButtonRingPen = FrozenPen(AccentBrush, 6);
         _buttonRgba = null;
