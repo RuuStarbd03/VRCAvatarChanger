@@ -67,7 +67,9 @@ public partial class MainWindow
     // (Missing Credentials) だけの白いページになり、VRChat のページが開かなかったように見えていた。
     // 他アプリのクッキーは読まない (読めない)。トークンの受け渡しは利用者のコピー操作だけを経由する。
 
-    private const string AuthTokenUrl = "https://api.vrchat.cloud/api/1/auth";
+    // token のページは、ログインページと同じ vrchat.com のものを開く。ブラウザのログイン状態 (クッキー) は vrchat.com 用なので、
+    // API の本来のアドレス (api.vrchat.cloud) を開くと送られず、ログインしていても必ず Missing Credentials になる
+    private const string AuthTokenUrl = "https://vrchat.com/api/1/auth";
     private const string VRChatLoginUrl = "https://vrchat.com/home/login";
 
     private System.Windows.Threading.DispatcherTimer? _clipboardWatch;
