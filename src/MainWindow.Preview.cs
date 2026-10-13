@@ -127,14 +127,12 @@ public partial class MainWindow
 
         var shotPath = Environment.GetEnvironmentVariable("VRCAC_UI_PREVIEW_SHOT");
 
-        // ログイン画面の確認: LOGIN=1 で入力画面、LOGIN=external で外部ブラウザログインのパネルを開いた状態にする
-        if (Environment.GetEnvironmentVariable("VRCAC_UI_PREVIEW_LOGIN") is { Length: > 0 } login)
+        // ログイン画面の確認: LOGIN=1 で入力画面を出す
+        if (Environment.GetEnvironmentVariable("VRCAC_UI_PREVIEW_LOGIN") is { Length: > 0 })
         {
             MainPanel.Visibility = Visibility.Collapsed;
             LoginPanel.Visibility = Visibility.Visible;
-            var external = login == "external";
-            CredentialsPanel.Visibility = external ? Visibility.Collapsed : Visibility.Visible;
-            ExternalLoginPanel.Visibility = external ? Visibility.Visible : Visibility.Collapsed;
+            CredentialsPanel.Visibility = Visibility.Visible;
             if (!string.IsNullOrEmpty(shotPath))
             {
                 Left = -4000; Top = 0;

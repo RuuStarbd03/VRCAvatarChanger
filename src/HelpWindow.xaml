@@ -131,9 +131,9 @@
             <Grid>
                 <!-- ===== 使い方 ===== -->
                 <StackPanel x:Name="HowToPanel" MaxWidth="620">
-                    <TextBlock Text="VRChat を開かずにアバターチェンジできます" Style="{StaticResource H1}"/>
+                    <TextBlock Text="VRChat を起動していなくても、外部からアバターを切り替えられます。" Style="{StaticResource H1}"/>
                     <TextBlock Style="{StaticResource Body}" Margin="0,0,0,14"
-                               Text="起動中ならすぐ切り替わります。起動していなければ、次に VRChat を開いたときにそのアバターになります。"/>
+                               Text="起動中なら即座に反映され、未起動の場合は次回 VRChat 起動時にそのアバターで開始します。"/>
 
                     <Border Style="{StaticResource Step}">
                         <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
@@ -141,7 +141,7 @@
                             <StackPanel Grid.Column="1">
                                 <TextBlock Text="VRChat アカウントでログイン" FontWeight="SemiBold"/>
                                 <TextBlock Style="{StaticResource Body}" Margin="0,4,0,0"
-                                           Text="ユーザー名とパスワード、またはブラウザからログインします (Discord / Google / Apple / Steam 連携はこちら)。パスワードは保存されません。"/>
+                                           Text="ユーザー名・パスワード、またはブラウザ連携（Discord / Google / Apple / Steam）からログインします。パスワード自体は保存されず、暗号化された認証セッションのみを保持します。"/>
                             </StackPanel>
                         </Grid>
                     </Border>
@@ -150,9 +150,9 @@
                         <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
                             <Border Style="{StaticResource StepNo}"><TextBlock Text="2" Style="{StaticResource StepNoText}"/></Border>
                             <StackPanel Grid.Column="1">
-                                <TextBlock Text="アバターを選ぶ" FontWeight="SemiBold"/>
+                                <TextBlock Text="アバターを選択" FontWeight="SemiBold"/>
                                 <TextBlock Style="{StaticResource Body}" Margin="0,4,0,0"
-                                           Text="「自分のアバター」「お気に入り」「パブリック」のタブから探します。右上の検索欄や、一覧の上のフィルタで絞り込めます。"/>
+                                           Text="「自分のアバター」「お気に入り」「パブリック」の各タブから探します。右上の検索欄や、一覧上部のタグフィルタで絞り込みが可能です。"/>
                             </StackPanel>
                         </Grid>
                     </Border>
@@ -161,49 +161,48 @@
                         <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
                             <Border Style="{StaticResource StepNo}"><TextBlock Text="3" Style="{StaticResource StepNoText}"/></Border>
                             <StackPanel Grid.Column="1">
-                                <TextBlock Text="アバターチェンジ" FontWeight="SemiBold"/>
+                                <TextBlock Text="アバターをチェンジ" FontWeight="SemiBold"/>
                                 <TextBlock Style="{StaticResource Body}" Margin="0,4,0,0"
-                                           Text="右下の「選択したアバターにチェンジ」を押すか、アバターをダブルクリックします。左上の「現在:」が変われば完了です。"/>
+                                           Text="右下の「選択したアバターにチェンジ」をクリックするか、アバターをダブルクリックします。画面左上の「現在:」が切り替われば完了です。"/>
                             </StackPanel>
                         </Grid>
                     </Border>
 
                     <TextBlock Text="パブリックタブ" Style="{StaticResource H2}"/>
                     <TextBlock Style="{StaticResource Body}"
-                               Text="気に入ったパブリックアバターを溜めておく、このアプリ独自のリストです (上限なし)。ID や URL を貼って「追加」するか、他のタブで右クリック →「パブリックに追加」。"/>
-
+                               Text="気に入ったパブリックアバターをストックできる、本アプリ専用のリストです（登録数の上限はありません）。アバター ID や URL を入力して「追加」するか、他のタブで右クリックして「パブリックに追加」を選択してください。"/>
                     <TextBlock Style="{StaticResource Body}"
-                               Text="再読み込みのたびに登録したアバターを確かめ、削除されたり非公開になったりしてチェンジできなくなったものには「使えません」の印を付けます (一覧の末尾に寄せます)。自動では外さないので、右クリック →「使用不可をまとめて外す...」か、詳細画面から外してください。"/>
+                               Text="※削除や非公開になったアバターには「使用不可」の印が付きます。整理したい場合は、右クリック →「使用不可をまとめて外す...」で一括削除できます。"/>
 
                     <TextBlock Text="アバターの詳細" Style="{StaticResource H2}"/>
                     <TextBlock Style="{StaticResource Body}"
-                               Text="アバターを右クリック →「詳細を見る...」で、大きい画像・説明文・対応プラットフォーム・パフォーマンスランク・ダウンロードサイズ・日付をまとめて確認できます。似た衣装違いの見分けや、チェンジする前の確認に。"/>
+                               Text="アバターを右クリック →「詳細を見る...」を選択すると、拡大画像、説明文、対応プラットフォーム、パフォーマンスランク、ダウンロードサイズ、アップロード日などを確認できます。衣装違いの見分けや、チェンジ前の確認に役立ちます。"/>
 
                     <TextBlock Text="お気に入り・タグ" Style="{StaticResource H2}"/>
                     <TextBlock Style="{StaticResource Body}"
-                               Text="アバターを右クリックすると、お気に入りの追加・解除と、タグの編集ができます。付けたタグは一覧の上のフィルタに並び、ワンクリックで絞り込めます。"/>
+                               Text="アバターを右クリックすると、お気に入りの追加・解除や、タグの編集が行えます。設定したタグは一覧上部のフィルタに表示され、クリックひとつで絞り込めます。"/>
 
                     <TextBlock Text="グループ" Style="{StaticResource H2}"/>
                     <TextBlock Style="{StaticResource Body}"
-                               Text="衣装違いなどを 1 つにまとめられます。アバターを別のアバターにドラッグ&amp;ドロップするか、右クリック →「グループに入れる...」。ツールバーのグループ化ボタンでまとめ表示を切り替え、ダブルクリックで中身を開きます。"/>
+                               Text="衣装違いなどのバリエーションを1つにまとめられます。アバターを別のアバターにドラッグ＆ドロップするか、右クリック →「グループに入れる...」を選択してください。ツールバーのグループ化ボタンで表示の切り替えができ、ダブルクリックで中身を展開します。"/>
 
-                    <TextBlock Text="ゲーム中にサッとチェンジする (ホットキー)" Style="{StaticResource H2}"/>
+                    <TextBlock Text="ゲーム中にすばやくチェンジする (ホットキー)" Style="{StaticResource H2}"/>
                     <TextBlock Style="{StaticResource Body}"
-                               Text="VRChat のプレイ中に Shift+1 を押すと、画面の右にアバター選択が出ます。クリックでチェンジして閉じ、VRChat に操作が戻ります。反応するのは VRChat が手前のときだけです。"/>
+                               Text="VRChat プレイ中に Shift+1 を押すと、画面右側にアバター選択画面が表示されます。アバターをクリックすると即座に切り替わって選択画面が閉じ、VRChat にフォーカスが戻ります（※VRChat のウィンドウがアクティブなときのみ反応します）。"/>
                     <TextBlock Style="{StaticResource Body}"
-                               Text="設定 →「ホットキーの割り当て」で、このキーの変更と、次の 3 つの割り当てができます。"/>
+                               Text="設定 →「ホットキーの割り当て」から、このキーの変更や、以下の機能のショートカット割り当てが可能です。"/>
                     <TextBlock Style="{StaticResource Body}"
-                               Text="・直前のアバターに戻す&#x0a;・グループ内の次のアバター&#x0a;・特定のアバターを直接呼び出す(一覧で右クリック)"/>
+                               Text="・直前のアバターに戻す&#x0a;・グループ内の次のアバターへ切り替え&#x0a;・特定のアバターを直接呼び出す（一覧でアバターを右クリックして割り当て）"/>
 
                     <TextBlock Text="ゲーム内のアバターチェンジを反映する (OSC)" Style="{StaticResource H2}"/>
                     <TextBlock Style="{StaticResource Body}"
-                               Text="VRChat で OSC を有効にすると(アクションメニュー → Options → OSC → Enabled)、ゲーム内でチェンジしたときも左上の「現在:」が更新されます。無くてもアバターチェンジはできます。"/>
+                               Text="VRChat 側で OSC を有効にすると（アクションメニュー → Options → OSC → Enabled）、ゲーム内でアバターチェンジした際も本アプリの「現在:」にリアルタイムで反映されます。OSC がオフの状態でも本アプリからのアバターチェンジは通常通り行えます。"/>
 
-                    <TextBlock Text="キーボードで操作する" Style="{StaticResource H2}"/>
+                    <TextBlock Text="キーボード操作" Style="{StaticResource H2}"/>
                     <TextBlock Style="{StaticResource Body}"
-                               Text="このウィンドウが手前のときに使えるキーです (VRChat のプレイ中に使うホットキーとは別です)。"/>
+                               Text="本アプリのウィンドウがアクティブなときに使用できるキーです（ゲーム内で使用するホットキーとは異なります）。"/>
                     <TextBlock Style="{StaticResource Body}"
-                               Text="Enter: 選んだアバターにチェンジ / グループを開く&#x0a;Ctrl+I または Alt+Enter: 詳細を見る&#x0a;Ctrl+F: 検索欄へ (Enter で一覧に戻る、Esc で消す)&#x0a;Ctrl+1 / 2 / 3: 自分のアバター / お気に入り / パブリック&#x0a;Ctrl+Tab / Ctrl+Shift+Tab: 次 / 前のタブ&#x0a;Ctrl+G: グループ化のオン / オフ&#x0a;Ctrl+Shift+L: リスト表示 / ボックス表示の切り替え&#x0a;Ctrl+C: アバター ID をコピー&#x0a;Ctrl+Z: 直前のグループ化を取り消す&#x0a;Delete: パブリックから外す (確認が出ます)&#x0a;Esc / Backspace: グループから一覧に戻る&#x0a;F5: 再読み込み&#x0a;Ctrl+,: 設定&#x0a;F1: この画面"/>
+                               Text="Enter: 選択したアバターにチェンジ / グループを開く&#x0a;Ctrl+I または Alt+Enter: 詳細を表示&#x0a;Ctrl+F: 検索欄へフォーカス (Enter で一覧へ戻る、Esc で入力を消去)&#x0a;Ctrl+1 / 2 / 3: 自分のアバター / お気に入り / パブリックタブへ切り替え&#x0a;Ctrl+Tab / Ctrl+Shift+Tab: 次 / 前のタブへ切り替え&#x0a;Ctrl+G: グループ化のオン / オフ&#x0a;Ctrl+Shift+L: リスト表示 / ボックス表示の切り替え&#x0a;Ctrl+C: アバター ID をコピー&#x0a;Ctrl+Z: 直前のグループ化を取り消し&#x0a;Delete: パブリックリストから削除 (確認ダイアログが表示されます)&#x0a;Esc / Backspace: グループ内から一覧へ戻る&#x0a;F5: 最新の情報に再読み込み&#x0a;Ctrl+,: 設定を開く&#x0a;F1: ヘルプ（この画面）を表示"/>
                 </StackPanel>
 
                 <!-- ===== FAQ ===== -->
@@ -213,102 +212,100 @@
 
                     <Expander Style="{StaticResource Faq}" Header="チェンジしたのにゲーム内で変わらない">
                         <TextBlock Style="{StaticResource Body}"
-                                   Text="通常は数秒で反映されます。変わらないときは、ゲーム内でメニューを開閉するか、ワールドを移動してみてください。"/>
+                                   Text="通常は数秒で反映されます。反映されない場合は、ゲーム内でクイックメニューを開閉するか、ワールドを移動（インスタンス移動）してみてください。"/>
                     </Expander>
 
-                    <Expander Style="{StaticResource Faq}" Header="「非公開アバターのため使用できません」と出る">
+                    <Expander Style="{StaticResource Faq}" Header="「非公開アバターのため使用できません」と表示される">
                         <TextBlock Style="{StaticResource Body}"
-                                   Text="他の人の非公開(Private)アバターにはチェンジできません(VRChat の仕様)。自分のアバターなら非公開でも使えます。"/>
+                                   Text="他のユーザーの非公開（Private）アバターには切り替えることができません（VRChat の仕様です）。ご自身のアカウントにアップロードされた非公開アバターであれば問題なく使用できます。"/>
                     </Expander>
 
-                    <Expander Style="{StaticResource Faq}" Header="パブリックタブに「使用不可」と出るものがある">
+                    <Expander Style="{StaticResource Faq}" Header="パブリックタブに「使用不可」と表示されるアバターがある">
                         <TextBlock Style="{StaticResource Body}"
-                                   Text="そのアバターが削除されたか、作者が非公開にしたため、チェンジできなくなっています。誤検出を避けるため、時間を空けて 2 回続けて確認できなかったものだけをこう表示し、自動では外しません。非公開が一時的なら、次の再読み込みで印は消えます。外すときは右クリック →「使用不可をまとめて外す...」。"/>
+                                   Text="そのアバターが削除されたか、作者によって非公開に変更されたため利用できなくなっています。誤検出を防ぐため、時間を空けて2回連続で確認できなかった場合のみ表示されます。リストから整理する場合は、右クリック →「使用不可をまとめて外す...」を選択してください。"/>
                     </Expander>
 
-                    <Expander Style="{StaticResource Faq}" Header="ログインが面倒 / いつものブラウザのログインを使いたい">
+                    <Expander Style="{StaticResource Faq}" Header="毎回ログインする手間を省きたい">
+                        <TextBlock Style="{StaticResource Body}"
+                                   Text="「ブラウザでログイン」を使用すると、Discord / Google / Apple / Steam アカウントでログインできます。設定の「ブラウザのログイン状態を保持」をオンにしておけば、次回以降の手間を最小限に抑えられます。一度ログインすれば認証セッションが暗号化して保存されるため、毎回パスワードを入力する必要はありません。"/>
+                    </Expander>
+
+                    <Expander Style="{StaticResource Faq}" Header="Discord や Google でログインできない">
+                        <TextBlock Style="{StaticResource Body}"
+                                   Text="画面表示に「Microsoft Edge WebView2」が必要です（Windows 11 には標準搭載されています）。Google 側のセキュリティで拒否される場合は、VRChat 公式サイトでパスワードを設定した上で、ユーザー名とパスワードによるログインをお試しください。"/>
+                    </Expander>
+
+                    <Expander Style="{StaticResource Faq}" Header="2段階認証コードはどこで確認できる？">
+                        <TextBlock Style="{StaticResource Body}"
+                                   Text="認証アプリ（TOTP）を設定している場合はアプリに表示される6桁の数字を、設定していない場合は VRChat に登録したメールアドレス宛に届く認証コードを入力してください。"/>
+                    </Expander>
+
+                    <Expander Style="{StaticResource Faq}" Header="お気に入りの「追加日」が実際の日時と違う">
+                        <TextBlock Style="{StaticResource Body}"
+                                   Text="VRChat の仕様上、お気に入り登録日時が取得できないため、アバター自体の「アップロード日」を表示しています。なお、パブリックタブの追加日は「本アプリに登録した日時」が表示されます。"/>
+                    </Expander>
+
+                    <Expander Style="{StaticResource Faq}" Header="一覧に「前回の一覧」と表示される / オフラインでも一覧が表示される">
                         <StackPanel>
                             <TextBlock Style="{StaticResource Body}"
-                                       Text="「ふだん使うブラウザでログイン」を押すと、既定のブラウザで VRChat のログインページが開きます。そこでログインしたら (ログイン済みならそのまま)、アプリの「token のページを開く」を押し、表示された token をコピーすれば自動で続行します。"/>
+                                       Text="起動を高速化するため、キャッシュされている前回の一覧を先に表示し、バックグラウンドで最新情報を取得しています。通信できない環境では、取得日時を添えて前回のキャッシュデータを表示します。"/>
                             <TextBlock Style="{StaticResource Body}"
-                                       Text="ブラウザに保存されたパスワードやクッキーを読むことはありません。受け取るのは、コピーした token だけです。"/>
+                                       Text="※取得から5分以内の一覧は再取得を行いません。すぐに最新化したい場合は F5 キーで再読み込みしてください。"/>
                         </StackPanel>
                     </Expander>
 
-                    <Expander Style="{StaticResource Faq}" Header="Discord / Google でログインできない">
+                    <Expander Style="{StaticResource Faq}" Header="画面のテーマ（ライト / ダーク）を切り替えたい">
                         <TextBlock Style="{StaticResource Body}"
-                                   Text="ログイン画面の表示に WebView2 が必要です(Windows 11 には入っています)。Google に拒否される場合は、VRChat でパスワードを設定してユーザー名とパスワードでログインしてください。"/>
+                                   Text="設定 →「配色」から、システム / ライト / ダーク を選択できます。「システム」を選ぶと Windows のテーマ設定に連動します。"/>
                     </Expander>
 
-                    <Expander Style="{StaticResource Faq}" Header="2 段階認証のコードはどこにある?">
-                        <TextBlock Style="{StaticResource Body}"
-                                   Text="認証アプリを設定していればそのアプリの 6 桁のコード、していなければ VRChat に登録したメールアドレスに届くコードです。"/>
-                    </Expander>
-
-                    <Expander Style="{StaticResource Faq}" Header="お気に入りの「追加日」は何の日付?">
-                        <TextBlock Style="{StaticResource Body}"
-                                   Text="アバターがアップロードされた日です(VRChat はお気に入りに登録した日時を返さないため)。パブリックタブの「追加日」は、このアプリに追加した日です。"/>
-                    </Expander>
-
-                    <Expander Style="{StaticResource Faq}" Header="一覧に「前回の一覧」と出る / オフラインでも一覧が出る">
+                    <Expander Style="{StaticResource Faq}" Header="アップロードしたアバターが一覧に見当たらない">
                         <StackPanel>
                             <TextBlock Style="{StaticResource Body}"
-                                       Text="起動を速くするため、前回の一覧を先に表示してから裏で最新を取りに行きます。つながらないときは前回の一覧を、いつ時点のものかを添えて表示します。"/>
+                                       Text="以下の3点をご確認ください。"/>
                             <TextBlock Style="{StaticResource Body}"
-                                       Text="5 分以内に読み込んだ一覧は取り直しません。すぐ反映したいときは「再読み込み」(F5)を押してください。"/>
+                                       Text="1. グループの中に入っていないか（ツールバーのグループ化ボタンをオフにして確認）&#x0a;2. 検索欄の文字列やタグフィルタが適用されたままになっていないか&#x0a;3. F5 キーで再読み込みを実行したか（アップロード直後はキャッシュの更新が必要です）"/>
                         </StackPanel>
                     </Expander>
 
-                    <Expander Style="{StaticResource Faq}" Header="画面を明るく / 暗くしたい">
-                        <TextBlock Style="{StaticResource Body}"
-                                   Text="「設定」→「配色」で システム / ライト / ダーク を選べます。「システム」は Windows の設定に追従します。"/>
-                    </Expander>
-
-                    <Expander Style="{StaticResource Faq}" Header="アップロードしたアバターが 1 体だけ見当たらない">
+                    <Expander Style="{StaticResource Faq}" Header="セキュリティや保存データは安全？">
                         <StackPanel>
                             <TextBlock Style="{StaticResource Body}"
-                                       Text="グループにまとまっていないか確かめてください。グループに入れたアバターは 1 枚のタイルにまとまります(ツールバーのグループ化をオフにすると個別に並びます)。"/>
+                                       Text="パスワード自体は一切保存されません。保存されるのは、暗号化されたログインセッション、表示設定、パブリック一覧、グループ情報のみで、すべてお使いの PC 内に保存されます。通信先も VRChat 公式サーバーのみです。"/>
                             <TextBlock Style="{StaticResource Body}"
-                                       Text="次に、検索欄やフィルタが残っていないか確かめ、「再読み込み」(F5)を試してください。アップロード直後は F5 が必要なことがあります。"/>
+                                       Text="※共有 PC で使用する場合は、設定の「ブラウザのログイン状態を保持」をオフにし、利用終了時に「ログアウト」を行ってください。"/>
                         </StackPanel>
                     </Expander>
 
-                    <Expander Style="{StaticResource Faq}" Header="何を保存している? 安全?">
+                    <Expander Style="{StaticResource Faq}" Header="登録したデータはどこに保存される？（別 PC へのデータ移行）">
                         <StackPanel>
                             <TextBlock Style="{StaticResource Body}"
-                                       Text="パスワードは保存しません。保存するのはログイン状態・表示設定・パブリックリスト・グループだけで、すべてこの PC の中です。ログイン状態は Windows の機能で暗号化され、通信先は VRChat のサーバーだけです。"/>
+                                       Text="%AppData%\VRCAvatarChanger フォルダに保存されています。"/>
                             <TextBlock Style="{StaticResource Body}"
-                                       Text="ログイン状態はアカウント全体を操作できるものなので、共用 PC では「ブラウザのログイン状態を保持」をオフにし、使い終わったら「ログアウト」してください。"/>
+                                       Text="別の PC にデータを引き継ぐ場合は、上記フォルダ内の以下の3ファイルをコピーしてください。&#x0a;・public_avatars.json（パブリック一覧）&#x0a;・groups.json（グループ設定）&#x0a;・tags.json（タグ設定）"/>
+                            <TextBlock Style="{StaticResource Body}"
+                                       Text="※同フォルダ内の cache フォルダは一時データ（一覧・サムネイル）のため、移行する必要はありません。"/>
                         </StackPanel>
                     </Expander>
 
-                    <Expander Style="{StaticResource Faq}" Header="パブリックタブやグループの登録はどこに保存される?">
-                        <StackPanel>
-                            <TextBlock Style="{StaticResource Body}"
-                                       Text="%AppData%\VRCAvatarChanger の public_avatars.json(パブリック)、groups.json(グループ)、tags.json(タグ)です。別の PC に移すときはこの 3 つをコピーしてください。"/>
-                            <TextBlock Style="{StaticResource Body}"
-                                       Text="同じ場所の cache フォルダは一覧とサムネイルの控えです。消しても次回に取り直すだけです。"/>
-                        </StackPanel>
+                    <Expander Style="{StaticResource Faq}" Header="ログイン状態を完全に解除したい">
+                        <TextBlock Style="{StaticResource Body}"
+                                   Text="設定 →「ログアウト」を実行すると、PC 内に保存された認証セッションが削除され、次回起動時はログイン画面が表示されます。"/>
                     </Expander>
 
-                    <Expander Style="{StaticResource Faq}" Header="ログインしたままにしたくない">
+                    <Expander Style="{StaticResource Faq}" Header="不具合の報告方法やログの確認方法は？">
                         <TextBlock Style="{StaticResource Body}"
-                                   Text="「設定」→「ログアウト」で保存されたログイン状態が消え、次回は再ログインになります。"/>
+                                   Text="設定 →「ログの記録」をオンにし、不具合を再現させた後、「開く」ボタンから app.log を確認してください。アバターチェンジの履歴や通信結果が時系列で記録されます（パスワードなどの認証情報は一切記録されません）。"/>
                     </Expander>
 
-                    <Expander Style="{StaticResource Faq}" Header="不具合を報告したい / 何が起きたか調べたい">
+                    <Expander Style="{StaticResource Faq}" Header="アプリのアップデート方法は？">
                         <TextBlock Style="{StaticResource Body}"
-                                   Text="設定 →「ログの記録」をオンにして、問題を再現してから「開く」で app.log を開いてください。アバターチェンジ・一覧の取得・OSC・キャッシュなど、裏で起きたことが時刻つきで残ります。オフのときもエラーだけは記録します。ログにパスワードやログイン状態は書きません (アバターの ID と名前、通信の結果は書きます)。"/>
+                                   Text="新しいバージョンが配信されると、画面右上に更新ボタンが表示されます。ボタンをクリックするだけで、更新ファイルの適用から再起動まで自動で行われます。意図しないタイミングで自動更新されることはありません。"/>
                     </Expander>
 
-                    <Expander Style="{StaticResource Faq}" Header="アップデートはどうやるの?">
+                    <Expander Style="{StaticResource Faq}" Header="アンインストール方法は？">
                         <TextBlock Style="{StaticResource Body}"
-                                   Text="新しいバージョンが公開されると右上に更新ボタンが出ます。押すと差し替えから再起動まで自動で行われます。勝手に更新されることはありません。"/>
-                    </Expander>
-
-                    <Expander Style="{StaticResource Faq}" Header="アンインストールするには">
-                        <TextBlock Style="{StaticResource Body}"
-                                   Text="exe(または解凍したフォルダ)を削除するだけです。保存データも消す場合は %AppData%\VRCAvatarChanger フォルダを削除してください。"/>
+                                   Text="アプリの実行ファイル（または解凍したフォルダ）を削除するだけで完了します。設定や登録データも完全に削除したい場合は、%AppData%\VRCAvatarChanger フォルダを手動で削除してください。"/>
                     </Expander>
                 </StackPanel>
 
@@ -317,7 +314,9 @@
                     <TextBlock Text="VRCAvatarChanger" Style="{StaticResource H1}" Margin="0,0,0,2"/>
                     <TextBlock x:Name="VersionText" Style="{StaticResource Body}"/>
                     <TextBlock Style="{StaticResource Body}" Margin="0,10,0,0"
-                               Text="VRChat のアバターを外部からチェンジする Windows 用アプリです。VRChat 公式ではありません。VRChat の仕様変更で動かなくなることがあります。"/>
+                               Text="VRChat を起動せずに外部からアバターを切り替えられる Windows 向けツールです。"/>
+                    <TextBlock Style="{StaticResource Body}"
+                               Text="※本アプリは非公式ツールです。VRChat 側の仕様変更により動作しなくなる場合があります。"/>
                     <TextBlock Text="保存先" Style="{StaticResource H2}"/>
                     <TextBlock x:Name="DataPathText" Style="{StaticResource Body}" FontFamily="Cascadia Mono, Consolas"/>
                     <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
@@ -339,20 +338,20 @@
                         <TextBlock Grid.Row="0" Text="public_avatars.json" FontFamily="Cascadia Mono, Consolas"/>
                         <TextBlock Grid.Row="0" Grid.Column="1" Text="パブリックタブの登録リスト"/>
                         <TextBlock Grid.Row="1" Text="groups.json / tags.json" FontFamily="Cascadia Mono, Consolas"/>
-                        <TextBlock Grid.Row="1" Grid.Column="1" Text="グループとタグ"/>
+                        <TextBlock Grid.Row="1" Grid.Column="1" Text="グループ設定およびタグ設定"/>
                         <TextBlock Grid.Row="2" Text="settings.json" FontFamily="Cascadia Mono, Consolas"/>
-                        <TextBlock Grid.Row="2" Grid.Column="1" Text="表示形式・並び順・ウィンドウ位置などの設定"/>
+                        <TextBlock Grid.Row="2" Grid.Column="1" Text="表示形式、並び順、ウィンドウ位置などの各種設定"/>
                         <TextBlock Grid.Row="3" Text="session.json" FontFamily="Cascadia Mono, Consolas"/>
-                        <TextBlock Grid.Row="3" Grid.Column="1" Text="VRChat のログイン状態(暗号化済み。他の PC では使えない)"/>
+                        <TextBlock Grid.Row="3" Grid.Column="1" Text="ログインセッション情報（暗号化済み。他 PC への移行不可）"/>
                         <TextBlock Grid.Row="4" Text="app.log" FontFamily="Cascadia Mono, Consolas"/>
-                        <TextBlock Grid.Row="4" Grid.Column="1" Text="動作の記録。エラーは常に、それ以外は設定「ログの記録」がオンのとき"/>
+                        <TextBlock Grid.Row="4" Grid.Column="1" Text="動作ログ（エラーは常時記録、「ログの記録」オン時に詳細を記録）"/>
                         <TextBlock Grid.Row="5" Text="WebView2\" FontFamily="Cascadia Mono, Consolas"/>
-                        <TextBlock Grid.Row="5" Grid.Column="1" Text="Discord / Google ログイン用ブラウザの一時データ"/>
+                        <TextBlock Grid.Row="5" Grid.Column="1" Text="連携ログイン用ブラウザの一時データ"/>
                     </Grid>
                     <TextBlock Style="{StaticResource Body}" Margin="0,6,0,0"
-                               Text="別の PC に引き継ぐときは public_avatars.json と groups.json をコピーしてください。パスワードはどこにも保存していません。"/>
+                               Text="※別の PC にデータを引き継ぐ場合は、public_avatars.json、groups.json、tags.json の3ファイルをコピーしてください。パスワードは保存されません。"/>
                     <TextBlock Text="使用技術" Style="{StaticResource H2}"/>
-                    <TextBlock Style="{StaticResource Body}" Text=".NET / WPF、Microsoft Edge WebView2(連携ログイン用)、VRChat Web API、VRChat OSC"/>
+                    <TextBlock Style="{StaticResource Body}" Text=".NET / WPF、Microsoft Edge WebView2 (連携ログイン用)、VRChat Web API、VRChat OSC"/>
                 </StackPanel>
             </Grid>
         </ScrollViewer>

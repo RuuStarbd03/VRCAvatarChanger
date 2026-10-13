@@ -60,124 +60,6 @@ public partial class MainWindow
         else SetLoginStatus("ブラウザログイン中止", error: false);
     }
 
-    // ---------------- 外部ブラウザ (Chrome など) でのログイン ----------------
-    // ① まず VRChat のログインページ (vrchat.com) を開き、そのブラウザでログインしてもらう (済みならそのまま)。
-    // ② アプリの「token のページを開く」で /api/1/auth を開き、表示された token をコピーしてもらう。
-    // 以前は最初から /api/1/auth を開いていたが、ブラウザでログインしていないと英語の 1 行
-    // (Missing Credentials) だけの白いページになり、VRChat のページが開かなかったように見えていた。
-    // 他アプリのクッキーは読まない (読めない)。トークンの受け渡しは利用者のコピー操作だけを経由する。
-
-    // token のページは、ログインページと同じ vrchat.com のものを開く。ブラウザのログイン状態 (クッキー) は vrchat.com 用なので、
-    // API の本来のアドレス (api.vrchat.cloud) を開くと送られず、ログインしていても必ず Missing Credentials になる
-    private const string AuthTokenUrl = "https://vrchat.com/api/1/auth";
-    private const string VRChatLoginUrl = "https://vrchat.com/home/login";
-
-    private System.Windows.Threading.DispatcherTimer? _clipboardWatch;
-    private string? _clipboardSeen;
-
-    private void ExternalLoginButton_Click(object sender, RoutedEventArgs e)
-    {
-        CredentialsPanel.Visibility = Visibility.Collapsed;
-        ExternalLoginPanel.Visibility = Visibility.Visible;
-        LoginStatus.Text = "";
-        AuthTokenBox.Clear();
-        _clipboardSeen = ReadClipboard(); // 開いた時点の内容は「コピーされた」とみなさない
-        StartClipboardWatch();
-        OpenInBrowser(VRChatLoginUrl); // ① から。token のページ (②) は利用者がログインしてから開く
-    }
-
-    private void OpenAuthPage_Click(object sender, RoutedEventArgs e) => OpenInBrowser(AuthTokenUrl);
-
-    private void OpenVRChatSite_Click(object sender, RoutedEventArgs e) => OpenInBrowser(VRChatLoginUrl);
-
-    private void OpenInBrowser(string url)
-    {
-        try { Shell.Open(url); }
-        catch (Exception ex)
-        {
-            Log.Warn($"ブラウザを開けませんでした: {url}", ex);
-            SetLoginStatus("ブラウザ起動失敗: " + ex.Message, error: true);
-        }
-    }
-
-    private void StartClipboardWatch()
-    {
-        if (_clipboardWatch is null)
-        {
-            _clipboardWatch = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(500) };
-            _clipboardWatch.Tick += (_, _) => CheckClipboardForToken();
-        }
-        _clipboardWatch.Start();
-    }
-
-    private void StopClipboardWatch() => _clipboardWatch?.Stop();
-
-    /// <summary>
-    /// ブラウザでコピーされた token を拾って自動で続行する。
-    /// 見るのは「VRChat の token 形式か」だけで、それ以外のクリップボード内容は無視し、記録も送信もしない。
-    /// 監視するのはこの画面を開いている間だけ。
-    /// </summary>
-    private void CheckClipboardForToken()
-    {
-        var text = ReadClipboard();
-        if (text is null || text == _clipboardSeen) return;
-        _clipboardSeen = text;
-        if (!VRChatApi.TryParseAuthToken(text, out var token)) return;
-        // 自動続行は VRChat のトークン形式 (authcookie_...) に限る。誤検知でログインを試さないため
-        if (!token.StartsWith("authcookie_", StringComparison.Ordinal)) return;
-        AuthTokenBox.Text = token;
-        LoginWithTokenAsync(token).Forget();
-    }
-
-    private static string? ReadClipboard()
-    {
-        // 他アプリがクリップボードを掴んでいると失敗することがある
-        try { return Clipboard.ContainsText() ? Clipboard.GetText() : null; }
-        catch (Exception ex) { Log.Debug("クリップボードを読めませんでした (他のアプリが使用中)", ex); return null; }
-    }
-
-    private void AuthTokenField_KeyDown(object sender, KeyEventArgs e)
-    {
-        if (e.Key == Key.Enter) AuthTokenLogin_Click(sender, e);
-    }
-
-    private async void AuthTokenLogin_Click(object sender, RoutedEventArgs e)
-    {
-        if (!VRChatApi.TryParseAuthToken(AuthTokenBox.Text, out var token))
-        {
-            SetLoginStatus("token が未入力、または形式が違います", error: true);
-            return;
-        }
-        await LoginWithTokenAsync(token);
-    }
-
-    private async Task LoginWithTokenAsync(string token)
-    {
-        StopClipboardWatch();
-        SetLoginBusy(true, "ログイン中…");
-        try
-        {
-            var me = await _api.LoginWithAuthTokenAsync(token);
-            AuthTokenBox.Clear();
-            ExternalLoginPanel.Visibility = Visibility.Collapsed;
-            CredentialsPanel.Visibility = Visibility.Visible;
-            await EnterMainAsync(me);
-        }
-        catch (TwoFactorRequiredException tfa)
-        {
-            AuthTokenBox.Clear();
-            ExternalLoginPanel.Visibility = Visibility.Collapsed;
-            _twoFactorMethods = tfa.Methods;
-            ShowTwoFactor();
-        }
-        catch (Exception ex)
-        {
-            SetLoginStatus(FriendlyError.Of(ex), error: true);
-            StartClipboardWatch(); // やり直せるように監視を戻す
-        }
-        finally { SetLoginBusy(false); }
-    }
-
     private void ShowTwoFactor()
     {
         CredentialsPanel.Visibility = Visibility.Collapsed;
@@ -192,9 +74,7 @@ public partial class MainWindow
 
     private void BackToLogin_Click(object sender, RoutedEventArgs e)
     {
-        StopClipboardWatch();
         TwoFactorPanel.Visibility = Visibility.Collapsed;
-        ExternalLoginPanel.Visibility = Visibility.Collapsed;
         CredentialsPanel.Visibility = Visibility.Visible;
         LoginStatus.Text = "";
     }
@@ -230,8 +110,6 @@ public partial class MainWindow
     {
         LoginButton.IsEnabled = !busy;
         BrowserLoginButton.IsEnabled = !busy;
-        ExternalLoginButton.IsEnabled = !busy;
-        AuthTokenButton.IsEnabled = !busy;
         VerifyButton.IsEnabled = !busy;
         if (status is not null) SetLoginStatus(status, error: false);
     }
@@ -261,7 +139,6 @@ public partial class MainWindow
     private async Task EnterMainAsync(CurrentUser user)
     {
         Log.Info($"ログイン: {user.DisplayName} 現在のアバター {user.CurrentAvatar}");
-        StopClipboardWatch();
         _user = user;
         TouchRecentAvatar(user.CurrentAvatar); // 今着ているものは「最近使用」の先頭に載せる
         LoginPanel.Visibility = Visibility.Collapsed;
@@ -282,9 +159,8 @@ public partial class MainWindow
         CloseSettings(); // セッション切れ等で設定を開いたまま戻るケース
         MainPanel.Visibility = Visibility.Collapsed;
         LoginPanel.Visibility = Visibility.Visible;
-        // 途中の画面 (2FA / 外部ブラウザ) が残っていても、必ず入力画面から再開する
+        // 途中の画面 (2FA) が残っていても、必ず入力画面から再開する
         TwoFactorPanel.Visibility = Visibility.Collapsed;
-        ExternalLoginPanel.Visibility = Visibility.Collapsed;
         CredentialsPanel.Visibility = Visibility.Visible;
         SetLoginStatus(message, error: false);
     }

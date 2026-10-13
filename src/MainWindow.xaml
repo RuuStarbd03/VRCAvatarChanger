@@ -365,24 +365,9 @@
                         <TextBlock Grid.Column="1" Text="または" Style="{StaticResource CaptionText}" Margin="12,0"/>
                         <Border Grid.Column="2" Height="1" Background="{DynamicResource BorderBrush}" VerticalAlignment="Center"/>
                     </Grid>
-                    <Button x:Name="ExternalLoginButton" Style="{StaticResource SecondaryButton}" Click="ExternalLoginButton_Click" Height="36"
-                            Content="ふだん使うブラウザでログイン"
-                            ToolTip="既定のブラウザ (Chrome など) でログイン"/>
-                    <Button x:Name="BrowserLoginButton" Style="{StaticResource GhostButton}" Click="BrowserLoginButton_Click" Height="32" Margin="0,8,0,0"
-                            Content="アプリ内ブラウザでログイン"
-                            ToolTip="内蔵ブラウザでログイン (Discord / Google / Apple / Steam も可)"/>
-                </StackPanel>
-
-                <!-- 外部ブラウザ(Chrome など)から token を受け取るログイン -->
-                <StackPanel x:Name="ExternalLoginPanel" Visibility="Collapsed">
-                    <Button Content="token のページを開く" Click="OpenAuthPage_Click" Height="36"/>
-
-                    <TextBlock Text="token を貼り付け" Style="{StaticResource FieldLabel}" Margin="0,18,0,0"/>
-                    <TextBox x:Name="AuthTokenBox" Margin="0,0,0,12" KeyDown="AuthTokenField_KeyDown" FontFamily="Cascadia Mono, Consolas"/>
-                    <Button x:Name="AuthTokenButton" Content="貼り付けた token でログイン" Style="{StaticResource SecondaryButton}" Click="AuthTokenLogin_Click" Height="34"/>
-
-                    <Button Content="VRChat のログインページを開く" Style="{StaticResource GhostButton}" Click="OpenVRChatSite_Click" Height="30" Margin="0,12,0,0"/>
-                    <Button Content="戻る" Style="{StaticResource GhostButton}" Click="BackToLogin_Click" Height="32" Margin="0,6,0,0"/>
+                    <Button x:Name="BrowserLoginButton" Style="{StaticResource SecondaryButton}" Click="BrowserLoginButton_Click" Height="36"
+                            Content="ブラウザでログイン"
+                            ToolTip="Discord / Google / Apple / Steam でのログインも可"/>
                 </StackPanel>
 
                 <StackPanel x:Name="TwoFactorPanel" Visibility="Collapsed">

@@ -718,14 +718,14 @@ public partial class MainWindow : Window
                     var note = $" ({cached.FetchedAt:HH:mm} 時点)";
                     // すでに同じものを出しているなら作り直さない (トレイから開き直したときなど)
                     if (AlreadyShowing(cached.Avatars)) KeepShowing(note);
-                    else ShowItems(ItemsOf(cached.Avatars, favorites), ct, note);
+                    else ShowItems(ItemsOf(cached.Avatars, favorites), note);
                     return;
                 }
                 // 前回の一覧があれば先に見せる。サムネもディスクキャッシュから戻るので待たされない
                 if (cached is not null)
                 {
                     if (AlreadyShowing(cached.Avatars)) ShowListState(loading: false);
-                    else ShowItems(ItemsOf(cached.Avatars, favorites), ct, " (前回の一覧・最新を確認中…)");
+                    else ShowItems(ItemsOf(cached.Avatars, favorites), " (前回の一覧・最新を確認中…)");
                 }
                 try
                 {
@@ -752,7 +752,7 @@ public partial class MainWindow : Window
                     return;
                 }
             }
-            ShowItems(items, ct, refreshedEntries switch
+            ShowItems(items, refreshedEntries switch
             {
                 null => "",
                 0 => " (最新)",
@@ -782,7 +782,7 @@ public partial class MainWindow : Window
     /// 項目を一覧に載せて表示する (取得したものでも、キャッシュから読んだものでも、パブリックでも同じ手順)。
     /// note はステータスの件数の後ろに添える一言。
     /// </summary>
-    private void ShowItems(List<AvatarItem> items, CancellationToken ct, string note)
+    private void ShowItems(List<AvatarItem> items, string note)
     {
         _allItems.Clear();
         _allItems.AddRange(items);
