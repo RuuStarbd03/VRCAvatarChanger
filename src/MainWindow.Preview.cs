@@ -892,9 +892,22 @@ public partial class MainWindow
             Expect("RGBA の並び (R=3E G=8F B=D0 A=FF)", rgba[px] == 0x3E && rgba[px + 1] == 0x8F && rgba[px + 2] == 0xD0 && rgba[px + 3] == 0xFF,
                 $"{rgba[px]:X2} {rgba[px + 1]:X2} {rgba[px + 2]:X2} {rgba[px + 3]:X2}");
             var btn = VrPanel.ButtonRgba(panelOpen: false);
-            var bAt = (40 * VrPanel.ButtonSize + 96) * 4; // 手首ボタンの丸の上のほう (アクセント色)
+            var bAt = (6 * VrPanel.ButtonSize + 96) * 4; // 手首ボタンの輪の一番上 (アクセント色)
             Expect("手首ボタンも RGBA", btn[bAt] == 0x3E && btn[bAt + 2] == 0xD0, $"{btn[bAt]:X2} {btn[bAt + 1]:X2} {btn[bAt + 2]:X2}");
+            var inner = (96 * VrPanel.ButtonSize + 40) * 4; // 輪の内側でアイコンの無いところ
+            Expect("手首ボタンの下地は塗りつぶさず半透明", btn[inner + 3] < 0xFF && btn[inner + 2] < 0x40,
+                $"{btn[inner]:X2} {btn[inner + 1]:X2} {btn[inner + 2]:X2} {btn[inner + 3]:X2}");
             Expect("手首ボタンの画像は作り直さない", ReferenceEquals(btn, VrPanel.ButtonRgba(panelOpen: false)));
+
+            // 同じ画像なら SteamVR に渡し直さない (ちらつき対策)
+            var lastSent = new byte[VrPanel.Width * VrPanel.Height * 4];
+            var frame = panel.RenderRgba();
+            Expect("初回は渡す", VrOverlay.CopyIfChanged(frame, lastSent, lastValid: false));
+            Expect("同じ画像は渡さない", !VrOverlay.CopyIfChanged(panel.RenderRgba(), lastSent, lastValid: true));
+            panel.Hover = new VrPanel.Hit(VrPanel.HitKind.Tile, panel.PageStart);
+            Expect("ホバーが変われば渡す", VrOverlay.CopyIfChanged(panel.RenderRgba(), lastSent, lastValid: true));
+            panel.Hover = default;
+            Expect("繋ぎ直したあとは同じ画像でも渡す", VrOverlay.CopyIfChanged(panel.RenderRgba(), lastSent, lastValid: false));
 
             // 描き直し 1 回ぶんの負荷 (ホバーやサムネイルの到着のたびに走る)
             vr.RenderPanelBytesForTest();

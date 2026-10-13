@@ -74,6 +74,10 @@ internal sealed class VrPanel
     private static readonly Brush DangerBrush = Frozen(Color.FromRgb(0xE5, 0x6B, 0x6F));
     private static readonly Pen AccentPen = FrozenPen(AccentBrush, 4);
     private static readonly Pen EdgePen = FrozenPen(Frozen(Color.FromArgb(0x40, 0xFF, 0xFF, 0xFF)), 2);
+    // 手首ボタン: 塗りつぶさず、暗い半透明の下地に細い輪だけ色を付ける (腕時計の横で主張しすぎないように)
+    private static readonly Brush ButtonBackBrush = Frozen(Color.FromArgb(0xD9, 0x1B, 0x1C, 0x21));
+    private static readonly Pen ButtonRingPen = FrozenPen(AccentBrush, 6);
+    private static readonly Pen ButtonRingOpenPen = FrozenPen(MutedBrush, 6);
 
     private static readonly FontFamily UiFont = new("Segoe UI Variable Text, Yu Gothic UI, Segoe UI");
     private static readonly Typeface UiFace = new(UiFont, FontStyles.Normal, FontWeights.Normal, FontStretches.Normal);
@@ -397,16 +401,17 @@ internal sealed class VrPanel
         return cached;
     }
 
-    /// <summary>手首に付けるボタン。丸い下地に人のアイコンと「着替え」。</summary>
+    /// <summary>手首に付けるボタン。暗い半透明の丸に、色付きの細い輪と人のアイコン、「着替え」。</summary>
     public static BitmapSource RenderButton(bool panelOpen)
     {
         var visual = new DrawingVisual();
         using (var dc = visual.RenderOpen())
         {
             var c = new Point(ButtonSize / 2.0, ButtonSize / 2.0);
-            dc.DrawEllipse(panelOpen ? TileHoverBrush : AccentBrush, EdgePen, c, ButtonSize / 2.0 - 4, ButtonSize / 2.0 - 4);
-            DrawCentered(dc, panelOpen ? GlyphClose : GlyphPerson, IconFace, 64, Brushes.White, new Point(c.X, c.Y - 18));
-            DrawCentered(dc, panelOpen ? "閉じる" : "着替え", UiBoldFace, 30, Brushes.White, new Point(c.X, c.Y + 44));
+            var r = ButtonSize / 2.0 - 6; // 輪の太さぶん内側に (外に切れないように)
+            dc.DrawEllipse(ButtonBackBrush, panelOpen ? ButtonRingOpenPen : ButtonRingPen, c, r, r);
+            DrawCentered(dc, panelOpen ? GlyphClose : GlyphPerson, IconFace, 70, panelOpen ? TextBrush : AccentBrush, new Point(c.X, c.Y - 16));
+            DrawCentered(dc, panelOpen ? "閉じる" : "着替え", UiBoldFace, 28, TextBrush, new Point(c.X, c.Y + 46));
         }
         return ToBitmap(visual, ButtonSize, ButtonSize);
     }

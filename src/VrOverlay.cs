@@ -43,7 +43,10 @@ internal interface IVrAvatarSource
 /// ・SteamVR と VRChat の両方が動いているときだけ SteamVR に繋ぐ (こちらから SteamVR を起動することはない)。
 /// ・手首ボタンはコントローラーに貼り付け、手首を見たときだけ現れる (普段は視界の邪魔をしない)。
 ///   OVR Toolkit などの腕時計と並べて使えるよう、腕時計の位置から肘側へずらして置く (ずらす量は設定で変えられる)。
-/// ・押し方は 2 通り: 反対の手のコントローラーで触れる / SteamVR のレーザーで指してトリガー。
+/// ・手首ボタンは反対の手のコントローラーで触れて押す。SteamVR のレーザーの対象にはしない
+///   (レーザーで押せるオーバーレイが見えていると、反対の手が手首の方を向いた瞬間に SteamVR がレーザー操作に切り替わり、
+///    その間コントローラーの入力が VRChat に届かなくなる。プッシュトゥトークが手首を見るたびに切れていた)。
+/// ・パネルは触れても、レーザーで指してトリガーでも押せる (パネルを開いている間は操作している最中なので)。
 /// ・パネルは開いた時点の顔の正面に置き、その場に固定する (手を動かしても追いかけてこない)。
 /// ・PC のクイック着替えとは別物。タブ・並び順・グループ化・絞り込みは VR パネルの中で切り替え、
 ///   PC の画面を触らずに済むようにする (選んだタブ・並び順・グループ化は設定に残す)。
@@ -55,7 +58,9 @@ internal sealed class VrOverlay : IDisposable
 {
     private const string ButtonKey = "vrcavatarchanger.wrist";
     private const string PanelKey = "vrcavatarchanger.panel";
-    private const float ButtonWidthM = 0.05f;
+    private const float ButtonWidthM = 0.035f;     // 手首ボタンの見た目の幅。腕時計より控えめに
+    private const float ButtonTouchScale = 1.4f;   // 触れて反応する範囲は見た目より広く (小さいぶん押しにくいので)
+    private const float ButtonMaxAlpha = 0.85f;    // 一番濃いときでも少し透かす (向こうが見えて主張しすぎない)
     private const float PanelWidthM = 0.5f;
 
     // ---- 手首ボタンの置き場所 (コントローラー基準、m) ----
@@ -85,6 +90,9 @@ internal sealed class VrOverlay : IDisposable
     // パネルの描き直しは 1 回で 2MB を SteamVR に渡すので、続けて起きる変化はまとめる
     private static readonly TimeSpan HoverRenderInterval = TimeSpan.FromMilliseconds(33);  // レーザーを動かしたとき (30 回/秒まで)
     private static readonly TimeSpan ThumbRenderInterval = TimeSpan.FromMilliseconds(150); // サムネイルが 1 枚ずつ届くとき
+    // パネルの距離を変えている間と、止めてからこの間は描き直さない。
+    // 動かすとレーザーの当たる場所がずれてホバーが次々に切り替わり、そのたびに画像を差し替えるとちらつくため
+    private static readonly TimeSpan MoveSettle = TimeSpan.FromMilliseconds(250);
 
     private static readonly ETrackedControllerRole[] Hands = [ETrackedControllerRole.LeftHand, ETrackedControllerRole.RightHand];
 
@@ -123,6 +131,9 @@ internal sealed class VrOverlay : IDisposable
     private DateTime _lastRender;
     private readonly BitmapSource?[] _renderedThumbs = new BitmapSource?[VrPanel.PageSize]; // 描いたときのサムネイル
     private DateTime _lastPress;
+    private DateTime _lastStickMove;        // 最後にスティックでパネルを動かした時刻
+    private readonly byte[] _uploadedPanel = new byte[VrPanel.Width * VrPanel.Height * 4]; // 最後に SteamVR へ渡したパネルの画像
+    private bool _uploadedPanelValid;       // _uploadedPanel が今のオーバーレイに渡したものか (繋ぎ直したら無効)
     private bool _busy;
     private int _fileFlip;
     // パネルの中身の状態 (タブ・並び順・グループ化は設定に持つ。絞り込みと開いているグループはその場限り)
@@ -191,7 +202,7 @@ internal sealed class VrOverlay : IDisposable
             var overlay = OpenVR.Overlay;
             Check(overlay.CreateOverlay(ButtonKey, "AvatarChanger", ref _button), "手首ボタンの作成");
             overlay.SetOverlayWidthInMeters(_button, ButtonWidthM);
-            SetupMouse(_button, VrPanel.ButtonSize, VrPanel.ButtonSize);
+            // 手首ボタンにはレーザーを付けない (SetupMouse しない)。見えるたびに VRChat への入力を奪わないため
             UploadButton(panelOpen: false);
 
             Check(overlay.CreateOverlay(PanelKey, "AvatarChanger アバター選択", ref _panelHandle), "パネルの作成");
@@ -226,6 +237,7 @@ internal sealed class VrOverlay : IDisposable
         _sentAlpha = -1;
         _touching.Clear();
         _stickAxis.Clear();
+        _uploadedPanelValid = false; // オーバーレイを作り直すので、前に渡した画像はもう無い
         try
         {
             if (_initialized && _button != 0) OpenVR.Overlay.DestroyOverlay(_button);
@@ -309,8 +321,6 @@ internal sealed class VrOverlay : IDisposable
                 Disconnect("SteamVR が終了するため");
                 return;
             }
-            while (overlay.PollNextOverlayEvent(_button, ref ev, EventSize))
-                if ((EVREventType)ev.eventType == EVREventType.VREvent_MouseButtonUp) Press(TogglePanel);
             while (overlay.PollNextOverlayEvent(_panelHandle, ref ev, EventSize))
                 HandlePanelEvent(ev);
 
@@ -402,7 +412,7 @@ internal sealed class VrOverlay : IDisposable
 
         // 触れているかは見えていない間も追っておく。見えた瞬間に「もう触れていた」手を、押したとは数えないため
         if (IsValid(other) && Matrix4x4.Invert(world, out var inverse)
-            && Poke(_button, inverse, ButtonWidthM, VrPanel.ButtonSize, VrPanel.ButtonSize, other, out _) && visible)
+            && Poke(_button, inverse, ButtonWidthM * ButtonTouchScale, VrPanel.ButtonSize, VrPanel.ButtonSize, other, out _) && visible)
             Press(TogglePanel);
     }
 
@@ -419,7 +429,7 @@ internal sealed class VrOverlay : IDisposable
         }
         if (_buttonAlpha != _sentAlpha)
         {
-            overlay.SetOverlayAlpha(_button, _buttonAlpha);
+            overlay.SetOverlayAlpha(_button, _buttonAlpha * ButtonMaxAlpha);
             _sentAlpha = _buttonAlpha;
         }
         if (!_buttonShown) { overlay.ShowOverlay(_button); _buttonShown = true; }
@@ -533,7 +543,13 @@ internal sealed class VrOverlay : IDisposable
         if (next == _panelDistance) return;
         _panelDistance = next;
         PlacePanel();
+        _lastStickMove = DateTime.UtcNow;
+        // 動かしている間はホバーを出さない (止まったあとに、レーザーが次に動いたところで付け直す)
+        if (_panel.Hover != default) { _panel.Hover = default; _panelDirty = true; }
     }
+
+    /// <summary>パネルの距離を変えている最中 (か、止めた直後) か。この間は描き直さない。</summary>
+    private bool MovingPanel => DateTime.UtcNow - _lastStickMove < MoveSettle;
 
     private static readonly uint ControllerStateSize = (uint)Marshal.SizeOf<VRControllerState_t>();
 
@@ -662,6 +678,7 @@ internal sealed class VrOverlay : IDisposable
         switch ((EVREventType)ev.eventType)
         {
             case EVREventType.VREvent_MouseMove:
+                if (MovingPanel) break; // 動かしている間は、レーザーの当たる場所がずれるだけなのでホバーを変えない
                 // SteamVR のマウス座標は下が原点なので、画像の座標 (上が原点) に直す
                 var hover = _panel.HitTest(ev.data.mouse.x, VrPanel.Height - ev.data.mouse.y);
                 if (hover != _panel.Hover) { _panel.Hover = hover; _panelDirty = true; }
@@ -780,6 +797,7 @@ internal sealed class VrOverlay : IDisposable
     /// </summary>
     private void RefreshPanel()
     {
+        if (MovingPanel) return; // 止まってからまとめて描き直す
         var interval = _panelDirty ? HoverRenderInterval : ThumbnailsChanged() ? ThumbRenderInterval : (TimeSpan?)null;
         if (interval is null || DateTime.UtcNow - _lastRender < interval) return;
         RenderPanel();
@@ -798,11 +816,28 @@ internal sealed class VrOverlay : IDisposable
 
     private void RenderPanel()
     {
-        Upload(_panelHandle, _panel.RenderRgba(), VrPanel.Width, VrPanel.Height, () => _panel.Render());
+        // 前に渡したものと同じ画像なら渡し直さない (差し替えるたびに一瞬表示が抜けることがあるので、要らない差し替えはしない)
+        var rgba = _panel.RenderRgba();
+        if (CopyIfChanged(rgba, _uploadedPanel, _uploadedPanelValid))
+        {
+            Upload(_panelHandle, rgba, VrPanel.Width, VrPanel.Height, () => _panel.Render());
+            _uploadedPanelValid = true;
+        }
         for (var slot = 0; slot < VrPanel.PageSize; slot++)
             _renderedThumbs[slot] = slot < _panel.PageItemCount ? _panel.PageItem(slot).Thumbnail : null;
         _panelDirty = false;
         _lastRender = DateTime.UtcNow;
+    }
+
+    /// <summary>
+    /// next が last と違えば (または last がまだ無ければ) last に写して true。同じなら何もせず false。
+    /// 2MB の比較は 0.1ms ほどで、SteamVR への差し替えよりずっと安い。
+    /// </summary>
+    internal static bool CopyIfChanged(byte[] next, byte[] last, bool lastValid)
+    {
+        if (lastValid && next.AsSpan().SequenceEqual(last)) return false;
+        next.AsSpan().CopyTo(last);
+        return true;
     }
 
     // ---------------- 行列 ----------------
