@@ -1055,12 +1055,10 @@ public partial class MainWindow
             hitSw.Stop();
             report.AppendLine($"     当たり判定: {hitSw.Elapsed.TotalMilliseconds * 1000 / hits:F1} µs/回、確保 {(GC.GetAllocatedBytesForCurrentThread() - hitAlloc0) / hits} B/回");
 
-            // パネルの距離 (グリップ + スティック前後)
-            Expect("遊びの範囲では動かない", VrOverlay.NextPanelDistance(0.55f, 0.2f, 0.1f) == 0.55f);
-            Expect("前に倒すと奥へ", VrOverlay.NextPanelDistance(0.55f, 1f, 0.1f) > 0.55f);
-            Expect("後ろに倒すと手前へ", VrOverlay.NextPanelDistance(0.55f, -1f, 0.1f) < 0.55f);
-            Expect("奥の上限で止まる", VrOverlay.NextPanelDistance(1.49f, 1f, 0.5f) == VrOverlay.MaxPanelDistanceM);
-            Expect("手前の下限で止まる", VrOverlay.NextPanelDistance(0.31f, -1f, 0.5f) == VrOverlay.MinPanelDistanceM);
+            // つかんだパネルの距離 (つかんだままスティック前後。つかんでいないときは動かない)
+            Expect("つかんだまま: 遊びの範囲では動かない", VrOverlay.NextGrabReach(0.55f, 0.2f, 0.1f) == 0.55f);
+            Expect("つかんだまま: 後ろに倒すと手前へ", VrOverlay.NextGrabReach(0.55f, -1f, 0.1f) < 0.55f);
+            Expect("つかんだまま: 遠くの上限で止まる", VrOverlay.NextGrabReach(2.79f, 1f, 0.5f) == 2.8f);
             var headPos = new Vector3(0.2f, 1.6f, 0.1f);
             var fwd = Vector3.Normalize(new Vector3(1, 0, -1));
             foreach (var d in new[] { VrOverlay.MinPanelDistanceM, 1.0f })

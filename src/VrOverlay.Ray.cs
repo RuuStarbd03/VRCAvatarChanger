@@ -215,7 +215,7 @@ internal sealed partial class VrOverlay
                 _panelGrabOffset = Vector3.Transform(_panelWorld.Translation, Inverse(ToNumerics(_poses[d].mDeviceToAbsoluteTracking)));
                 Buzz(d);
             }
-            // グリップを握っているときのスティックはパネルの距離 (MovePanelByStick) なので、スクロールしない
+            // グリップを握っているとき (VRChat で物をつかんでいるときなど) のスティックではスクロールしない
             else if (ray.Target == RayTarget.Panel && !grip && !_panel.SortMenuOpen)
             {
                 var tilt = StickY(d, state);

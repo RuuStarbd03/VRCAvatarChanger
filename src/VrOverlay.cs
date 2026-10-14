@@ -77,10 +77,10 @@ internal sealed partial class VrOverlay : IDisposable
 
     // ---- パネルの置き場所 (開いた時点の頭の位置から) ----
     private const float DefaultPanelDistanceM = 0.55f;
-    // グリップを握ってスティックを前後に倒すと、パネルを奥 / 手前へ動かせる。近すぎ・遠すぎで見失わないよう上限を設ける
+    // つかんで動かしたあとに次に開くときの距離 (顔から)。近すぎ・遠すぎで見失わないよう上限を設ける
     public const float MinPanelDistanceM = 0.3f;
     public const float MaxPanelDistanceM = 1.5f;
-    private const float PanelMoveSpeed = 0.8f;    // スティックをいっぱいに倒したときの速さ (m/秒)
+    private const float PanelMoveSpeed = 0.8f;    // つかんだままスティックをいっぱいに倒したときの、遠ざける / 近づける速さ (m/秒)
     private const float StickDeadZone = 0.25f;    // これより小さい傾きは無視 (スティックの戻りきらない揺れ)
     private const float PanelDropM = 0.15f;    // 目線より少し下
     private const float PanelTiltDeg = 15;     // 下に置くぶん、上を向けて顔に向ける
@@ -356,7 +356,6 @@ internal sealed partial class VrOverlay : IDisposable
             UpdateButton();
             if (_panelOpen)
             {
-                MovePanelByStick(dt);
                 MoveGrabbedPanel(dt);
                 ApplyScrollInertia(dt);
             }
@@ -580,53 +579,10 @@ internal sealed partial class VrOverlay : IDisposable
                * Matrix4x4.CreateTranslation(position);
     }
 
-    /// <summary>
-    /// グリップを握ったままスティックを前後に倒すと、パネルを奥 / 手前へ動かす (前に倒すと奥)。
-    /// 左右どちらの手でもよい。両手で倒したときは大きく倒しているほうを使う。
-    /// 動かすのは顔とパネルを結ぶ線の上で、向きはそのまま (つかんで置いた場所からでも、まっすぐ遠ざかる)。
-    /// </summary>
-    private void MovePanelByStick(float dt)
-    {
-        if (_grabbing || GrabbingPanel) return; // つかんでいるグリップでは動かさない (つかんだパネルは MoveGrabbedPanel)
-        var system = OpenVR.System;
-        var tilt = 0f;
-        foreach (var role in Hands)
-        {
-            var device = HandDevice(role);
-            if (!IsValid(device)) continue;
-            var state = new VRControllerState_t();
-            if (!system.GetControllerState(device, ref state, ControllerStateSize)) continue;
-            if ((state.ulButtonPressed & (1UL << (int)EVRButtonId.k_EButton_Grip)) == 0) continue;
-            var y = StickY(device, state);
-            if (MathF.Abs(y) > MathF.Abs(tilt)) tilt = y;
-        }
-        var head = HeadPosition();
-        var toPanel = _panelWorld.Translation - head;
-        var distance = toPanel.Length();
-        if (distance < 1e-3f) return;
-        var next = NextPanelDistance(distance, tilt, dt);
-        if (next == distance) return;
-        _panelDistance = next;
-        _panelWorld.Translation = head + toPanel / distance * next;
-        PlacePanel();
-        _lastPanelMove = DateTime.UtcNow;
-        // 動かしている間はホバーを出さない (止まったあとに、レイが次に動いたところで付け直す)
-        if (_panel.Hover != default) { _panel.Hover = default; _panelDirty = true; }
-    }
-
-    /// <summary>パネルの距離を変えている最中 (か、止めた直後) か。この間は描き直さない。</summary>
+    /// <summary>パネルを動かしている最中 (か、止めた直後) か。この間は描き直さない。</summary>
     private bool MovingPanel => DateTime.UtcNow - _lastPanelMove < MoveSettle;
 
     private static readonly uint ControllerStateSize = (uint)Marshal.SizeOf<VRControllerState_t>();
-
-    /// <summary>スティックの傾き (-1〜1) と経過時間から、次の距離を決める。遊びを除いてなめらかに効かせ、上限・下限で止める。</summary>
-    internal static float NextPanelDistance(float distance, float tilt, float dt)
-    {
-        if (MathF.Abs(tilt) < StickDeadZone) return distance;
-        // 遊びの端から 0 で立ち上がるようにする (倒し始めで急に動かない)
-        var amount = (MathF.Abs(tilt) - StickDeadZone) / (1 - StickDeadZone) * MathF.Sign(tilt);
-        return Math.Clamp(distance + amount * PanelMoveSpeed * dt, MinPanelDistanceM, MaxPanelDistanceM);
-    }
 
     /// <summary>
     /// スティックの前後の傾き (前が +)。軸の割り当ては機種で違う (Index は 3 番、Touch は 0 番など) ので、
