@@ -969,6 +969,15 @@ public partial class MainWindow
             var allocKb = (GC.GetAllocatedBytesForCurrentThread() - alloc0) / renders / 1024;
             report.AppendLine($"     パネルの描き直し: {sw.Elapsed.TotalMilliseconds / renders:F2} ms/回、確保 {allocKb} KB/回");
 
+            // 指している間は毎フレーム (60 回/秒) 当たり判定をするので、その 1 回ぶん
+            panel.HitTest(300, 300);
+            var hitAlloc0 = GC.GetAllocatedBytesForCurrentThread();
+            var hitSw = System.Diagnostics.Stopwatch.StartNew();
+            const int hits = 2000;
+            for (var i = 0; i < hits; i++) panel.HitTest(40 + i % 560, 140 + i % 600);
+            hitSw.Stop();
+            report.AppendLine($"     当たり判定: {hitSw.Elapsed.TotalMilliseconds * 1000 / hits:F1} µs/回、確保 {(GC.GetAllocatedBytesForCurrentThread() - hitAlloc0) / hits} B/回");
+
             // パネルの距離 (グリップ + スティック前後)
             Expect("遊びの範囲では動かない", VrOverlay.NextPanelDistance(0.55f, 0.2f, 0.1f) == 0.55f);
             Expect("前に倒すと奥へ", VrOverlay.NextPanelDistance(0.55f, 1f, 0.1f) > 0.55f);

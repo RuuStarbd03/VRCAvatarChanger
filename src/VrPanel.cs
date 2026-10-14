@@ -109,7 +109,12 @@ internal sealed class VrPanel
     public string SortKey { get; set; } = "recent_asc";
     public bool GroupView { get; set; } = true;
     /// <summary>選んでいる絞り込み (null = すべて)。</summary>
-    public string? Filter { get; set; }
+    public string? Filter
+    {
+        get => _filter;
+        set { _filter = value; _chipLayout = null; }
+    }
+    private string? _filter;
     /// <summary>開いているグループの名前 (null = 開いていない)。</summary>
     public string? OpenGroupName { get; set; }
     public string Status { get; set; } = "";
@@ -223,6 +228,7 @@ internal sealed class VrPanel
     {
         _chips = chips;
         ChipStart = Math.Clamp(ChipStart, 0, _chips.Count);
+        _chipLayout = null;
     }
 
     public void TurnPage(int delta)
@@ -231,7 +237,11 @@ internal sealed class VrPanel
         Hover = default;
     }
 
-    public void ScrollChips(int delta) => ChipStart = Math.Clamp(ChipStart + delta, 0, _chips.Count);
+    public void ScrollChips(int delta)
+    {
+        ChipStart = Math.Clamp(ChipStart + delta, 0, _chips.Count);
+        _chipLayout = null;
+    }
 
     // ---------------- 当たり判定 ----------------
 
@@ -283,8 +293,14 @@ internal sealed class VrPanel
     /// 絞り込みのチップを 1 行に並べる。0 番は「すべて」、以降は Chips の順。
     /// 収まらないぶんは左右の矢印で送る (VR では 2 行に折り返すより、送るほうが押し間違えにくい)。
     /// 候補が無ければ何も出さない。
+    /// 指している間は毎フレーム当たり判定で使うので、並べた結果は候補・送り位置・選択が変わるまで使い回す
+    /// (文字の幅を測るので、毎回並べ直すと 1 回 40µs ほどかかり、ゴミも出る)。
     /// </summary>
-    private List<ChipSlot> LayoutChips()
+    private List<ChipSlot> LayoutChips() => _chipLayout ??= ArrangeChips();
+
+    private List<ChipSlot>? _chipLayout;
+
+    private List<ChipSlot> ArrangeChips()
     {
         var slots = new List<ChipSlot>();
         if (_chips.Count == 0) return slots;
