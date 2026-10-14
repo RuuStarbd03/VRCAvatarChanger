@@ -88,8 +88,11 @@ internal sealed partial class VrOverlay : IDisposable
     private static readonly uint EventSize = (uint)Marshal.SizeOf<VREvent_t>();
 
     // パネルの描き直しは 1 回で 2MB を SteamVR に渡すので、続けて起きる変化はまとめる
-    private static readonly TimeSpan HoverRenderInterval = TimeSpan.FromMilliseconds(33);  // レイを動かしたとき (30 回/秒まで)
+    // (GPU で渡せるときは、スクロールがなめらかに見えるよう 60 回/秒まで。生データで渡すときは 30 回/秒まで)
+    private static readonly TimeSpan GpuRenderInterval = TimeSpan.FromMilliseconds(16);
+    private static readonly TimeSpan RawRenderInterval = TimeSpan.FromMilliseconds(33);
     private static readonly TimeSpan ThumbRenderInterval = TimeSpan.FromMilliseconds(150); // サムネイルが 1 枚ずつ届くとき
+    private const double ScrollFriction = 4;   // 離したあとに流れるスクロールの減り方 (1 秒で e^-4 ≒ 2% まで)
     // パネルの距離を変えている間と、止めてからこの間は描き直さない。
     // 動かすとレイの当たる場所がずれてホバーが次々に切り替わり、そのたびに画像を差し替えるとちらつくため
     private static readonly TimeSpan MoveSettle = TimeSpan.FromMilliseconds(250);
@@ -118,6 +121,9 @@ internal sealed partial class VrOverlay : IDisposable
     private int _front;
     private bool _hidePending;      // 入れ替えたあと、古い方 (_panels[_front ^ 1]) をまだ隠していない
     private DateTime _swappedAt;
+    private VrGpu? _gpu;            // パネルを GPU で渡す (作れなかった / 渡せなかったら null で、生データ + 2 枚の入れ替えに戻す)
+    private double _scrollVelocity; // ドラッグを離したあとに流れているスクロールの速さ (px/秒)
+    private (int Start, int Count) _requestedThumbs = (-1, 0); // サムネイルを最後に頼んだ範囲 (同じ範囲を毎フレーム頼まない)
     private (uint Device, string Hand, float[]? Pose)? _placement; // 手首ボタンを最後に貼り付けた条件。変わったら貼り直す
     private Matrix4x4 _buttonOffset;  // その条件での、コントローラーから見た手首ボタンの位置
     private uint _leftHand = OpenVR.k_unTrackedDeviceIndexInvalid;   // 左右のコントローラーの機器番号。
@@ -133,7 +139,7 @@ internal sealed partial class VrOverlay : IDisposable
     private readonly Stopwatch _frameClock = new();
     private bool _panelDirty;
     private DateTime _lastRender;
-    private readonly BitmapSource?[] _renderedThumbs = new BitmapSource?[VrPanel.MaxPageSize]; // 描いたときのサムネイル
+    private readonly BitmapSource?[] _renderedThumbs = new BitmapSource?[VrPanel.MaxVisibleCount]; // 描いたときのサムネイル
     private DateTime _lastPress;
     private DateTime _lastPanelMove;        // 最後にパネルを動かした (スティック / つかんで) 時刻
     private readonly byte[] _uploadedPanel = new byte[VrPanel.Width * VrPanel.Height * 4]; // 最後に SteamVR へ渡したパネルの画像
@@ -229,6 +235,10 @@ internal sealed partial class VrOverlay : IDisposable
             }
             _front = 0;
             _hidePending = false;
+            // パネルの画像は GPU で渡す。SteamVR が画面を出している GPU に合わせる (GPU が 2 つある PC で受け取れないことがあるため)
+            var adapter = -1;
+            OpenVR.System.GetDXGIOutputInfo(ref adapter);
+            _gpu = VrGpu.Create(adapter);
             CreateCursor();
 
             RefreshHands();
@@ -270,6 +280,9 @@ internal sealed partial class VrOverlay : IDisposable
         _button = 0;
         Array.Clear(_panels);
         _hidePending = false;
+        _gpu?.Dispose(); // オーバーレイを壊したあとなので、テクスチャを手放してよい
+        _gpu = null;
+        _scrollVelocity = 0;
         ResetRay();
         if (!_initialized) return;
         _initialized = false;
@@ -345,8 +358,9 @@ internal sealed partial class VrOverlay : IDisposable
             {
                 MovePanelByStick(dt);
                 MoveGrabbedPanel(dt);
+                ApplyScrollInertia(dt);
             }
-            UpdateRay();
+            UpdateRay(dt);
             if (_panelOpen) RefreshPanel();
         }
         catch (Exception ex)
@@ -531,7 +545,7 @@ internal sealed partial class VrOverlay : IDisposable
         var head = _poses[OpenVR.k_unTrackedDeviceIndex_Hmd];
         if (!head.bPoseIsValid) return;
         if (!_busy && _loadingTab is null) SetStatus("");
-        Reload(resetPage: true); // 閉じている間に PC 側で一覧やグループが変わっていることがあるので、開くたびに作り直す
+        Reload(resetScroll: true); // 閉じている間に PC 側で一覧やグループが変わっていることがあるので、開くたびに作り直す
 
         // 顔の正面 (水平方向) に、少し下げて置く
         var headWorld = ToNumerics(head.mDeviceToAbsoluteTracking);
@@ -653,6 +667,8 @@ internal sealed partial class VrOverlay : IDisposable
         foreach (var panel in _panels) OpenVR.Overlay.HideOverlay(panel);
         _hidePending = false;
         _panelGrabRay = -1;
+        _scrollVelocity = 0;
+        foreach (var ray in _rays) ray.Pressing = ray.Dragging = false; // 閉じたパネルを、離したときに押さないように
         _panelOpen = false;
         UploadButton(panelOpen: false);
     }
@@ -661,10 +677,10 @@ internal sealed partial class VrOverlay : IDisposable
 
     /// <summary>
     /// 今の見せ方で、並べるタイルを作り直す。
-    /// resetPage なら今着ているアバターのページから (タブや並びを変えたとき)、そうでなければ今のページのまま。
+    /// resetScroll なら今着ているアバターが一番上に来るように (タブや並びを変えたとき)、そうでなければ今のスクロール位置のまま。
     /// タブの一覧がまだ手元に無ければ、VRChat へ取りに行き、届いたら作り直す。
     /// </summary>
-    private void Reload(bool resetPage)
+    private void Reload(bool resetScroll)
     {
         if (_openGroup is not null && !_source.GroupExists(_openGroup)) _openGroup = null;
         var tab = _settings.VrTab;
@@ -680,7 +696,7 @@ internal sealed partial class VrOverlay : IDisposable
             _filter = null;
             _panel.Filter = null;
             _panel.SetChips([]);
-            _panel.SetItems([], resetPage: true);
+            _panel.SetItems([], resetScroll: true);
             LoadTabAsync(tab).Forget();
         }
         else
@@ -689,9 +705,11 @@ internal sealed partial class VrOverlay : IDisposable
             if (_filter is not null && !chips.Contains(_filter)) _filter = null; // 候補から消えた (タグを外したなど)
             _panel.Filter = _filter;
             _panel.SetChips(chips);
-            _panel.SetItems(_source.Arrange(items, View), resetPage);
+            _panel.SetItems(_source.Arrange(items, View), resetScroll);
         }
-        RequestPageThumbnails();
+        _scrollVelocity = 0;
+        _requestedThumbs = (-1, 0); // 並びが入れ替わったので、同じ範囲でも頼み直す
+        RequestVisibleThumbnails();
         _panelDirty = true;
     }
 
@@ -706,7 +724,7 @@ internal sealed partial class VrOverlay : IDisposable
             await _source.LoadAsync(tab);
             if (!_connected || !_panelOpen || _settings.VrTab != tab) return; // 待っている間に閉じた / タブを移った
             SetStatus("");
-            Reload(resetPage: true);
+            Reload(resetScroll: true);
         }
         catch (Exception ex)
         {
@@ -723,9 +741,17 @@ internal sealed partial class VrOverlay : IDisposable
         _panelDirty = true;
     }
 
-    private void RequestPageThumbnails()
+    /// <summary>
+    /// 見えているタイルと、その下の 1 段ぶんのサムネイルを取りに行く (スクロールして出てきたときに空白で待たせないように)。
+    /// スクロール中は毎フレーム呼ばれるので、前と同じ範囲なら何もしない。
+    /// </summary>
+    private void RequestVisibleThumbnails()
     {
-        for (var slot = 0; slot < _panel.PageItemCount; slot++) _source.RequestThumbnail(_panel.PageItem(slot));
+        var start = _panel.VisibleStart;
+        var count = Math.Min(_panel.VisibleCount + _panel.Columns, _panel.Items.Count - start);
+        if ((start, count) == _requestedThumbs) return;
+        _requestedThumbs = (start, count);
+        for (var i = start; i < start + count; i++) _source.RequestThumbnail(_panel.Items[i]);
     }
 
     private void Click(VrPanel.Hit hit)
@@ -742,7 +768,7 @@ internal sealed partial class VrOverlay : IDisposable
                 _openGroup = null;
                 if (_loadingTab is null && !_busy) SetStatus("");
                 _source.SaveSettings();
-                Reload(resetPage: true);
+                Reload(resetScroll: true);
                 break;
             case VrPanel.HitKind.SortRecent:
             case VrPanel.HitKind.SortName:
@@ -750,7 +776,7 @@ internal sealed partial class VrOverlay : IDisposable
                 if (_settings.VrSortKey == key) return;
                 _settings.VrSortKey = key;
                 _source.SaveSettings();
-                Reload(resetPage: true);
+                Reload(resetScroll: true);
                 break;
             case VrPanel.HitKind.ColumnsLess:
             case VrPanel.HitKind.ColumnsMore:
@@ -758,17 +784,17 @@ internal sealed partial class VrOverlay : IDisposable
                     VrPanel.MinColumns, VrPanel.MaxColumns);
                 _source.SaveSettings();
                 _panel.SetColumns(_settings.VrColumns);
-                RequestPageThumbnails();
+                RequestVisibleThumbnails();
                 break;
             case VrPanel.HitKind.GroupToggle:
                 _settings.VrGroupView = !_settings.VrGroupView;
                 _openGroup = null;
                 _source.SaveSettings();
-                Reload(resetPage: true);
+                Reload(resetScroll: true);
                 break;
             case VrPanel.HitKind.Chip:
                 _filter = hit.Index <= 0 || hit.Index > _panel.Chips.Count ? null : _panel.Chips[hit.Index - 1];
-                Reload(resetPage: true);
+                Reload(resetScroll: true);
                 break;
             case VrPanel.HitKind.ChipPrev:
             case VrPanel.HitKind.ChipNext:
@@ -777,14 +803,9 @@ internal sealed partial class VrOverlay : IDisposable
             case VrPanel.HitKind.Back:
                 var group = _openGroup;
                 _openGroup = null;
-                Reload(resetPage: false);
-                _panel.ShowPageOf(t => t.Group == group); // 開いていたグループのタイルが見えるところへ
-                RequestPageThumbnails();
-                break;
-            case VrPanel.HitKind.Prev:
-            case VrPanel.HitKind.Next:
-                _panel.TurnPage(hit.Kind == VrPanel.HitKind.Prev ? -1 : 1);
-                RequestPageThumbnails();
+                Reload(resetScroll: false);
+                _panel.ShowItemOf(t => t.Group == group); // 開いていたグループのタイルが見えるところへ
+                RequestVisibleThumbnails();
                 break;
             case VrPanel.HitKind.Tile when hit.Index >= 0 && hit.Index < _panel.Items.Count:
                 var tile = _panel.Items[hit.Index];
@@ -792,7 +813,7 @@ internal sealed partial class VrOverlay : IDisposable
                 {
                     // グループは開いて中身を並べる (着替えるのは中のアバターを選んでから)
                     _openGroup = g;
-                    Reload(resetPage: true);
+                    Reload(resetScroll: true);
                 }
                 else if (_panel.Selected == hit.Index)
                 {
@@ -823,13 +844,13 @@ internal sealed partial class VrOverlay : IDisposable
         finally { _busy = false; }
         if (!_connected || !_panelOpen) return;
         SetStatus(ok ? $"アバターチェンジ完了: {item.Name}" : $"アバターチェンジ失敗: {item.Name}", error: !ok);
-        // 「今着ている」の印を付け直す (グループのタイルにも)。ページはそのまま
-        if (ok) Reload(resetPage: false);
+        // 「今着ている」の印を付け直す (グループのタイルにも)。スクロール位置はそのまま
+        if (ok) Reload(resetScroll: false);
         // 着替えても閉じない。見比べながら続けて着替えられるよう、閉じるのは利用者の操作 (閉じるボタン / 手首ボタン) だけ
     }
 
     /// <summary>
-    /// 表示が変わったとき (ホバー・ページ・サムネイルの到着など) だけ描き直して渡す。毎フレーム呼ばれるので、
+    /// 表示が変わったとき (ホバー・スクロール・サムネイルの到着など) だけ描き直して渡す。毎フレーム呼ばれるので、
     /// 変わっていないかの確認はメモリを確保せずに行い、続けて起きる変化は間隔を空けてまとめる。
     /// </summary>
     private void RefreshPanel()
@@ -842,17 +863,18 @@ internal sealed partial class VrOverlay : IDisposable
             _hidePending = false;
         }
         if (MovingPanel) return; // 止まってからまとめて描き直す
-        var interval = _panelDirty ? HoverRenderInterval : ThumbnailsChanged() ? ThumbRenderInterval : (TimeSpan?)null;
+        var interval = _panelDirty ? (_gpu is not null ? GpuRenderInterval : RawRenderInterval)
+            : ThumbnailsChanged() ? ThumbRenderInterval : (TimeSpan?)null;
         if (interval is null || DateTime.UtcNow - _lastRender < interval) return;
         RenderPanel();
     }
 
-    /// <summary>描いたあとに、今のページのサムネイルが届いた (差し替わった) か。</summary>
+    /// <summary>描いたあとに、見えているタイルのサムネイルが届いた (差し替わった) か。</summary>
     private bool ThumbnailsChanged()
     {
         for (var slot = 0; slot < _renderedThumbs.Length; slot++)
         {
-            var now = slot < _panel.PageItemCount ? _panel.PageItem(slot).Thumbnail : null;
+            var now = slot < _panel.VisibleCount ? _panel.VisibleItem(slot).Thumbnail : null;
             if (!ReferenceEquals(now, _renderedThumbs[slot])) return true;
         }
         return false;
@@ -864,7 +886,19 @@ internal sealed partial class VrOverlay : IDisposable
         var rgba = _panel.RenderRgba();
         if (CopyIfChanged(rgba, _uploadedPanel, _uploadedPanelValid))
         {
-            // 見えていない方に渡してから入れ替える (見えている方を差し替えると、途中で一瞬抜けてちらつく)
+            // GPU で渡せるなら、見せている方にそのまま渡す (SteamVR は新しい画像の用意ができるまで前の画像を出し続けるので抜けない)
+            if (_gpu is not null)
+            {
+                if (_gpu.Upload(_panels[_front], rgba, VrPanel.Width, VrPanel.Height))
+                {
+                    FinishRender();
+                    return;
+                }
+                // 渡せなかった (GPU の不調など)。以後はこの接続の間、生データ + 2 枚の入れ替えで渡す
+                _gpu.Dispose();
+                _gpu = null;
+            }
+            // 見えていない方に渡してから入れ替える (見えている方を生データで差し替えると、途中で一瞬抜けてちらつく)
             var back = _front ^ 1;
             Upload(_panels[back], rgba, VrPanel.Width, VrPanel.Height, () => _panel.Render());
             _uploadedPanelValid = true;
@@ -880,8 +914,14 @@ internal sealed partial class VrOverlay : IDisposable
             }
             _front = back; // 閉じているときは入れ替えるだけ (開くときに _front を出す)
         }
+        FinishRender();
+    }
+
+    /// <summary>描いたときの状態を覚えておく (次に描き直しが要るかの判断に使う)。</summary>
+    private void FinishRender()
+    {
         for (var slot = 0; slot < _renderedThumbs.Length; slot++)
-            _renderedThumbs[slot] = slot < _panel.PageItemCount ? _panel.PageItem(slot).Thumbnail : null;
+            _renderedThumbs[slot] = slot < _panel.VisibleCount ? _panel.VisibleItem(slot).Thumbnail : null;
         _panelDirty = false;
         _lastRender = DateTime.UtcNow;
     }
@@ -919,7 +959,7 @@ internal sealed partial class VrOverlay : IDisposable
     internal VrPanel PanelForTest => _panel;
     /// <summary>検証用: パネルを押したのと同じ処理を行う (画像の座標で)。</summary>
     internal void ClickForTest(double x, double y) => Click(_panel.HitTest(x, y));
-    internal void ReloadForTest() => Reload(resetPage: true);
+    internal void ReloadForTest() => Reload(resetScroll: true);
     internal void SetOpenForTest(bool open) { _panelOpen = open; _connected = open; }
     /// <summary>検証用: パネル 1 回ぶんの描き直し (SteamVR に渡す直前まで) を行い、渡すバイト数を返す。</summary>
     internal int RenderPanelBytesForTest() => _panel.RenderRgba().Length;

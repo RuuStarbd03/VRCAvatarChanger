@@ -21,7 +21,9 @@ internal sealed partial class VrOverlay
     private const float PanelCursorWidthM = 0.016f;
     private const float ButtonCursorWidthM = 0.007f;
     private const float RayButtonSlack = 1.6f;     // ボタンは小さいので、見た目より少し広く当たりを取る
-    private const float StickPageThreshold = 0.7f; // パネルを指してスティックをこれ以上倒すと、ページをめくる
+    private const float StickScrollSpeed = 1400f;  // パネルを指してスティックをいっぱいに倒したときのスクロールの速さ (px/秒)
+    private const double DragThreshold = 14;       // トリガーを引いたままこれ以上 (px) 動かしたら、押すのではなくドラッグでスクロール
+    private const double MaxFlingSpeed = 4000;     // 離したときに流れる速さの上限 (px/秒)
     private const ushort PressPulseMicroSec = 2500;  // 押したときの振動の長さ (SteamVR の 1 回の上限は 3999µs)
     private const float MinGrabReachM = 0.1f;      // つかんだパネルは、手からこの距離より近くには寄せない
 
@@ -39,7 +41,14 @@ internal sealed partial class VrOverlay
         public float CursorWidth;
         public bool TriggerWasDown;
         public bool GripWasDown;
-        public bool StickWasTilted;
+        // タイルの窓でトリガーを引いた: 動かさずに離せば押す、動かせばドラッグでスクロール
+        public bool Pressing;
+        public bool Dragging;
+        public VrPanel.Hit PressHit;
+        public double PressY;          // 引いたときの画像の Y と、そのときのスクロール位置
+        public double PressScroll;
+        public double LastY;
+        public double Velocity;        // ドラッグの速さ (スクロール位置の px/秒)。離したときに流す
     }
 
     private readonly HandRay[] _rays = [new(), new()];
@@ -86,11 +95,12 @@ internal sealed partial class VrOverlay
     }
 
     /// <summary>
-    /// 左右それぞれのレイを手首ボタンとパネルに当てて、当たった所にカーソルを出す。
-    /// どちらの手でも、トリガーを引いた瞬間に押し、パネルを指したままスティックを上下に倒すとページをめくり、
-    /// パネルを指してグリップを握るとつかむ。
+    /// 左右それぞれのレイを手首ボタンとパネルに当てて、当たった所にカーソルを出す。どちらの手でも:
+    /// ・トリガーで押す (タイルの窓では、動かさずに離したら押す / 引いたまま上下に動かすとドラッグでスクロール)
+    /// ・パネルを指したままスティックを上下に倒すとスクロール
+    /// ・パネルを指してグリップを握るとつかむ
     /// </summary>
-    private void UpdateRay()
+    private void UpdateRay(float dt)
     {
         var buttonHand = RightHanded ? _rightHand : _leftHand;
         for (var i = 0; i < _rays.Length; i++)
@@ -134,7 +144,7 @@ internal sealed partial class VrOverlay
         {
             var ray = _rays[i];
             var d = ray.Device;
-            if (!IsValid(d)) { ray.TriggerWasDown = ray.GripWasDown = ray.StickWasTilted = false; continue; }
+            if (!IsValid(d)) { ray.TriggerWasDown = ray.GripWasDown = ray.Pressing = ray.Dragging = false; continue; }
             var state = new VRControllerState_t();
             if (!OpenVR.System.GetControllerState(d, ref state, ControllerStateSize)) continue;
             var trigger = (state.ulButtonPressed & (1UL << (int)EVRButtonId.k_EButton_SteamVR_Trigger)) != 0;
@@ -144,10 +154,24 @@ internal sealed partial class VrOverlay
             ray.TriggerWasDown = trigger;
             ray.GripWasDown = grip;
 
-            var stickY = StickY(d, state);
-            var tilted = MathF.Abs(stickY) >= StickPageThreshold;
-            var flicked = tilted && !ray.StickWasTilted;
-            ray.StickWasTilted = tilted;
+            if (ray.Pressing)
+            {
+                // タイルの窓で引いたトリガー: 引いている間は動きを見て、離したときに押すかスクロールを流すか決める
+                if (trigger) { TrackDrag(ray, dt); continue; }
+                ray.Pressing = false;
+                if (ray.Dragging)
+                {
+                    ray.Dragging = false;
+                    _scrollVelocity = Math.Clamp(ray.Velocity, -MaxFlingSpeed, MaxFlingSpeed);
+                }
+                else if (ray.PressHit != default)
+                {
+                    Buzz(d);
+                    var hit = ray.PressHit;
+                    Press(() => Click(hit));
+                }
+                continue;
+            }
 
             if (i == _panelGrabRay)
             {
@@ -167,8 +191,22 @@ internal sealed partial class VrOverlay
             {
                 _activeRay = i;
                 var hit = _panel.HitTest(ray.At.X, ray.At.Y);
-                if (hit != default) Buzz(d); // 何も無い所を押したときは震わせない
-                Press(() => Click(hit));
+                if (VrPanel.InGrid(ray.At.X, ray.At.Y))
+                {
+                    // タイルの窓: まだ押さない (離すまでに動かしたらドラッグ)。流れているスクロールは止める
+                    ray.Pressing = true;
+                    ray.Dragging = false;
+                    ray.PressHit = hit;
+                    ray.PressY = ray.LastY = ray.At.Y;
+                    ray.PressScroll = _panel.ScrollY;
+                    ray.Velocity = 0;
+                    _scrollVelocity = 0;
+                }
+                else
+                {
+                    if (hit != default) Buzz(d); // 何も無い所を押したときは震わせない
+                    Press(() => Click(hit));
+                }
             }
             else if (gripped && ray.Target == RayTarget.Panel && !GrabbingPanel)
             {
@@ -177,11 +215,62 @@ internal sealed partial class VrOverlay
                 _panelGrabOffset = Vector3.Transform(_panelWorld.Translation, Inverse(ToNumerics(_poses[d].mDeviceToAbsoluteTracking)));
                 Buzz(d);
             }
-            // グリップを握っているときのスティックはパネルの距離 (MovePanelByStick) なので、めくらない
-            else if (flicked && ray.Target == RayTarget.Panel && !grip)
-                Click(new VrPanel.Hit(stickY > 0 ? VrPanel.HitKind.Prev : VrPanel.HitKind.Next)); // 上に倒すと前のページ
+            // グリップを握っているときのスティックはパネルの距離 (MovePanelByStick) なので、スクロールしない
+            else if (ray.Target == RayTarget.Panel && !grip)
+            {
+                var tilt = StickY(d, state);
+                if (MathF.Abs(tilt) >= StickDeadZone)
+                {
+                    // 上に倒すと上へ (前のタイルへ)。遊びの端から 0 で立ち上がるようにする
+                    var amount = (MathF.Abs(tilt) - StickDeadZone) / (1 - StickDeadZone) * MathF.Sign(tilt);
+                    _scrollVelocity = 0;
+                    if (_panel.ScrollBy(-amount * StickScrollSpeed * dt)) OnScrolled();
+                }
+            }
         }
     }
+
+    /// <summary>トリガーを引いたまま動かしているレイ: 一定以上動いたらドラッグにして、指している所に並びをついてこさせる。</summary>
+    private void TrackDrag(HandRay ray, float dt)
+    {
+        if (ray.Target != RayTarget.Panel) return; // パネルの外に出ている間は止めておく (戻ってきたら続ける)
+        var y = ray.At.Y;
+        if (!ray.Dragging && Math.Abs(y - ray.PressY) > DragThreshold)
+        {
+            ray.Dragging = true;
+            // 押そうとしていたタイルを選ばないよう、ここからは押す扱いにしない
+            ray.PressHit = default;
+        }
+        if (ray.Dragging)
+        {
+            if (dt > 0) ray.Velocity = ray.Velocity * 0.5 + -(y - ray.LastY) / dt * 0.5; // 離した瞬間の揺れで流れ方が暴れないよう、ならす
+            if (_panel.SetScroll(ray.PressScroll - (y - ray.PressY))) OnScrolled();
+        }
+        ray.LastY = y;
+    }
+
+    /// <summary>ドラッグを離したあとの、流れるスクロール (だんだん止まる)。</summary>
+    private void ApplyScrollInertia(float dt)
+    {
+        if (_scrollVelocity == 0) return;
+        if (Math.Abs(_scrollVelocity) < 30 || !_panel.ScrollBy(_scrollVelocity * dt))
+        {
+            _scrollVelocity = 0; // 遅くなった / 端に着いた
+            return;
+        }
+        _scrollVelocity *= Math.Exp(-ScrollFriction * dt);
+        OnScrolled();
+    }
+
+    /// <summary>スクロールしたあと: 描き直しを頼み、新しく見えたタイルのサムネイルを取りに行く。</summary>
+    private void OnScrolled()
+    {
+        _panelDirty = true;
+        RequestVisibleThumbnails();
+    }
+
+    /// <summary>ドラッグしているか、離したあとに流れているか (この間はホバーを出さない)。</summary>
+    private bool Scrolling => _scrollVelocity != 0 || _rays.Any(r => r.Dragging);
 
     /// <summary>
     /// つかんでいるパネルを手について動かす。面はいつも顔の方へ向ける (手首をひねっても傾かない)。
@@ -237,6 +326,7 @@ internal sealed partial class VrOverlay
     /// <summary>レイの当たっている所をパネルのホバーにする。パネルを動かしている間は変えない (ちらつくため)。</summary>
     private void UpdatePanelHoverByRay(VrPanel.Hit hover)
     {
+        if (Scrolling) hover = default; // 並びが動いている間は、レイの下のタイルが次々に変わってうるさいので出さない
         if (!_panelOpen || MovingPanel || hover == _panel.Hover) return;
         _panel.Hover = hover;
         _panelDirty = true;

@@ -4,6 +4,8 @@
     <OutputType>WinExe</OutputType>
     <TargetFramework>net10.0-windows</TargetFramework>
     <Nullable>enable</Nullable>
+    <!-- VrGpu.cs: Direct3D 11 の COM を関数ポインタで直接呼ぶため -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWPF>true</UseWPF>
     <!-- WinForms は使わない (トレイは TrayIcon.cs が Shell_NotifyIcon を直接呼ぶ)。

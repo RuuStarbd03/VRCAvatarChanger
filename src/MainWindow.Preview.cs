@@ -765,8 +765,8 @@ public partial class MainWindow
             var panel = vr.PanelForTest;
             vr.SetOpenForTest(true);
             vr.ReloadForTest();
-            for (var i = 0; i < 40 && panel.PageItems.Any(p => p.ThumbnailUrl is not null && p.Thumbnail is null); i++) await Task.Delay(100);
-            Expect("今着ているアバターのページから開く", panel.PageItems.Any(p => p.IsCurrent), $"page={panel.Page + 1}/{panel.PageCount}");
+            for (var i = 0; i < 40 && panel.VisibleItems.Any(p => p.ThumbnailUrl is not null && p.Thumbnail is null); i++) await Task.Delay(100);
+            Expect("今着ているアバターが見える所から開く", panel.VisibleItems.Any(p => p.IsCurrent), $"scroll={panel.ScrollY:F0}/{panel.MaxScroll:F0}");
             Expect("グループは 1 枚にまとまる", panel.Items.Count == _allItems.Count - 2 && panel.Items.Count(t => t.IsGroup) == 1,
                 $"tiles={panel.Items.Count}");
             Expect("絞り込みの候補はタグ", panel.Chips.SequenceEqual(["ラフ", "改変"]) || panel.Chips.SequenceEqual(["改変", "ラフ"]), string.Join(",", panel.Chips));
@@ -783,32 +783,63 @@ public partial class MainWindow
             Expect("チップ: すべて", panel.HitTest(40, 154) is { Kind: VrPanel.HitKind.Chip, Index: 0 });
             Expect("タイルの隙間は何もしない", panel.HitTest(219, 269).Kind == VrPanel.HitKind.None);
 
-            // 名前順: 先頭ページの左上・右下
+            // 名前順: 先頭の左上
             vr.ClickForTest(240, 102);
             Expect("名前順に切り替わる", _settings.VrSortKey == "name_asc" && panel.SortKey == "name_asc");
-            panel.TurnPage(-panel.Page);
+            panel.SetScroll(0);
             var first = panel.HitTest(121, 269);
             Expect("左上のタイル", first is { Kind: VrPanel.HitKind.Tile, Index: 0 }, first.ToString());
-            var lastSlot = panel.PageItemCount - 1;
-            var lastRect = panel.TileRect(lastSlot);
-            var last = panel.HitTest(lastRect.X + lastRect.Width / 2, lastRect.Y + lastRect.Height / 2);
-            Expect("ページの最後のタイル", last.Kind == VrPanel.HitKind.Tile && last.Index == lastSlot, last.ToString());
-            Expect("先頭ページでは「前へ」は押せない", panel.HitTest(88, 770).Kind == VrPanel.HitKind.None);
-            Expect(panel.PageCount > 1 ? "次へ" : "1 ページなら「次へ」は押せない",
-                panel.HitTest(552, 770).Kind == (panel.PageCount > 1 ? VrPanel.HitKind.Next : VrPanel.HitKind.None));
 
-            // 列数: 3 列では減らせない。増やすと 1 ページの数が増え、設定にも残る
+            // 窓に収まる数ならスクロールしない
+            Expect($"{panel.Items.Count} 枚なら窓に収まり、スクロールしない", panel.MaxScroll == 0 && !panel.ScrollBy(100),
+                $"content={panel.ContentHeight:F0}");
+
+            // スクロール (たくさん並べた別のパネルで): 窓に収まらないぶんは送れる。端で止まり、窓の外にはみ出したタイルは押せない
+            {
+                var tall = new VrPanel();
+                tall.SetItems(Enumerable.Range(0, 40).Select(i => new AvatarItem(new Avatar { Id = $"avtr_scroll_{i}", Name = $"Scroll {i}" })).ToList(), resetScroll: true);
+                Expect("40 体は窓に収まらないのでスクロールできる", tall.MaxScroll > 0, $"content={tall.ContentHeight:F0} max={tall.MaxScroll:F0}");
+                var firstRect = tall.TileRect(0);
+                Expect("上の端より上には送れない", !tall.ScrollBy(-50) && tall.ScrollY == 0);
+                tall.SetScroll(firstRect.Height / 2);
+                Expect("スクロールするとタイルが上へ動く", tall.TileRect(0).Y == firstRect.Y - firstRect.Height / 2);
+                Expect("窓の上にはみ出した部分は押せない", tall.HitTest(121, 186 - 4).Kind != VrPanel.HitKind.Tile);
+                Expect("窓に残っている部分は押せる", tall.HitTest(121, 190) is { Kind: VrPanel.HitKind.Tile, Index: 0 });
+                Expect("ドラッグできるのはタイルの窓の中だけ", VrPanel.InGrid(121, 300) && !VrPanel.InGrid(121, 102) && !VrPanel.InGrid(121, 772));
+                Save(tall.Render(), "panel-scroll-middle.png");
+                tall.SetScroll(1e9);
+                Expect("下の端で止まる", tall.ScrollY == tall.MaxScroll);
+                var lastIndex = tall.Items.Count - 1;
+                var lastRect = tall.TileRect(lastIndex);
+                var last = tall.HitTest(lastRect.X + lastRect.Width / 2, lastRect.Y + lastRect.Height / 2);
+                Expect("一番下までスクロールすると最後のタイルを押せる", last is { Kind: VrPanel.HitKind.Tile } && last.Index == lastIndex, last.ToString());
+                Expect("最後のタイルは窓の下の端に揃う", Math.Abs(lastRect.Bottom - 744) < 0.5, $"bottom={lastRect.Bottom:F1}");
+                Expect("見えている範囲に最後のタイルが入る", tall.VisibleStart + tall.VisibleCount == tall.Items.Count);
+                Save(tall.Render(), "panel-scroll-bottom.png");
+                tall.ScrollTo(lastIndex);
+                Expect("最後のタイルへ送っても下の端で止まる", tall.ScrollY == tall.MaxScroll);
+                tall.ScrollTo(13); // 5 段目
+                Expect("指定したタイルの段が一番上に来る", tall.VisibleStart == 12 && Math.Abs(tall.TileRect(12).Y - 186) < 0.5, $"start={tall.VisibleStart}");
+                tall.SetColumns(5);
+                Expect("列数を変えても、一番上に見えていたタイルは見えたまま", tall.VisibleStart <= 12 && 12 < tall.VisibleStart + tall.VisibleCount,
+                    $"start={tall.VisibleStart} count={tall.VisibleCount}");
+                tall.Selected = 3;
+                tall.SetItems(tall.Items.ToList(), resetScroll: false);
+                Expect("並びを入れ替えると選択は外れる", tall.Selected == -1);
+            }
+
+            // 列数: 3 列では減らせない。増やすと設定にも残る。どの列数でもタイルは横に収まる
             Expect("3 列では「−」は押せない", panel.HitTest(302, 102).Kind == VrPanel.HitKind.None);
             vr.ClickForTest(410, 102);
-            Expect("「+」で 4 列", _settings.VrColumns == 4 && panel.Columns == 4 && panel.PageSize > 9, $"columns={panel.Columns} page={panel.PageSize}");
+            Expect("「+」で 4 列", _settings.VrColumns == 4 && panel.Columns == 4, $"columns={panel.Columns}");
             vr.ClickForTest(302, 102);
-            Expect("「−」で 3 列に戻る", _settings.VrColumns == 3 && panel.Columns == 3 && panel.PageSize == 9, $"columns={panel.Columns} page={panel.PageSize}");
+            Expect("「−」で 3 列に戻る", _settings.VrColumns == 3 && panel.Columns == 3, $"columns={panel.Columns}");
             for (var cols = 4; cols <= VrPanel.MaxColumns; cols++)
             {
                 panel.SetColumns(cols);
-                var bottom = panel.TileRect(panel.PageSize - 1);
-                Expect($"{cols} 列: タイルがパネルに収まる ({panel.PageSize} 体/ページ)", bottom.Right <= VrPanel.Width - 27 && bottom.Bottom <= 710,
-                    $"right={bottom.Right:F0} bottom={bottom.Bottom:F0}");
+                var right = panel.TileRect(cols - 1);
+                Expect($"{cols} 列: タイルが横に収まる", right.Right <= VrPanel.Width - 27, $"right={right.Right:F0}");
+                Expect($"{cols} 列: 見えている数は覚えておく配列に収まる", panel.VisibleCount <= VrPanel.MaxVisibleCount, $"{panel.VisibleCount}/{VrPanel.MaxVisibleCount}");
             }
             Expect("10 列では「+」は押せない", panel.HitTest(410, 102).Kind == VrPanel.HitKind.None);
             Save(panel.Render(), "panel-10cols.png");
@@ -816,25 +847,24 @@ public partial class MainWindow
             Save(panel.Render(), "panel-5cols.png");
             panel.SetColumns(3);
 
-            // グループのタイルを押すと中身だけになり、「戻る」で元のページへ
+            // グループのタイルを押すと中身だけになり、「戻る」でそのグループが見える所へ
             (double X, double Y) TileCenter(int index)
             {
-                var r = panel.TileRect(index - panel.PageStart);
+                var r = panel.TileRect(index);
                 return (r.X + r.Width / 2, r.Y + r.Height / 2);
             }
-            panel.ShowPageOf(t => t.IsGroup);
+            panel.ShowItemOf(t => t.IsGroup);
             var groupIndex = panel.Items.ToList().FindIndex(t => t.IsGroup);
-            var groupPage = panel.Page;
             var (gx, gy) = TileCenter(groupIndex);
             vr.ClickForTest(gx, gy);
             Expect("グループを開くと中身だけ", panel.OpenGroupName == "テストグループ" && panel.Items.Count == 3 && panel.Items.All(t => !t.IsGroup),
                 $"open={panel.OpenGroupName} tiles={panel.Items.Count}");
             Expect("グループを開いている間は「戻る」", panel.HitTest(60, 154).Kind == VrPanel.HitKind.Back);
-            for (var i = 0; i < 20 && panel.PageItems.Any(p => p.ThumbnailUrl is not null && p.Thumbnail is null); i++) await Task.Delay(100);
+            for (var i = 0; i < 20 && panel.VisibleItems.Any(p => p.ThumbnailUrl is not null && p.Thumbnail is null); i++) await Task.Delay(100);
             Save(panel.Render(), "panel-group-open.png");
             vr.ClickForTest(60, 154);
-            Expect("戻るとグループのタイルのページ", panel.OpenGroupName is null && panel.Page == groupPage && panel.PageItems.Any(t => t.IsGroup));
-            for (var i = 0; i < 20 && panel.PageItems.Any(p => p.ThumbnailUrl is not null && p.Thumbnail is null); i++) await Task.Delay(100);
+            Expect("戻るとグループのタイルが見える", panel.OpenGroupName is null && panel.VisibleItems.Any(t => t.IsGroup));
+            for (var i = 0; i < 20 && panel.VisibleItems.Any(p => p.ThumbnailUrl is not null && p.Thumbnail is null); i++) await Task.Delay(100);
             Save(panel.Render(), "panel-group-tile.png");
 
             // グループ化をオフにすると、中身も 1 体ずつ並ぶ
@@ -856,7 +886,7 @@ public partial class MainWindow
             vr.ClickForTest(288, 44);
             Expect("お気に入りタブ", _settings.VrTab == AvatarTab.Favorites && panel.Filter is null && panel.Items.Count > 0
                 && panel.Chips.SequenceEqual(["お気に入り 1", "お気に入り 2"]), $"tiles={panel.Items.Count} chips={string.Join(",", panel.Chips)}");
-            for (var i = 0; i < 20 && panel.PageItems.Any(p => p.ThumbnailUrl is not null && p.Thumbnail is null); i++) await Task.Delay(100);
+            for (var i = 0; i < 20 && panel.VisibleItems.Any(p => p.ThumbnailUrl is not null && p.Thumbnail is null); i++) await Task.Delay(100);
             Save(panel.Render(), "panel-favorites.png");
             // タブ: パブリック (プレビューでは空)
             vr.ClickForTest(461, 44);
@@ -866,8 +896,8 @@ public partial class MainWindow
             Expect("自分のタブに戻る", _settings.VrTab == AvatarTab.Own && panel.Items.Count > 0);
 
             // アバターのタイルは 2 回押しでチェンジ: 1 回目は選ぶだけ (2 回目は本当に着替えてしまうので、ここでは押さない)
-            panel.TurnPage(-panel.Page);
-            var singles = Enumerable.Range(0, panel.PageItemCount).Where(i => !panel.PageItem(i).IsGroup).Take(2).ToList();
+            panel.SetScroll(0);
+            var singles = Enumerable.Range(0, panel.VisibleCount).Where(i => !panel.VisibleItem(i).IsGroup).Take(2).ToList();
             var (s1x, s1y) = TileCenter(singles[0]);
             vr.ClickForTest(s1x, s1y);
             Expect("1 回目はタイルを選ぶだけ", panel.Selected == singles[0] && panel.Status.Length == 0, $"selected={panel.Selected}");
@@ -875,16 +905,15 @@ public partial class MainWindow
             var (s2x, s2y) = TileCenter(singles[1]);
             vr.ClickForTest(s2x, s2y);
             Expect("別のタイルを押すと選び直す", panel.Selected == singles[1]);
-            if (panel.PageCount > 1)
-            {
-                panel.TurnPage(1);
-                Expect("ページをめくると選択は外れる", panel.Selected == -1);
-                panel.TurnPage(-1);
-            }
+            panel.ScrollBy(40);
+            Expect("スクロールしても選んだままにする", panel.Selected == singles[1]);
+            vr.ClickForTest(100, 102); // 名前順 → 最近使った順
+            Expect("並び順を変えると選択は外れる", panel.Selected == -1 && _settings.VrSortKey == "recent_asc");
+            panel.SetScroll(0);
 
             panel.Status = "アバターチェンジ失敗: Kikyo 9";
             panel.StatusIsError = true;
-            panel.Hover = new VrPanel.Hit(VrPanel.HitKind.Tile, panel.PageStart + 4);
+            panel.Hover = new VrPanel.Hit(VrPanel.HitKind.Tile, panel.VisibleStart + 4);
             Save(panel.Render(), "panel-hover-error.png");
             panel.Status = "";
             panel.StatusIsError = false;
@@ -965,12 +994,19 @@ public partial class MainWindow
                 $"{btn[inner]:X2} {btn[inner + 1]:X2} {btn[inner + 2]:X2} {btn[inner + 3]:X2}");
             Expect("手首ボタンの画像は作り直さない", ReferenceEquals(btn, VrPanel.ButtonRgba(panelOpen: false)));
 
+            // GPU (Direct3D 11) でパネルの画像を渡す準備: デバイスとテクスチャを作って中身を書けるか (SteamVR に渡す所だけは試せない)
+            using (var gpu = VrGpu.Create(-1))
+            {
+                Expect("GPU: デバイスを作れる", gpu is not null);
+                Expect("GPU: パネルの画像をテクスチャに書ける", gpu?.UpdateForTest(panel.RenderRgba(), VrPanel.Width, VrPanel.Height) == true);
+            }
+
             // 同じ画像なら SteamVR に渡し直さない (ちらつき対策)
             var lastSent = new byte[VrPanel.Width * VrPanel.Height * 4];
             var frame = panel.RenderRgba();
             Expect("初回は渡す", VrOverlay.CopyIfChanged(frame, lastSent, lastValid: false));
             Expect("同じ画像は渡さない", !VrOverlay.CopyIfChanged(panel.RenderRgba(), lastSent, lastValid: true));
-            panel.Hover = new VrPanel.Hit(VrPanel.HitKind.Tile, panel.PageStart);
+            panel.Hover = new VrPanel.Hit(VrPanel.HitKind.Tile, panel.VisibleStart);
             Expect("ホバーが変われば渡す", VrOverlay.CopyIfChanged(panel.RenderRgba(), lastSent, lastValid: true));
             panel.Hover = default;
             Expect("繋ぎ直したあとは同じ画像でも渡す", VrOverlay.CopyIfChanged(panel.RenderRgba(), lastSent, lastValid: false));

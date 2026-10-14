@@ -14,10 +14,10 @@ namespace VRCAvatarChanger;
 ///
 /// PC の画面を触らずに VR の中だけで探せるよう、タブ (自分 / お気に入り / パブリック)・並び順・
 /// グループ化・絞り込み (お気に入りグループ / タグ) をパネルの中で切り替えられる。
-/// 文字入力や細かいスクロールはしにくいので、検索は置かず、タイルをページ送りで見せる。
-/// 列数 (3〜10) もパネルの中で変えられる。段の数は列数から、パネルに収まるだけ決まる。
+/// 文字入力はしにくいので検索は置かず、タイルは縦にスクロールして見せる (ScrollY。動かし方は VrOverlay が決める)。
+/// 列数 (3〜10) もパネルの中で変えられる。
 ///
-/// ホバーやサムネイルの到着のたびに描き直すので、描画先の画像と SteamVR に渡す配列 (2MB) は使い回す
+/// ホバー・スクロール・サムネイルの到着のたびに描き直すので、描画先の画像と SteamVR に渡す配列 (2MB) は使い回す
 /// (毎回作ると大きなオブジェクトとして積み上がり、GC の負担になる)。
 /// </summary>
 internal sealed class VrPanel
@@ -53,13 +53,16 @@ internal sealed class VrPanel
     private const double ChipGap = 8;
     private const double ChipArrowWidth = 40;
     private static readonly Rect BackRect = new(Pad, ChipTop, 110, ChipHeight);
-    // タイル (大きさは列数で決まる: GridLayout)
+    // タイルを並べる窓 (この中をスクロールする。タイルの大きさは列数で決まる: GridLayout)
     private const double GridTop = 186;
-    // 下: 状態の一言 + ページ送り
-    private const double StatusY = 722;
-    private const double GridBottom = StatusY - 14;
-    private static readonly Rect PrevRect = new(Pad, 748, 120, 44);
-    private static readonly Rect NextRect = new(Width - Pad - 120, 748, 120, 44);
+    private const double GridBottom = 744;
+    public const double ViewportHeight = GridBottom - GridTop;
+    // 下: 状態の一言
+    private const double StatusY = 772;
+    // スクロールの位置を示すつまみ (タイルの右の余白に置く)
+    private const double ScrollBarX = Width - Pad + 10;
+    private const double ScrollBarWidth = 5;
+    private const double MinThumbHeight = 36;
 
     // 配色 (VR では周りが暗いことが多いので、テーマに関係なく暗い配色で描く)
     private static readonly Brush CardBrush = Frozen(Color.FromArgb(0xF2, 0x1B, 0x1C, 0x21));
@@ -80,7 +83,8 @@ internal sealed class VrPanel
     private static Pen AccentThinPen = new(); // 小さいタイルの「今着ている」枠
     private static readonly Pen SelectedPen = FrozenPen(TextBrush, 4);      // 1 回押して選んだタイルの枠
     private static readonly Pen SelectedThinPen = FrozenPen(TextBrush, 2.5);
-    private static readonly Pen EdgePen =FrozenPen(Frozen(Color.FromArgb(0x40, 0xFF, 0xFF, 0xFF)), 2);
+    private static readonly Brush ScrollThumbBrush = Frozen(Color.FromArgb(0x66, 0xFF, 0xFF, 0xFF));
+    private static readonly Pen EdgePen = FrozenPen(Frozen(Color.FromArgb(0x40, 0xFF, 0xFF, 0xFF)), 2);
     // 手首ボタン: 塗りつぶさず、暗い半透明の下地に細い輪だけ色を付ける (腕時計の横で主張しすぎないように)
     private static readonly Brush ButtonBackBrush = Frozen(Color.FromArgb(0xD9, 0x1B, 0x1C, 0x21));
     private static Pen ButtonRingPen = new();
@@ -102,7 +106,7 @@ internal sealed class VrPanel
     private const string GlyphPlus = "\uE710";
 
     /// <summary>押された場所の意味。Index はタブ / チップ / タイルの番号 (タイルは一覧全体での番号)。</summary>
-    public enum HitKind { None, Close, Tab, SortRecent, SortName, ColumnsLess, ColumnsMore, GroupToggle, Chip, ChipPrev, ChipNext, Back, Tile, Prev, Next }
+    public enum HitKind { None, Close, Tab, SortRecent, SortName, ColumnsLess, ColumnsMore, GroupToggle, Chip, ChipPrev, ChipNext, Back, Tile }
 
     public readonly record struct Hit(HitKind Kind, int Index = -1);
 
@@ -132,19 +136,19 @@ internal sealed class VrPanel
     private List<string> _chips = [];
     public IReadOnlyList<AvatarItem> Items => _items;
     public IReadOnlyList<string> Chips => _chips;
-    public int Page { get; private set; }
 
     /// <summary>
-    /// 列数で決まるタイルの並べ方。3 列で 3 段 (大きいタイル)、10 列では 13 段 (サムネイルだけの小さいタイル)。
+    /// 列数で決まるタイルの並べ方。3 列は大きいタイル、10 列はサムネイルだけの小さいタイル。
     /// 名前は読める大きさのときだけ載せる (小さいときはホバーで下に出す)。
     /// </summary>
-    private readonly record struct GridLayout(int Columns, int Rows, double Gap, double TileWidth, double ThumbHeight, double TileHeight,
+    private readonly record struct GridLayout(int Columns, double Gap, double TileWidth, double ThumbHeight, double TileHeight,
         double NameSize, bool ShowName)
     {
         /// <summary>3 列のときのタイル幅。文字やバッジの大きさは、これとの比で縮める。</summary>
         private const double BaseWidth = 188;
         public double Scale => TileWidth / BaseWidth;
-        public int PageSize => Columns * Rows;
+        /// <summary>1 段ぶんの高さ (タイル + 隙間)。</summary>
+        public double RowHeight => TileHeight + Gap;
 
         public static GridLayout For(int columns)
         {
@@ -154,97 +158,117 @@ internal sealed class VrPanel
             var nameSize = Math.Clamp(w * 17 / BaseWidth, 11, 17);
             var showName = w >= 70;
             var nameHeight = showName ? Math.Round(nameSize * 2.24) : 0;
-            var h = thumb + nameHeight;
-            var fit = (GridBottom - GridTop + gap) / (h + gap);
-            var rows = Math.Max(1, (int)fit);
-            // あと少しでもう 1 段入るなら、サムネイルを少し低くして詰める (下に大きな空きを残さない)
-            var squeezed = Math.Floor((GridBottom - GridTop + gap) / (rows + 1) - gap - nameHeight);
-            if (fit - rows >= 0.5 && squeezed >= w * 0.6)
-            {
-                rows++;
-                thumb = squeezed;
-                h = thumb + nameHeight;
-            }
-            return new GridLayout(columns, rows, gap, w, thumb, h, nameSize, showName);
+            return new GridLayout(columns, gap, w, thumb, thumb + nameHeight, nameSize, showName);
         }
+
+        /// <summary>窓に一度に (端が少しでも) 見えうる数。</summary>
+        public int MaxVisible => ((int)Math.Ceiling(ViewportHeight / RowHeight) + 1) * Columns;
     }
 
     private GridLayout _grid = GridLayout.For(MinColumns);
 
-    /// <summary>1 ページに並ぶ数の最大 (10 列のとき)。描いたサムネイルを覚えておく配列の大きさに使う。</summary>
-    public static readonly int MaxPageSize = GridLayout.For(MaxColumns).PageSize;
+    /// <summary>一度に見えうる数の最大 (10 列のとき)。描いたサムネイルを覚えておく配列の大きさに使う。</summary>
+    public static readonly int MaxVisibleCount = GridLayout.For(MaxColumns).MaxVisible;
 
     public int Columns => _grid.Columns;
-    public int PageSize => _grid.PageSize;
 
-    /// <summary>列数を変える。今のページの先頭に見えていたタイルが、変えたあとも見えるページへ移る。</summary>
+    /// <summary>列数を変える。窓の一番上に見えていたタイルが、変えたあとも一番上に来るようにする。</summary>
     public void SetColumns(int columns)
     {
         columns = Math.Clamp(columns, MinColumns, MaxColumns);
         if (columns == _grid.Columns) return;
-        var first = PageStart;
+        var first = VisibleStart;
         _grid = GridLayout.For(columns);
-        Page = Math.Clamp(first / PageSize, 0, PageCount - 1);
+        ScrollY = 0;
+        ScrollTo(first);
         Hover = default;
         Selected = -1;
     }
 
-    public int PageCount => Math.Max(1, (_items.Count + PageSize - 1) / PageSize);
     /// <summary>チップが 1 行に収まらないとき、何番目のチップから見せているか (0 = 「すべて」)。</summary>
     public int ChipStart { get; private set; }
 
-    /// <summary>今のページの先頭が一覧の何番目か。</summary>
-    public int PageStart => Page * PageSize;
+    // ---------------- スクロール ----------------
 
-    /// <summary>今のページに並んでいる数 (最後のページは 1 ページぶんに満たないことがある)。</summary>
-    public int PageItemCount => Math.Clamp(_items.Count - PageStart, 0, PageSize);
+    /// <summary>タイルの並びをどれだけ上へ送っているか (px、0 = 先頭が窓の一番上)。</summary>
+    public double ScrollY { get; private set; }
 
-    /// <summary>今のページの slot 番目 (左上から 0)。</summary>
-    public AvatarItem PageItem(int slot) => _items[PageStart + slot];
+    private int RowCount => (_items.Count + Columns - 1) / Columns;
 
-    /// <summary>今のページに並んでいる項目。</summary>
-    public IEnumerable<AvatarItem> PageItems => _items.Skip(PageStart).Take(PageSize);
+    /// <summary>タイルを全部並べたときの高さ (px)。</summary>
+    public double ContentHeight => Math.Max(0, RowCount * _grid.RowHeight - _grid.Gap);
+
+    public double MaxScroll => Math.Max(0, ContentHeight - ViewportHeight);
+
+    /// <summary>スクロール位置を変える (範囲に収める)。動いたら true。</summary>
+    public bool SetScroll(double y)
+    {
+        y = Math.Clamp(y, 0, MaxScroll);
+        if (y == ScrollY) return false;
+        ScrollY = y;
+        return true;
+    }
+
+    public bool ScrollBy(double dy) => SetScroll(ScrollY + dy);
+
+    /// <summary>index 番目のタイルの段が窓の一番上に来るように送る (下の端では送れるところまで)。</summary>
+    public void ScrollTo(int index)
+    {
+        if (index < 0 || index >= _items.Count) return;
+        SetScroll(index / Columns * _grid.RowHeight);
+    }
+
+    /// <summary>窓に (端が少しでも) 見えている最初のタイルの番号。</summary>
+    public int VisibleStart => Math.Min(_items.Count, (int)(ScrollY / _grid.RowHeight) * Columns);
+
+    /// <summary>窓に (端が少しでも) 見えているタイルの数。</summary>
+    public int VisibleCount
+    {
+        get
+        {
+            var lastRow = (int)((ScrollY + ViewportHeight - 0.5) / _grid.RowHeight);
+            return Math.Clamp((lastRow + 1) * Columns, 0, _items.Count) - VisibleStart;
+        }
+    }
+
+    /// <summary>見えているタイルの slot 番目 (VisibleStart から数えて)。</summary>
+    public AvatarItem VisibleItem(int slot) => _items[VisibleStart + slot];
+
+    /// <summary>窓に見えているタイル。</summary>
+    public IEnumerable<AvatarItem> VisibleItems => _items.Skip(VisibleStart).Take(VisibleCount);
+
+    /// <summary>画像の座標がタイルを並べる窓の中か (ドラッグでスクロールできる所)。</summary>
+    public static bool InGrid(double x, double y) => x >= Pad && x <= Width - Pad && y >= GridTop && y <= GridBottom;
 
     // 使い回す描画先と、SteamVR に渡す RGBA の配列
     private readonly RenderTargetBitmap _target = new(Width, Height, 96, 96, PixelFormats.Pbgra32);
     private readonly byte[] _rgba = new byte[Width * Height * 4];
 
     /// <summary>
-    /// 並べるタイルを入れ替える。resetPage なら今着ているアバター (を含むグループ) のページから、
-    /// そうでなければ今のページのまま (はみ出したら最後のページ) 見せる。
+    /// 並べるタイルを入れ替える。resetScroll なら今着ているアバター (を含むグループ) が一番上に来るように、
+    /// そうでなければ今のスクロール位置のまま (はみ出したら一番下まで) 見せる。
     /// </summary>
-    public void SetItems(List<AvatarItem> tiles, bool resetPage)
+    public void SetItems(List<AvatarItem> tiles, bool resetScroll)
     {
         _items = tiles;
-        if (resetPage)
+        if (resetScroll)
         {
-            var current = tiles.FindIndex(a => a.IsCurrent);
-            Page = current >= 0 ? current / PageSize : 0;
+            ScrollY = 0;
+            ScrollTo(tiles.FindIndex(a => a.IsCurrent));
         }
-        else Page = Math.Clamp(Page, 0, PageCount - 1);
+        else SetScroll(ScrollY);
         Hover = default;
         Selected = -1;
     }
 
-    /// <summary>条件に合う最初のタイルのページへ移る (グループから戻ったとき、そのグループを見せるため)。</summary>
-    public void ShowPageOf(Predicate<AvatarItem> match)
-    {
-        var index = _items.FindIndex(match);
-        if (index >= 0) Page = index / PageSize;
-    }
+    /// <summary>条件に合う最初のタイルが一番上に来るように送る (グループから戻ったとき、そのグループを見せるため)。</summary>
+    public void ShowItemOf(Predicate<AvatarItem> match) => ScrollTo(_items.FindIndex(match));
 
     public void SetChips(List<string> chips)
     {
         _chips = chips;
         ChipStart = Math.Clamp(ChipStart, 0, _chips.Count);
         _chipLayout = null;
-    }
-
-    public void TurnPage(int delta)
-    {
-        Page = Math.Clamp(Page + delta, 0, PageCount - 1);
-        Hover = default;
-        Selected = -1;
     }
 
     public void ScrollChips(int delta)
@@ -275,10 +299,11 @@ internal sealed class VrPanel
             foreach (var chip in LayoutChips())
                 if (chip.Rect.Contains(p)) return chip.Hit;
         }
-        if (PrevRect.Contains(p)) return Page > 0 ? new Hit(HitKind.Prev) : default;
-        if (NextRect.Contains(p)) return Page < PageCount - 1 ? new Hit(HitKind.Next) : default;
-        for (var slot = 0; slot < PageItemCount; slot++)
-            if (TileRect(slot).Contains(p)) return new Hit(HitKind.Tile, PageStart + slot);
+        // タイルは窓の中に見えている部分だけ (窓の外にはみ出した部分は押せない)
+        if (!InGrid(x, y)) return default;
+        var start = VisibleStart;
+        for (var i = start; i < start + VisibleCount; i++)
+            if (TileRect(i).Contains(p)) return new Hit(HitKind.Tile, i);
         return default;
     }
 
@@ -288,13 +313,13 @@ internal sealed class VrPanel
         return new Rect(TabsRect.X + i * w, TabsRect.Y, w, TabsRect.Height);
     }
 
-    /// <summary>今のページの slot 番目 (左上から 0) のタイルの場所。</summary>
-    public Rect TileRect(int slot)
+    /// <summary>index 番目 (一覧全体での番号) のタイルの、今のスクロール位置での場所 (窓の外にはみ出すこともある)。</summary>
+    public Rect TileRect(int index)
     {
         var g = _grid;
-        var col = slot % g.Columns;
-        var row = slot / g.Columns;
-        return new Rect(Pad + col * (g.TileWidth + g.Gap), GridTop + row * (g.TileHeight + g.Gap), g.TileWidth, g.TileHeight);
+        var col = index % g.Columns;
+        var row = index / g.Columns;
+        return new Rect(Pad + col * (g.TileWidth + g.Gap), GridTop + row * g.RowHeight - ScrollY, g.TileWidth, g.TileHeight);
     }
 
     private readonly record struct ChipSlot(Rect Rect, Hit Hit, string Label, bool Selected);
@@ -408,9 +433,19 @@ internal sealed class VrPanel
                 DrawText(dc, Filter is not null ? "一致するアバターなし" : "アバターなし",
                     UiFace, 20, MutedBrush, new Point(Pad, GridTop + 20), Width - Pad * 2, maxLines: 3);
 
-            for (var slot = 0; slot < PageItemCount; slot++)
-                DrawTile(dc, _grid, TileRect(slot), PageItem(slot), Hover.Kind == HitKind.Tile && Hover.Index == PageStart + slot,
-                    Selected == PageStart + slot);
+            // タイルは窓の中だけに描く (スクロールで上下にはみ出した部分は切る)
+            dc.PushClip(new RectangleGeometry(new Rect(0, GridTop, Width, ViewportHeight)));
+            var start = VisibleStart;
+            for (var i = start; i < start + VisibleCount; i++)
+                DrawTile(dc, _grid, TileRect(i), _items[i], Hover.Kind == HitKind.Tile && Hover.Index == i, Selected == i);
+            dc.Pop();
+            if (MaxScroll > 0)
+            {
+                // つまみ: 窓に見えている割合の長さで、今の位置に
+                var thumb = Math.Max(MinThumbHeight, ViewportHeight * ViewportHeight / ContentHeight);
+                var top = GridTop + (ViewportHeight - thumb) * ScrollY / MaxScroll;
+                dc.DrawRoundedRectangle(ScrollThumbBrush, null, new Rect(ScrollBarX, top, ScrollBarWidth, thumb), ScrollBarWidth / 2, ScrollBarWidth / 2);
+            }
 
             if (Status.Length > 0)
                 DrawCentered(dc, Status, UiFace, 16, StatusIsError ? DangerBrush : MutedBrush, new Point(Width / 2.0, StatusY), Width - Pad * 2);
@@ -418,13 +453,6 @@ internal sealed class VrPanel
                 DrawCentered(dc, $"もう一度押すとチェンジ: {_items[Selected].Name}", UiBoldFace, 16, TextBrush, new Point(Width / 2.0, StatusY), Width - Pad * 2);
             else if (!_grid.ShowName && Hover.Kind == HitKind.Tile && Hover.Index >= 0 && Hover.Index < _items.Count)
                 DrawCentered(dc, _items[Hover.Index].Name, UiBoldFace, 16, TextBrush, new Point(Width / 2.0, StatusY), Width - Pad * 2); // 名前を載せないほど小さいとき
-
-            if (PageCount > 1)
-            {
-                DrawNav(dc, PrevRect, GlyphLeft, Page > 0, Hover.Kind == HitKind.Prev);
-                DrawNav(dc, NextRect, GlyphRight, Page < PageCount - 1, Hover.Kind == HitKind.Next);
-                DrawCentered(dc, $"{Page + 1} / {PageCount}", UiFace, 20, MutedBrush, Center(new Rect(PrevRect.Right, PrevRect.Y, NextRect.X - PrevRect.Right, PrevRect.Height)));
-            }
         }
         _target.Clear();
         _target.Render(visual);
