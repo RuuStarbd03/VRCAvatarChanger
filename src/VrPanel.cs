@@ -42,8 +42,12 @@ internal sealed class VrPanel
     private static readonly Point CloseCenter = new(Width - Pad - 24, 44);
     private const double CloseRadius = 24;
     // 2 段目: 並び順 + グループ化
-    private static readonly Rect SortRecentRect = new(Pad, 80, 140, 44);
-    private static readonly Rect SortNameRect = new(Pad + 146, 80, 96, 44);
+    private static readonly Rect SortMenuRect = new(Pad, 80, 196, 44);   // 押すと並び順のリストが開く
+    private static readonly Rect SortDirRect = new(Pad + 202, 80, 44, 44); // 昇順 / 降順
+    // 並び順のリスト (開いている間は、ボタンの下にタイルの上へ重ねて出す)
+    private const double SortListRowHeight = 48;
+    private const double SortListPad = 6;
+    private static readonly Rect SortListRect = new(Pad, 130, 246, SortListPad * 2 + SortListRowHeight * 6);
     private static readonly Rect ColumnsLessRect = new(282, 82, 40, 40);
     private static readonly Rect ColumnsMoreRect = new(390, 82, 40, 40);
     private static readonly Rect GroupToggleRect = new(Width - Pad - 170, 80, 170, 44);
@@ -83,7 +87,8 @@ internal sealed class VrPanel
     private static Pen AccentThinPen = new(); // 小さいタイルの「今着ている」枠
     private static readonly Pen SelectedPen = FrozenPen(TextBrush, 4);      // 1 回押して選んだタイルの枠
     private static readonly Pen SelectedThinPen = FrozenPen(TextBrush, 2.5);
-    private static readonly Brush ScrollThumbBrush = Frozen(Color.FromArgb(0x66, 0xFF, 0xFF, 0xFF));
+    private static readonly Brush MenuBrush = Frozen(Color.FromRgb(0x23, 0x24, 0x2A)); // 開いたリスト (下のタイルが透けないよう不透明)
+    private static readonly Brush ScrollThumbBrush =Frozen(Color.FromArgb(0x66, 0xFF, 0xFF, 0xFF));
     private static readonly Pen EdgePen = FrozenPen(Frozen(Color.FromArgb(0x40, 0xFF, 0xFF, 0xFF)), 2);
     // 手首ボタン: 塗りつぶさず、暗い半透明の下地に細い輪だけ色を付ける (腕時計の横で主張しすぎないように)
     private static readonly Brush ButtonBackBrush = Frozen(Color.FromArgb(0xD9, 0x1B, 0x1C, 0x21));
@@ -102,17 +107,46 @@ internal sealed class VrPanel
     private const string GlyphCheck = "";
     private const string GlyphLeft = "";
     private const string GlyphRight = "";
+    private const string GlyphChevronDown = "\uE70D";
+    private const string GlyphChevronUp = "\uE70E";
+    private const string GlyphArrowUp = "\uE74A";
+    private const string GlyphArrowDown = "\uE74B";
     private const string GlyphMinus = "\uE738";
     private const string GlyphPlus = "\uE710";
 
     /// <summary>押された場所の意味。Index はタブ / チップ / タイルの番号 (タイルは一覧全体での番号)。</summary>
-    public enum HitKind { None, Close, Tab, SortRecent, SortName, ColumnsLess, ColumnsMore, GroupToggle, Chip, ChipPrev, ChipNext, Back, Tile }
+    /// <remarks>SortOption の Index は SortKinds の番号。MenuDismiss は開いている並び順のリストの外を押したとき (リストを閉じるだけ)。</remarks>
+    public enum HitKind { None, Close, Tab, SortMenu, SortDirection, SortOption, MenuDismiss, ColumnsLess, ColumnsMore, GroupToggle, Chip, ChipPrev, ChipNext, Back, Tile }
+
+    /// <summary>
+    /// 並び順の種類 (PC のメイン画面と同じ 6 種類、同じ並べ方)。リストで選んだときは、その種類で自然な向きにする
+    /// (日付は新しい順、最近使ったは最近のものから、パフォーマンスは軽い順、名前・作者は A → Z)。
+    /// </summary>
+    public static readonly (string Kind, string Label, bool DefaultDesc)[] SortKinds =
+    [
+        ("created", "追加日", true),
+        ("updated", "更新日", true),
+        ("recent", "最近使った", false),
+        ("performance", "パフォーマンス", false),
+        ("name", "名前", false),
+        ("author", "作者", false),
+    ];
+
+    /// <summary>保存キー ("created_desc" など) の種類の部分。</summary>
+    public static string SortKindOf(string key) => key.Replace("_desc", "").Replace("_asc", "");
+
+    /// <summary>VR パネルの並び順として使えるキーか (設定の読み込みで、知らない値を弾くのに使う)。</summary>
+    public static bool IsValidSortKey(string? key)
+        => key is not null && (key.EndsWith("_asc", StringComparison.Ordinal) || key.EndsWith("_desc", StringComparison.Ordinal))
+           && SortKinds.Any(k => k.Kind == SortKindOf(key));
 
     public readonly record struct Hit(HitKind Kind, int Index = -1);
 
     // ---- 表示する状態 (切り替えの判断は VrOverlay が行い、ここは描くだけ) ----
     public string Tab { get; set; } = AvatarTab.Own;
     public string SortKey { get; set; } = "recent_asc";
+    /// <summary>並び順のリストを開いているか。</summary>
+    public bool SortMenuOpen { get; set; }
     public bool GroupView { get; set; } = true;
     /// <summary>選んでいる絞り込み (null = すべて)。</summary>
     public string? Filter
@@ -282,11 +316,19 @@ internal sealed class VrPanel
     public Hit HitTest(double x, double y)
     {
         var p = new Point(x, y);
+        if (SortMenuOpen)
+        {
+            // リストを開いている間は、リストとボタンだけが押せる。外を押したら閉じるだけ (下のタイルを押してしまわないように)
+            if (SortMenuRect.Contains(p)) return new Hit(HitKind.SortMenu);
+            for (var i = 0; i < SortKinds.Length; i++)
+                if (SortOptionRect(i).Contains(p)) return new Hit(HitKind.SortOption, i);
+            return new Hit(HitKind.MenuDismiss);
+        }
         if ((p - CloseCenter).Length <= CloseRadius + 6) return new Hit(HitKind.Close);
         for (var i = 0; i < Tabs.Length; i++)
             if (TabRect(i).Contains(p)) return new Hit(HitKind.Tab, i);
-        if (SortRecentRect.Contains(p)) return new Hit(HitKind.SortRecent);
-        if (SortNameRect.Contains(p)) return new Hit(HitKind.SortName);
+        if (SortMenuRect.Contains(p)) return new Hit(HitKind.SortMenu);
+        if (SortDirRect.Contains(p)) return new Hit(HitKind.SortDirection);
         if (ColumnsLessRect.Contains(p)) return Columns > MinColumns ? new Hit(HitKind.ColumnsLess) : default;
         if (ColumnsMoreRect.Contains(p)) return Columns < MaxColumns ? new Hit(HitKind.ColumnsMore) : default;
         if (GroupToggleRect.Contains(p)) return new Hit(HitKind.GroupToggle);
@@ -306,6 +348,9 @@ internal sealed class VrPanel
             if (TileRect(i).Contains(p)) return new Hit(HitKind.Tile, i);
         return default;
     }
+
+    private static Rect SortOptionRect(int i)
+        => new(SortListRect.X + SortListPad, SortListRect.Y + SortListPad + i * SortListRowHeight, SortListRect.Width - SortListPad * 2, SortListRowHeight);
 
     private static Rect TabRect(int i)
     {
@@ -399,8 +444,13 @@ internal sealed class VrPanel
             DrawCentered(dc, GlyphClose, IconFace, 20, TextBrush, CloseCenter);
 
             // 並び順とグループ化
-            DrawPill(dc, SortRecentRect, "最近使った順", SortKey.StartsWith("recent", StringComparison.Ordinal), Hover.Kind == HitKind.SortRecent);
-            DrawPill(dc, SortNameRect, "名前順", SortKey.StartsWith("name", StringComparison.Ordinal), Hover.Kind == HitKind.SortName);
+            // 並び順: [種類 ▾] [↑↓]
+            var sortKind = SortKindOf(SortKey);
+            var sortLabel = SortKinds.FirstOrDefault(k => k.Kind == sortKind).Label ?? "";
+            dc.DrawRoundedRectangle(SortMenuOpen || Hover.Kind == HitKind.SortMenu ? TileHoverBrush : TileBrush, null, SortMenuRect, SortMenuRect.Height / 2, SortMenuRect.Height / 2);
+            DrawText(dc, sortLabel, UiBoldFace, 18, TextBrush, new Point(SortMenuRect.X + 18, SortMenuRect.Y + 10), SortMenuRect.Width - 18 - 40);
+            DrawCentered(dc, SortMenuOpen ? GlyphChevronUp : GlyphChevronDown, IconFace, 14, MutedBrush, new Point(SortMenuRect.Right - 22, SortMenuRect.Y + SortMenuRect.Height / 2));
+            DrawNav(dc, SortDirRect, SortKey.EndsWith("_desc", StringComparison.Ordinal) ? GlyphArrowDown : GlyphArrowUp, true, Hover.Kind == HitKind.SortDirection);
             // 列数: [−] n 列 [+]
             DrawNav(dc, ColumnsLessRect, GlyphMinus, Columns > MinColumns, Hover.Kind == HitKind.ColumnsLess);
             DrawNav(dc, ColumnsMoreRect, GlyphPlus, Columns < MaxColumns, Hover.Kind == HitKind.ColumnsMore);
@@ -453,10 +503,31 @@ internal sealed class VrPanel
                 DrawCentered(dc, $"もう一度押すとチェンジ: {_items[Selected].Name}", UiBoldFace, 16, TextBrush, new Point(Width / 2.0, StatusY), Width - Pad * 2);
             else if (!_grid.ShowName && Hover.Kind == HitKind.Tile && Hover.Index >= 0 && Hover.Index < _items.Count)
                 DrawCentered(dc, _items[Hover.Index].Name, UiBoldFace, 16, TextBrush, new Point(Width / 2.0, StatusY), Width - Pad * 2); // 名前を載せないほど小さいとき
+
+            if (SortMenuOpen) DrawSortList(dc, sortKind);
         }
         _target.Clear();
         _target.Render(visual);
         return _target;
+    }
+
+    /// <summary>並び順のリスト。今の種類にはアクセント色の印を付ける。</summary>
+    private void DrawSortList(DrawingContext dc, string currentKind)
+    {
+        dc.DrawRoundedRectangle(MenuBrush, EdgePen, SortListRect, 16, 16);
+        for (var i = 0; i < SortKinds.Length; i++)
+        {
+            var r = SortOptionRect(i);
+            var current = SortKinds[i].Kind == currentKind;
+            if (Hover.Kind == HitKind.SortOption && Hover.Index == i)
+                dc.DrawRoundedRectangle(TileHoverBrush, null, r, 10, 10);
+            if (current)
+            {
+                dc.DrawRoundedRectangle(AccentBrush, null, new Rect(r.X + 6, r.Y + 14, 4, r.Height - 28), 2, 2);
+                DrawCentered(dc, GlyphCheck, IconFace, 16, AccentBrush, new Point(r.Right - 22, r.Y + r.Height / 2));
+            }
+            DrawText(dc, SortKinds[i].Label, current ? UiBoldFace : UiFace, 18, TextBrush, new Point(r.X + 20, r.Y + 12), r.Width - 60);
+        }
     }
 
     private static void DrawTile(DrawingContext dc, GridLayout g, Rect r, AvatarItem item, bool hover, bool selected)

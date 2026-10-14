@@ -32,7 +32,7 @@ public sealed class Settings
     // VR パネルの表示状態。メイン画面とは別に持ち、VR の中で切り替えたものを次に開いたときも使う
     /// <summary>VR パネルのタブ。"own" / "favorites" / "public"。</summary>
     public string VrTab { get; set; } = AvatarTab.Own;
-    /// <summary>VR パネルの並び順。"recent_asc" / "name_asc"。</summary>
+    /// <summary>VR パネルの並び順。SortKey と同じ形式 (種類は VrPanel.SortKinds の 6 種類)。</summary>
     public string VrSortKey { get; set; } = "recent_asc";
     /// <summary>VR パネルでグループを 1 枚にまとめるか。</summary>
     public bool VrGroupView { get; set; } = true;
@@ -84,7 +84,7 @@ public sealed class Settings
         if (!AccentPalette.IsValid(s.Accent)) s.Accent = AccentPalette.System;
         if (s.VrHand is not ("left" or "right")) s.VrHand = "left";
         if (s.VrTab is not (AvatarTab.Own or AvatarTab.Favorites or AvatarTab.Public)) s.VrTab = AvatarTab.Own;
-        if (s.VrSortKey is not ("recent_asc" or "name_asc")) s.VrSortKey = "recent_asc";
+        if (!VrPanel.IsValidSortKey(s.VrSortKey)) s.VrSortKey = "recent_asc";
         s.VrColumns = Math.Clamp(s.VrColumns, MinGridColumns, MaxGridColumns);
         if (VRCAvatarChanger.VrOverlay.PoseFromArray(s.VrButtonPose) is null) s.VrButtonPose = null; // 壊れた値・遠すぎる位置は手の甲に戻す
         return s;

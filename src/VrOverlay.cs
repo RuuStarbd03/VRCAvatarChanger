@@ -686,6 +686,7 @@ internal sealed partial class VrOverlay : IDisposable
         var tab = _settings.VrTab;
         _panel.Tab = tab;
         _panel.SortKey = _settings.VrSortKey;
+        _panel.SortMenuOpen = false; // 並びを作り直すとき (タブの切り替え・開き直しなど) は閉じる
         _panel.GroupView = _settings.VrGroupView;
         _panel.SetColumns(_settings.VrColumns);
         _panel.OpenGroupName = _openGroup?.Name;
@@ -770,14 +771,28 @@ internal sealed partial class VrOverlay : IDisposable
                 _source.SaveSettings();
                 Reload(resetScroll: true);
                 break;
-            case VrPanel.HitKind.SortRecent:
-            case VrPanel.HitKind.SortName:
-                var key = hit.Kind == VrPanel.HitKind.SortRecent ? "recent_asc" : "name_asc";
-                if (_settings.VrSortKey == key) return;
-                _settings.VrSortKey = key;
-                _source.SaveSettings();
-                Reload(resetScroll: true);
+            case VrPanel.HitKind.SortMenu:
+                _panel.SortMenuOpen = !_panel.SortMenuOpen;
                 break;
+            case VrPanel.HitKind.MenuDismiss:
+                _panel.SortMenuOpen = false;
+                break;
+            case VrPanel.HitKind.SortOption when hit.Index >= 0 && hit.Index < VrPanel.SortKinds.Length:
+            {
+                _panel.SortMenuOpen = false;
+                var (kind, _, defaultDesc) = VrPanel.SortKinds[hit.Index];
+                // 同じ種類を選び直したときは向きもそのまま。別の種類なら、その種類で自然な向きにする
+                if (VrPanel.SortKindOf(_settings.VrSortKey) == kind) break;
+                SetSortKey(kind + (defaultDesc ? "_desc" : "_asc"));
+                break;
+            }
+            case VrPanel.HitKind.SortDirection:
+            {
+                var key = _settings.VrSortKey;
+                var kind = VrPanel.SortKindOf(key);
+                SetSortKey(kind + (key.EndsWith("_desc", StringComparison.Ordinal) ? "_asc" : "_desc"));
+                break;
+            }
             case VrPanel.HitKind.ColumnsLess:
             case VrPanel.HitKind.ColumnsMore:
                 _settings.VrColumns = Math.Clamp(_settings.VrColumns + (hit.Kind == VrPanel.HitKind.ColumnsLess ? -1 : 1),
@@ -832,6 +847,13 @@ internal sealed partial class VrOverlay : IDisposable
                 return;
         }
         _panelDirty = true;
+    }
+
+    private void SetSortKey(string key)
+    {
+        _settings.VrSortKey = key;
+        _source.SaveSettings();
+        Reload(resetScroll: true);
     }
 
     private async Task ChangeAsync(AvatarItem item)

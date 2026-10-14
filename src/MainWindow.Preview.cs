@@ -777,14 +777,37 @@ public partial class MainWindow
             Expect("タブ: 自分", panel.HitTest(114, 44) is { Kind: VrPanel.HitKind.Tab, Index: 0 });
             Expect("タブ: お気に入り", panel.HitTest(288, 44) is { Kind: VrPanel.HitKind.Tab, Index: 1 });
             Expect("タブ: パブリック", panel.HitTest(461, 44) is { Kind: VrPanel.HitKind.Tab, Index: 2 });
-            Expect("最近使った順", panel.HitTest(100, 102).Kind == VrPanel.HitKind.SortRecent);
-            Expect("名前順", panel.HitTest(240, 102).Kind == VrPanel.HitKind.SortName);
+            Expect("並び順のボタン", panel.HitTest(100, 102).Kind == VrPanel.HitKind.SortMenu);
+            Expect("昇順 / 降順のボタン", panel.HitTest(252, 102).Kind == VrPanel.HitKind.SortDirection);
             Expect("グループ化", panel.HitTest(517, 102).Kind == VrPanel.HitKind.GroupToggle);
             Expect("チップ: すべて", panel.HitTest(40, 154) is { Kind: VrPanel.HitKind.Chip, Index: 0 });
             Expect("タイルの隙間は何もしない", panel.HitTest(219, 269).Kind == VrPanel.HitKind.None);
 
+            // 並び順: ボタンでリストが開き、PC と同じ 6 種類から選べる。外を押すと閉じるだけ
+            vr.ClickForTest(100, 102);
+            Expect("並び順のリストが開く", panel.SortMenuOpen);
+            Expect("リストは 6 種類", VrPanel.SortKinds.Length == 6
+                && Enumerable.Range(0, 6).All(i => panel.HitTest(100, 130 + 6 + i * 48 + 24) is { Kind: VrPanel.HitKind.SortOption } h && h.Index == i));
+            Expect("リストを開いている間は、下のタイルは押せない", panel.HitTest(500, 600).Kind == VrPanel.HitKind.MenuDismiss);
+            Save(panel.Render(), "panel-sort-list.png");
+            vr.ClickForTest(500, 600);
+            Expect("外を押すと閉じるだけ", !panel.SortMenuOpen && _settings.VrSortKey == "recent_asc");
+            vr.ClickForTest(100, 102);
+            vr.ClickForTest(100, 130 + 6 + 0 * 48 + 24);
+            Expect("追加日を選ぶと新しい順", _settings.VrSortKey == "created_desc" && !panel.SortMenuOpen);
+            vr.ClickForTest(252, 102);
+            Expect("矢印で古い順に", _settings.VrSortKey == "created_asc");
+            vr.ClickForTest(100, 102);
+            vr.ClickForTest(100, 130 + 6 + 0 * 48 + 24);
+            Expect("同じ種類を選び直しても向きはそのまま", _settings.VrSortKey == "created_asc");
+            vr.ClickForTest(100, 102);
+            vr.ClickForTest(100, 130 + 6 + 3 * 48 + 24);
+            Expect("パフォーマンスを選ぶと軽い順", _settings.VrSortKey == "performance_asc");
+            Expect("知らない並び順は設定に残さない", !VrPanel.IsValidSortKey("size_asc") && !VrPanel.IsValidSortKey("name") && VrPanel.IsValidSortKey("author_desc"));
+
             // 名前順: 先頭の左上
-            vr.ClickForTest(240, 102);
+            vr.ClickForTest(100, 102);
+            vr.ClickForTest(100, 130 + 6 + 4 * 48 + 24);
             Expect("名前順に切り替わる", _settings.VrSortKey == "name_asc" && panel.SortKey == "name_asc");
             panel.SetScroll(0);
             var first = panel.HitTest(121, 269);
@@ -907,8 +930,9 @@ public partial class MainWindow
             Expect("別のタイルを押すと選び直す", panel.Selected == singles[1]);
             panel.ScrollBy(40);
             Expect("スクロールしても選んだままにする", panel.Selected == singles[1]);
-            vr.ClickForTest(100, 102); // 名前順 → 最近使った順
-            Expect("並び順を変えると選択は外れる", panel.Selected == -1 && _settings.VrSortKey == "recent_asc");
+            vr.ClickForTest(252, 102); // 名前の昇順 → 降順
+            Expect("並び順を変えると選択は外れる", panel.Selected == -1 && _settings.VrSortKey == "name_desc");
+            vr.ClickForTest(252, 102);
             panel.SetScroll(0);
 
             panel.Status = "アバターチェンジ失敗: Kikyo 9";

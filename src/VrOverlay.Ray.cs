@@ -191,7 +191,7 @@ internal sealed partial class VrOverlay
             {
                 _activeRay = i;
                 var hit = _panel.HitTest(ray.At.X, ray.At.Y);
-                if (VrPanel.InGrid(ray.At.X, ray.At.Y))
+                if (VrPanel.InGrid(ray.At.X, ray.At.Y) && !_panel.SortMenuOpen) // リストを開いている間は、その上を押すだけ
                 {
                     // タイルの窓: まだ押さない (離すまでに動かしたらドラッグ)。流れているスクロールは止める
                     ray.Pressing = true;
@@ -216,7 +216,7 @@ internal sealed partial class VrOverlay
                 Buzz(d);
             }
             // グリップを握っているときのスティックはパネルの距離 (MovePanelByStick) なので、スクロールしない
-            else if (ray.Target == RayTarget.Panel && !grip)
+            else if (ray.Target == RayTarget.Panel && !grip && !_panel.SortMenuOpen)
             {
                 var tilt = StickY(d, state);
                 if (MathF.Abs(tilt) >= StickDeadZone)
