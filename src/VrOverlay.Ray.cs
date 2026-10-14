@@ -10,6 +10,9 @@ namespace VRCAvatarChanger;
 /// SteamVR のレーザーを使うと、パネルやボタンを指した瞬間に SteamVR がコントローラーの入力を奪い、
 /// VRChat に届かなくなる (プッシュトゥトークが切れる)。自前で計算すれば入力は奪わない
 /// (ボタンの状態は読むだけなので、トリガーは VRChat にも届く。OVR Toolkit と同じ)。
+///
+/// レイは左右の手それぞれに持ち、どちらの手でも指して押せる (カーソルも手ごとに出す)。
+/// パネルを指してグリップを握るとつかめ、手について動く (面はいつも顔の方を向く)。
 /// </summary>
 internal sealed partial class VrOverlay
 {
@@ -20,122 +23,209 @@ internal sealed partial class VrOverlay
     private const float RayButtonSlack = 1.6f;     // ボタンは小さいので、見た目より少し広く当たりを取る
     private const float StickPageThreshold = 0.7f; // パネルを指してスティックをこれ以上倒すと、ページをめくる
     private const ushort PressPulseMicroSec = 2500;  // 押したときの振動の長さ (SteamVR の 1 回の上限は 3999µs)
+    private const float MinGrabReachM = 0.1f;      // つかんだパネルは、手からこの距離より近くには寄せない
 
     private enum RayTarget { None, Button, Panel }
 
-    private ulong _cursor;
-    private bool _cursorShown;
-    private float _cursorWidth;
-    private uint _pointer = OpenVR.k_unTrackedDeviceIndexInvalid; // 今指している手 (両手で指したときは先に指した方)
-    private RayTarget _rayTarget;
-    private readonly Dictionary<uint, bool> _triggerWasDown = [];
-    private readonly Dictionary<uint, bool> _stickWasTilted = [];
+    /// <summary>片手ぶんのレイの状態 (左右で 1 つずつ。Hands と同じ並び)。</summary>
+    private sealed class HandRay
+    {
+        public uint Device = OpenVR.k_unTrackedDeviceIndexInvalid;
+        public RayTarget Target;
+        public System.Windows.Point At;   // パネルの画像の座標 (Target が Panel のとき)
+        public Vector3 Point;             // 当たった所 (ワールド)
+        public ulong Cursor;
+        public bool CursorShown;
+        public float CursorWidth;
+        public bool TriggerWasDown;
+        public bool GripWasDown;
+        public bool StickWasTilted;
+    }
+
+    private readonly HandRay[] _rays = [new(), new()];
+    private int _activeRay = -1;      // パネルのホバーを出す手 (最後に指し始めた / 押した方)
     private readonly Dictionary<uint, Matrix4x4?> _tipOffset = []; // 機器ごとの、原点から「指す先」(tip) への位置と向き
+
+    // つかんだパネル
+    private int _panelGrabRay = -1;   // つかんでいる手 (_rays の番号、-1 = つかんでいない)
+    private Vector3 _panelGrabOffset; // つかんだ手から見たパネルの中心
 
     // UpdateButton が毎フレーム書く、手首ボタンの今の姿勢と見えているか
     private Matrix4x4 _buttonWorld;
     private bool _buttonVisible;
 
-    /// <summary>反対の手のレイが手首ボタンに当たっているか (つかむ判定に使う)。</summary>
-    private bool RayOnButtonBy(uint device) => _rayTarget == RayTarget.Button && _pointer == device;
+    /// <summary>その手のレイが手首ボタンに当たっているか (つかむ判定に使う)。</summary>
+    private bool RayOnButtonBy(uint device) => _rays.Any(r => r.Device == device && r.Target == RayTarget.Button);
+
+    private bool GrabbingPanel => _panelGrabRay >= 0;
 
     private void CreateCursor()
     {
         var overlay = OpenVR.Overlay;
-        Check(overlay.CreateOverlay(CursorKey, "AvatarChanger カーソル", ref _cursor), "カーソルの作成");
-        overlay.SetOverlaySortOrder(_cursor, 100); // パネルやボタンより手前に
-        Upload(_cursor, VrPanel.CursorRgba(), VrPanel.CursorSize, VrPanel.CursorSize, VrPanel.RenderCursor);
+        for (var i = 0; i < _rays.Length; i++)
+        {
+            Check(overlay.CreateOverlay($"{CursorKey}.{i}", "AvatarChanger カーソル", ref _rays[i].Cursor), "カーソルの作成");
+            overlay.SetOverlaySortOrder(_rays[i].Cursor, 100); // パネルやボタンより手前に
+            Upload(_rays[i].Cursor, VrPanel.CursorRgba(), VrPanel.CursorSize, VrPanel.CursorSize, VrPanel.RenderCursor);
+        }
+    }
+
+    private void DestroyCursors()
+    {
+        foreach (var ray in _rays)
+            if (ray.Cursor != 0) OpenVR.Overlay.DestroyOverlay(ray.Cursor);
     }
 
     private void ResetRay()
     {
-        _cursor = 0;
-        _cursorShown = false;
-        _cursorWidth = 0;
-        _pointer = OpenVR.k_unTrackedDeviceIndexInvalid;
-        _rayTarget = RayTarget.None;
-        _triggerWasDown.Clear();
-        _stickWasTilted.Clear();
+        for (var i = 0; i < _rays.Length; i++) _rays[i] = new HandRay();
+        _activeRay = -1;
+        _panelGrabRay = -1;
         _tipOffset.Clear();
         _buttonVisible = false;
     }
 
     /// <summary>
-    /// 両手のレイを手首ボタンとパネルに当てて、当たった所にカーソルを出す。
-    /// トリガーを引いた瞬間に押し、パネルを指したままスティックを上下に倒すとページをめくる。
+    /// 左右それぞれのレイを手首ボタンとパネルに当てて、当たった所にカーソルを出す。
+    /// どちらの手でも、トリガーを引いた瞬間に押し、パネルを指したままスティックを上下に倒すとページをめくり、
+    /// パネルを指してグリップを握るとつかむ。
     /// </summary>
     private void UpdateRay()
     {
         var buttonHand = RightHanded ? _rightHand : _leftHand;
-        var target = RayTarget.None;
-        var device = OpenVR.k_unTrackedDeviceIndexInvalid;
-        var at = default(System.Windows.Point);
-        var point = Vector3.Zero;
-        var best = float.MaxValue;
-        foreach (var role in Hands)
+        for (var i = 0; i < _rays.Length; i++)
         {
-            var d = HandDevice(role);
-            if (!IsValid(d)) continue;
-            var (origin, direction) = RayOf(d);
-            if (_panelOpen && RayHit(_panelInverse, PanelWidthM, VrPanel.Width, VrPanel.Height, origin, direction, 1, out var pAt, out var pDist))
-                Consider(d, RayTarget.Panel, pAt, origin + direction * pDist, pDist);
-            // ボタンは付けている手では指せない (自分の手の甲)。見えていないときも当てない
-            if (_buttonVisible && d != buttonHand && Matrix4x4.Invert(_buttonWorld, out var buttonInverse)
-                && RayHit(buttonInverse, ButtonWidthM, VrPanel.ButtonSize, VrPanel.ButtonSize, origin, direction, RayButtonSlack, out var bAt, out var bDist))
-                Consider(d, RayTarget.Button, bAt, origin + direction * bDist, bDist);
+            var ray = _rays[i];
+            var d = HandDevice(Hands[i]);
+            ray.Device = d;
+            var wasOnPanel = ray.Target == RayTarget.Panel;
+            ray.Target = RayTarget.None;
+            if (IsValid(d))
+            {
+                var (origin, direction) = RayOf(d);
+                var best = float.MaxValue;
+                if (_panelOpen && RayHit(_panelInverse, PanelWidthM, VrPanel.Width, VrPanel.Height, origin, direction, 1, out var pAt, out var pDist))
+                {
+                    best = pDist;
+                    ray.Target = RayTarget.Panel;
+                    ray.At = pAt;
+                    ray.Point = origin + direction * pDist;
+                }
+                // ボタンは付けている手では指せない (自分の手の甲)。見えていないときも当てない
+                if (_buttonVisible && d != buttonHand && Matrix4x4.Invert(_buttonWorld, out var buttonInverse)
+                    && RayHit(buttonInverse, ButtonWidthM, VrPanel.ButtonSize, VrPanel.ButtonSize, origin, direction, RayButtonSlack, out var bAt, out var bDist)
+                    && bDist < best)
+                {
+                    ray.Target = RayTarget.Button;
+                    ray.At = bAt;
+                    ray.Point = origin + direction * bDist;
+                }
+            }
+            // パネルのホバーは 1 つだけなので、新しくパネルを指し始めた手に移す (指している手が 1 本なら、その手)
+            if (ray.Target == RayTarget.Panel && (!wasOnPanel || _activeRay < 0 || _rays[_activeRay].Target != RayTarget.Panel))
+                _activeRay = i;
+            ShowCursor(ray);
         }
+        if (_activeRay >= 0 && _rays[_activeRay].Target != RayTarget.Panel)
+            _activeRay = Array.FindIndex(_rays, r => r.Target == RayTarget.Panel);
+        UpdatePanelHoverByRay(_activeRay >= 0 ? _panel.HitTest(_rays[_activeRay].At.X, _rays[_activeRay].At.Y) : default);
 
-        void Consider(uint d, RayTarget t, System.Windows.Point hitAt, Vector3 hitPoint, float distance)
+        for (var i = 0; i < _rays.Length; i++)
         {
-            // 両手で指しているときは、先に指していた手を優先する (カーソルが手の間で跳ねないように)
-            var score = d == _pointer ? distance - 10 : distance;
-            if (score >= best) return;
-            best = score;
-            target = t;
-            device = d;
-            at = hitAt;
-            point = hitPoint;
-        }
-
-        _pointer = device;
-        _rayTarget = target;
-        UpdatePanelHoverByRay(target == RayTarget.Panel ? _panel.HitTest(at.X, at.Y) : default);
-        ShowCursor(target, point);
-
-        // トリガー: 指している手が引いた瞬間に押す (指していない手の分も、引いたままの状態を覚えておく)
-        foreach (var role in Hands)
-        {
-            var d = HandDevice(role);
-            if (!IsValid(d)) continue;
+            var ray = _rays[i];
+            var d = ray.Device;
+            if (!IsValid(d)) { ray.TriggerWasDown = ray.GripWasDown = ray.StickWasTilted = false; continue; }
             var state = new VRControllerState_t();
             if (!OpenVR.System.GetControllerState(d, ref state, ControllerStateSize)) continue;
-            var down = (state.ulButtonPressed & (1UL << (int)EVRButtonId.k_EButton_SteamVR_Trigger)) != 0;
-            var pressed = down && !_triggerWasDown.GetValueOrDefault(d);
-            _triggerWasDown[d] = down;
+            var trigger = (state.ulButtonPressed & (1UL << (int)EVRButtonId.k_EButton_SteamVR_Trigger)) != 0;
+            var grip = (state.ulButtonPressed & (1UL << (int)EVRButtonId.k_EButton_Grip)) != 0;
+            var pressed = trigger && !ray.TriggerWasDown;
+            var gripped = grip && !ray.GripWasDown;
+            ray.TriggerWasDown = trigger;
+            ray.GripWasDown = grip;
 
             var stickY = StickY(d, state);
             var tilted = MathF.Abs(stickY) >= StickPageThreshold;
-            var flicked = tilted && !_stickWasTilted.GetValueOrDefault(d);
-            _stickWasTilted[d] = tilted;
+            var flicked = tilted && !ray.StickWasTilted;
+            ray.StickWasTilted = tilted;
 
-            if (d != device) continue;
-            if (pressed && target == RayTarget.Button)
+            if (i == _panelGrabRay)
+            {
+                // つかんでいる手: 握っている間は手についてくる。スティックの前後で遠ざける / 近づける
+                if (grip) continue;
+                _panelGrabRay = -1;
+                _panelDistance = Math.Clamp(Vector3.Distance(_panelWorld.Translation, HeadPosition()), MinPanelDistanceM, MaxPanelDistanceM);
+                continue;
+            }
+            if (pressed && ray.Target == RayTarget.Button)
             {
                 Log.Info("VR: 手首ボタンが押されました");
                 Buzz(d);
                 Press(TogglePanel);
             }
-            else if (pressed && target == RayTarget.Panel)
+            else if (pressed && ray.Target == RayTarget.Panel)
             {
-                var hit = _panel.HitTest(at.X, at.Y);
+                _activeRay = i;
+                var hit = _panel.HitTest(ray.At.X, ray.At.Y);
                 if (hit != default) Buzz(d); // 何も無い所を押したときは震わせない
                 Press(() => Click(hit));
             }
+            else if (gripped && ray.Target == RayTarget.Panel && !GrabbingPanel)
+            {
+                // パネルを指してグリップを握った: つかむ
+                _panelGrabRay = i;
+                _panelGrabOffset = Vector3.Transform(_panelWorld.Translation, Inverse(ToNumerics(_poses[d].mDeviceToAbsoluteTracking)));
+                Buzz(d);
+            }
             // グリップを握っているときのスティックはパネルの距離 (MovePanelByStick) なので、めくらない
-            else if (flicked && target == RayTarget.Panel && (state.ulButtonPressed & (1UL << (int)EVRButtonId.k_EButton_Grip)) == 0)
+            else if (flicked && ray.Target == RayTarget.Panel && !grip)
                 Click(new VrPanel.Hit(stickY > 0 ? VrPanel.HitKind.Prev : VrPanel.HitKind.Next)); // 上に倒すと前のページ
         }
     }
+
+    /// <summary>
+    /// つかんでいるパネルを手について動かす。面はいつも顔の方へ向ける (手首をひねっても傾かない)。
+    /// つかんだままスティックを前後に倒すと、手から遠ざける / 近づける (前に倒すと遠く)。
+    /// </summary>
+    private void MoveGrabbedPanel(float dt)
+    {
+        if (!GrabbingPanel) return;
+        var d = _rays[_panelGrabRay].Device;
+        if (!IsValid(d)) { _panelGrabRay = -1; return; } // 見失った手では動かさない (その場に残す)
+        var hand = ToNumerics(_poses[d].mDeviceToAbsoluteTracking);
+        var state = new VRControllerState_t();
+        if (OpenVR.System.GetControllerState(d, ref state, ControllerStateSize))
+        {
+            var reach = _panelGrabOffset.Length();
+            var next = NextGrabReach(reach, StickY(d, state), dt);
+            if (next != reach && reach > 1e-4f) _panelGrabOffset *= next / reach;
+        }
+        _panelWorld = FacingPose(Vector3.Transform(_panelGrabOffset, hand), HeadPosition());
+        PlacePanel();
+        _lastPanelMove = DateTime.UtcNow;
+        if (_panel.Hover != default) { _panel.Hover = default; _panelDirty = true; }
+    }
+
+    /// <summary>つかんだパネルの手からの距離を、スティックの傾きで変える (遊び・上限はパネルの距離と同じ考え)。</summary>
+    internal static float NextGrabReach(float reach, float tilt, float dt)
+    {
+        if (MathF.Abs(tilt) < StickDeadZone) return reach;
+        var amount = (MathF.Abs(tilt) - StickDeadZone) / (1 - StickDeadZone) * MathF.Sign(tilt);
+        return Math.Clamp(reach + amount * PanelMoveSpeed * dt, MinGrabReachM, MaxRayM - 0.2f);
+    }
+
+    /// <summary>position に置き、表 (+Z) を head へ向けた姿勢 (画像の上は空の側)。</summary>
+    internal static Matrix4x4 FacingPose(Vector3 position, Vector3 head)
+    {
+        var away = position - head; // 面の裏 (-Z) の向き
+        if (away.LengthSquared() < 1e-6f) away = -Vector3.UnitZ;
+        away = Vector3.Normalize(away);
+        // 真上・真下を向けると上下が決まらないので、そのときは手前を上とみなす
+        var up = MathF.Abs(Vector3.Dot(away, Vector3.UnitY)) > 0.98f ? Vector3.Normalize(new Vector3(away.X, 0, away.Z) + Vector3.UnitZ * 1e-3f) : Vector3.UnitY;
+        return Matrix4x4.CreateWorld(position, away, up);
+    }
+
+    private Vector3 HeadPosition() => ToNumerics(_poses[OpenVR.k_unTrackedDeviceIndex_Hmd].mDeviceToAbsoluteTracking).Translation;
 
     /// <summary>押したことが手に伝わるよう、コントローラーを短く震わせる (OVR Toolkit と同じ)。</summary>
     private static void Buzz(uint device)
@@ -152,23 +242,23 @@ internal sealed partial class VrOverlay
         _panelDirty = true;
     }
 
-    private void ShowCursor(RayTarget target, Vector3 point)
+    private void ShowCursor(HandRay ray)
     {
         var overlay = OpenVR.Overlay;
-        if (target == RayTarget.None)
+        if (ray.Target == RayTarget.None)
         {
-            if (_cursorShown) { overlay.HideOverlay(_cursor); _cursorShown = false; }
+            if (ray.CursorShown) { overlay.HideOverlay(ray.Cursor); ray.CursorShown = false; }
             return;
         }
-        var surface = target == RayTarget.Panel ? _panelWorld : _buttonWorld;
-        var width = target == RayTarget.Panel ? PanelCursorWidthM : ButtonCursorWidthM;
-        if (width != _cursorWidth) { overlay.SetOverlayWidthInMeters(_cursor, width); _cursorWidth = width; }
+        var surface = ray.Target == RayTarget.Panel ? _panelWorld : _buttonWorld;
+        var width = ray.Target == RayTarget.Panel ? PanelCursorWidthM : ButtonCursorWidthM;
+        if (width != ray.CursorWidth) { overlay.SetOverlayWidthInMeters(ray.Cursor, width); ray.CursorWidth = width; }
         // 面と同じ向きで、面から少しだけ浮かせて置く (面に埋もれないように)
         var pose = surface;
-        pose.Translation = point + Vector3.Normalize(Vector3.TransformNormal(Vector3.UnitZ, surface)) * 0.003f;
+        pose.Translation = ray.Point + Vector3.Normalize(Vector3.TransformNormal(Vector3.UnitZ, surface)) * 0.003f;
         var m = ToHmd(pose);
-        overlay.SetOverlayTransformAbsolute(_cursor, ETrackingUniverseOrigin.TrackingUniverseStanding, ref m);
-        if (!_cursorShown) { overlay.ShowOverlay(_cursor); _cursorShown = true; }
+        overlay.SetOverlayTransformAbsolute(ray.Cursor, ETrackingUniverseOrigin.TrackingUniverseStanding, ref m);
+        if (!ray.CursorShown) { overlay.ShowOverlay(ray.Cursor); ray.CursorShown = true; }
     }
 
     /// <summary>コントローラーのレイ (始点と向き、ワールド座標)。SteamVR のレーザーと同じ「指す先 (tip)」から出す。</summary>

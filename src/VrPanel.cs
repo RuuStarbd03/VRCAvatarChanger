@@ -78,7 +78,9 @@ internal sealed class VrPanel
     private static readonly Brush DangerBrush = Frozen(Color.FromRgb(0xE5, 0x6B, 0x6F));
     private static Pen AccentPen = new();
     private static Pen AccentThinPen = new(); // 小さいタイルの「今着ている」枠
-    private static readonly Pen EdgePen = FrozenPen(Frozen(Color.FromArgb(0x40, 0xFF, 0xFF, 0xFF)), 2);
+    private static readonly Pen SelectedPen = FrozenPen(TextBrush, 4);      // 1 回押して選んだタイルの枠
+    private static readonly Pen SelectedThinPen = FrozenPen(TextBrush, 2.5);
+    private static readonly Pen EdgePen =FrozenPen(Frozen(Color.FromArgb(0x40, 0xFF, 0xFF, 0xFF)), 2);
     // 手首ボタン: 塗りつぶさず、暗い半透明の下地に細い輪だけ色を付ける (腕時計の横で主張しすぎないように)
     private static readonly Brush ButtonBackBrush = Frozen(Color.FromArgb(0xD9, 0x1B, 0x1C, 0x21));
     private static Pen ButtonRingPen = new();
@@ -120,6 +122,11 @@ internal sealed class VrPanel
     public string Status { get; set; } = "";
     public bool StatusIsError { get; set; }
     public Hit Hover { get; set; }
+    /// <summary>
+    /// 1 回押して選んだタイル (一覧全体での番号、-1 = なし)。同じタイルをもう一度押すとチェンジする
+    /// (PC のダブルクリックと同じく、うっかり触れただけで着替えないように)。
+    /// </summary>
+    public int Selected { get; set; } = -1;
 
     private List<AvatarItem> _items = [];
     private List<string> _chips = [];
@@ -179,6 +186,7 @@ internal sealed class VrPanel
         _grid = GridLayout.For(columns);
         Page = Math.Clamp(first / PageSize, 0, PageCount - 1);
         Hover = default;
+        Selected = -1;
     }
 
     public int PageCount => Math.Max(1, (_items.Count + PageSize - 1) / PageSize);
@@ -215,6 +223,7 @@ internal sealed class VrPanel
         }
         else Page = Math.Clamp(Page, 0, PageCount - 1);
         Hover = default;
+        Selected = -1;
     }
 
     /// <summary>条件に合う最初のタイルのページへ移る (グループから戻ったとき、そのグループを見せるため)。</summary>
@@ -235,6 +244,7 @@ internal sealed class VrPanel
     {
         Page = Math.Clamp(Page + delta, 0, PageCount - 1);
         Hover = default;
+        Selected = -1;
     }
 
     public void ScrollChips(int delta)
@@ -399,10 +409,13 @@ internal sealed class VrPanel
                     UiFace, 20, MutedBrush, new Point(Pad, GridTop + 20), Width - Pad * 2, maxLines: 3);
 
             for (var slot = 0; slot < PageItemCount; slot++)
-                DrawTile(dc, _grid, TileRect(slot), PageItem(slot), Hover.Kind == HitKind.Tile && Hover.Index == PageStart + slot);
+                DrawTile(dc, _grid, TileRect(slot), PageItem(slot), Hover.Kind == HitKind.Tile && Hover.Index == PageStart + slot,
+                    Selected == PageStart + slot);
 
             if (Status.Length > 0)
                 DrawCentered(dc, Status, UiFace, 16, StatusIsError ? DangerBrush : MutedBrush, new Point(Width / 2.0, StatusY), Width - Pad * 2);
+            else if (Selected >= 0 && Selected < _items.Count)
+                DrawCentered(dc, $"もう一度押すとチェンジ: {_items[Selected].Name}", UiBoldFace, 16, TextBrush, new Point(Width / 2.0, StatusY), Width - Pad * 2);
             else if (!_grid.ShowName && Hover.Kind == HitKind.Tile && Hover.Index >= 0 && Hover.Index < _items.Count)
                 DrawCentered(dc, _items[Hover.Index].Name, UiBoldFace, 16, TextBrush, new Point(Width / 2.0, StatusY), Width - Pad * 2); // 名前を載せないほど小さいとき
 
@@ -418,13 +431,13 @@ internal sealed class VrPanel
         return _target;
     }
 
-    private static void DrawTile(DrawingContext dc, GridLayout g, Rect r, AvatarItem item, bool hover)
+    private static void DrawTile(DrawingContext dc, GridLayout g, Rect r, AvatarItem item, bool hover, bool selected)
     {
         var s = g.Scale;
         var radius = Math.Clamp(14 * s, 6, 14);
         var inset = Math.Clamp(8 * s, 3, 8);
         dc.PushClip(new RectangleGeometry(r, radius, radius));
-        dc.DrawRectangle(hover ? TileHoverBrush : TileBrush, null, r);
+        dc.DrawRectangle(hover || selected ? TileHoverBrush : TileBrush, null, r);
         var thumbRect = new Rect(r.X, r.Y, r.Width, g.ThumbHeight);
         dc.DrawRectangle(ThumbBackBrush, null, thumbRect);
         if (item.Thumbnail is { } image) // グループは代表のサムネイル
@@ -454,6 +467,15 @@ internal sealed class VrPanel
             DrawText(dc, item.Name, UiBoldFace, g.NameSize, TextBrush, new Point(r.X + 10 * s, r.Y + g.ThumbHeight + 7 * s), r.Width - 20 * s);
         dc.Pop();
 
+        if (selected)
+        {
+            // 選んだタイル: 白い枠 (「今着ている」のアクセント色の枠とは別の色)。今着ているものなら、その枠の内側に描く
+            var thin = g.TileWidth < 120;
+            var edge = (thin ? 1.25 : 2) + (item.IsCurrent ? (thin ? 2.5 : 4) : 0);
+            var corner = Math.Max(1, radius - edge);
+            dc.DrawRoundedRectangle(null, thin ? SelectedThinPen : SelectedPen,
+                new Rect(r.X + edge, r.Y + edge, r.Width - edge * 2, r.Height - edge * 2), corner, corner);
+        }
         if (item.IsCurrent)
         {
             var thin = g.TileWidth < 120;

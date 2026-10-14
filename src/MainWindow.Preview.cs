@@ -865,6 +865,23 @@ public partial class MainWindow
             vr.ClickForTest(114, 44);
             Expect("自分のタブに戻る", _settings.VrTab == AvatarTab.Own && panel.Items.Count > 0);
 
+            // アバターのタイルは 2 回押しでチェンジ: 1 回目は選ぶだけ (2 回目は本当に着替えてしまうので、ここでは押さない)
+            panel.TurnPage(-panel.Page);
+            var singles = Enumerable.Range(0, panel.PageItemCount).Where(i => !panel.PageItem(i).IsGroup).Take(2).ToList();
+            var (s1x, s1y) = TileCenter(singles[0]);
+            vr.ClickForTest(s1x, s1y);
+            Expect("1 回目はタイルを選ぶだけ", panel.Selected == singles[0] && panel.Status.Length == 0, $"selected={panel.Selected}");
+            Save(panel.Render(), "panel-selected.png");
+            var (s2x, s2y) = TileCenter(singles[1]);
+            vr.ClickForTest(s2x, s2y);
+            Expect("別のタイルを押すと選び直す", panel.Selected == singles[1]);
+            if (panel.PageCount > 1)
+            {
+                panel.TurnPage(1);
+                Expect("ページをめくると選択は外れる", panel.Selected == -1);
+                panel.TurnPage(-1);
+            }
+
             panel.Status = "アバターチェンジ失敗: Kikyo 9";
             panel.StatusIsError = true;
             panel.Hover = new VrPanel.Hit(VrPanel.HitKind.Tile, panel.PageStart + 4);
@@ -995,6 +1012,21 @@ public partial class MainWindow
                 Expect($"距離 {d:F2}m: 正面にその距離だけ離れて置かれる", MathF.Abs(flat.Length() - d) < 1e-4f && Vector3.Dot(Vector3.Normalize(flat), fwd) > 0.999f);
                 Expect($"距離 {d:F2}m: 表がこちらを向く", Vector3.Dot(face, -fwd) > 0.9f);
             }
+
+            // つかんで動かしたパネル: どこに置いても表が顔を向き、画像の上は空の側
+            foreach (var at in new[] { new Vector3(0.8f, 1.2f, -0.3f), new Vector3(-0.2f, 2.4f, -0.6f), new Vector3(0.2f, 0.4f, 0.2f) })
+            {
+                var pose = VrOverlay.FacingPose(at, headPos);
+                var face = Vector3.TransformNormal(Vector3.UnitZ, pose);
+                var up = Vector3.TransformNormal(Vector3.UnitY, pose);
+                Expect($"つかんだパネル ({at.X}, {at.Y}, {at.Z}): 表が顔を向く", Vector3.Dot(face, Vector3.Normalize(headPos - at)) > 0.999f
+                    && Vector3.Distance(pose.Translation, at) < 1e-5f);
+                Expect($"つかんだパネル ({at.X}, {at.Y}, {at.Z}): 上は空の側", up.Y > 0);
+            }
+            var straightDown = VrOverlay.FacingPose(headPos - new Vector3(0, 0.5f, 0), headPos);
+            Expect("真下に置いても壊れた姿勢にならない", float.IsFinite(straightDown.M11) && float.IsFinite(straightDown.M22) && float.IsFinite(straightDown.M33));
+            Expect("つかんだパネルは手に近づけすぎない", VrOverlay.NextGrabReach(0.12f, -1f, 0.5f) == 0.1f);
+            Expect("つかんだまま前に倒すと遠ざかる", VrOverlay.NextGrabReach(0.5f, 1f, 0.1f) > 0.5f);
         }
         catch (Exception ex) { failures++; report.AppendLine("EXCEPTION: " + ex); }
         report.Insert(0, failures == 0 ? "RESULT: all passed\n" : $"RESULT: {failures} failed\n");

@@ -47,7 +47,10 @@ internal interface IVrAvatarSource
 /// ・ボタンもパネルも、指して (レイ) トリガーで押す。
 ///   レイは SteamVR のレーザー (マウス入力) を使わず自前で計算する (VrOverlay.Ray.cs)。SteamVR のレーザーを使うと、
 ///   指した瞬間に SteamVR がコントローラーの入力を奪い、VRChat に届かなくなる (プッシュトゥトークが切れていた)。
+/// ・ボタンもパネルも、左右どちらの手でも指して押せる。
 /// ・パネルは開いた時点の顔の正面に置き、その場に固定する (手を動かしても追いかけてこない)。
+///   指してグリップを握るとつかんで好きな所へ動かせる (面はいつも顔を向く)。
+/// ・アバターのタイルは 2 回押しでチェンジする (1 回目は選ぶだけ。PC のダブルクリックと同じ)。
 /// ・PC のクイック着替えとは別物。タブ・並び順・グループ化・絞り込みは VR パネルの中で切り替え、
 ///   PC の画面を触らずに済むようにする (選んだタブ・並び順・グループ化は設定に残す)。
 ///
@@ -58,7 +61,7 @@ internal sealed partial class VrOverlay : IDisposable
 {
     private const string ButtonKey = "vrcavatarchanger.wrist";
     private const string PanelKey = "vrcavatarchanger.panel";
-    private const float ButtonWidthM = 0.028f;     // ボタンの見た目の幅。手の甲に収まる控えめな大きさ
+    private const float ButtonWidthM = 0.035f;     // ボタンの見た目の幅。手の甲から少しはみ出すくらい (小さすぎると指しにくい)
     private const float ButtonMaxAlpha = 0.85f;    // 一番濃いときでも少し透かす (向こうが見えて主張しすぎない)
     private const float PanelWidthM = 0.5f;
 
@@ -125,8 +128,6 @@ internal sealed partial class VrOverlay : IDisposable
     private bool _panelOpen;
     private Matrix4x4 _panelWorld;
     private Matrix4x4 _panelInverse;       // レイをパネルの座標に直すための逆行列 (置き直したときだけ計算する)
-    private Vector3 _panelAnchor;          // パネルを開いたときの頭の位置 (距離はここから測る)
-    private Vector3 _panelForward;         // そのときの正面 (水平)
     private float _panelDistance = DefaultPanelDistanceM; // 変えた距離は、アプリを閉じるまで次に開いたときも使う
     private readonly Dictionary<uint, int> _stickAxis = [];  // コントローラーごとの、スティック (無ければトラックパッド) の軸番号
     private readonly Stopwatch _frameClock = new();
@@ -134,7 +135,7 @@ internal sealed partial class VrOverlay : IDisposable
     private DateTime _lastRender;
     private readonly BitmapSource?[] _renderedThumbs = new BitmapSource?[VrPanel.MaxPageSize]; // 描いたときのサムネイル
     private DateTime _lastPress;
-    private DateTime _lastStickMove;        // 最後にスティックでパネルを動かした時刻
+    private DateTime _lastPanelMove;        // 最後にパネルを動かした (スティック / つかんで) 時刻
     private readonly byte[] _uploadedPanel = new byte[VrPanel.Width * VrPanel.Height * 4]; // 最後に SteamVR へ渡したパネルの画像
     private bool _uploadedPanelValid;       // _uploadedPanel が今のオーバーレイに渡したものか (繋ぎ直したら無効)
     private bool _busy;
@@ -263,7 +264,7 @@ internal sealed partial class VrOverlay : IDisposable
             if (_initialized && _button != 0) OpenVR.Overlay.DestroyOverlay(_button);
             foreach (var panel in _panels)
                 if (_initialized && panel != 0) OpenVR.Overlay.DestroyOverlay(panel);
-            if (_initialized && _cursor != 0) OpenVR.Overlay.DestroyOverlay(_cursor);
+            if (_initialized) DestroyCursors();
         }
         catch (Exception ex) { Log.Debug("SteamVR のオーバーレイを片付けられませんでした", ex); }
         _button = 0;
@@ -340,7 +341,11 @@ internal sealed partial class VrOverlay : IDisposable
             var dt = (float)Math.Min(_frameClock.Elapsed.TotalSeconds, 0.1); // 止まっていた後に一気に動かないよう上限
             _frameClock.Restart();
             UpdateButton();
-            if (_panelOpen) MovePanelByStick(dt);
+            if (_panelOpen)
+            {
+                MovePanelByStick(dt);
+                MoveGrabbedPanel(dt);
+            }
             UpdateRay();
             if (_panelOpen) RefreshPanel();
         }
@@ -532,8 +537,8 @@ internal sealed partial class VrOverlay : IDisposable
         var headWorld = ToNumerics(head.mDeviceToAbsoluteTracking);
         var forward = Vector3.TransformNormal(-Vector3.UnitZ, headWorld);
         forward.Y = 0;
-        _panelForward = forward.LengthSquared() < 1e-4f ? -Vector3.UnitZ : Vector3.Normalize(forward);
-        _panelAnchor = headWorld.Translation;
+        forward = forward.LengthSquared() < 1e-4f ? -Vector3.UnitZ : Vector3.Normalize(forward);
+        _panelWorld = PanelPose(headWorld.Translation, forward, _panelDistance);
         PlacePanel();
 
         RenderPanel(); // 閉じている間なので、入れ替えは待たずに済む
@@ -542,10 +547,9 @@ internal sealed partial class VrOverlay : IDisposable
         UploadButton(panelOpen: true);
     }
 
-    /// <summary>開いたときの頭の位置と正面から、今の距離でパネルを置く。</summary>
+    /// <summary>_panelWorld の所にパネルを置く (開いたとき・動かしたとき)。</summary>
     private void PlacePanel()
     {
-        _panelWorld = PanelPose(_panelAnchor, _panelForward, _panelDistance);
         Matrix4x4.Invert(_panelWorld, out _panelInverse);
         var m = ToHmd(_panelWorld);
         foreach (var panel in _panels) // 入れ替えたときにずれないよう、2 枚とも同じ所に置く
@@ -565,10 +569,11 @@ internal sealed partial class VrOverlay : IDisposable
     /// <summary>
     /// グリップを握ったままスティックを前後に倒すと、パネルを奥 / 手前へ動かす (前に倒すと奥)。
     /// 左右どちらの手でもよい。両手で倒したときは大きく倒しているほうを使う。
+    /// 動かすのは顔とパネルを結ぶ線の上で、向きはそのまま (つかんで置いた場所からでも、まっすぐ遠ざかる)。
     /// </summary>
     private void MovePanelByStick(float dt)
     {
-        if (_grabbing) return; // ボタンをつかんでいるグリップでは、パネルは動かさない
+        if (_grabbing || GrabbingPanel) return; // つかんでいるグリップでは動かさない (つかんだパネルは MoveGrabbedPanel)
         var system = OpenVR.System;
         var tilt = 0f;
         foreach (var role in Hands)
@@ -581,17 +586,22 @@ internal sealed partial class VrOverlay : IDisposable
             var y = StickY(device, state);
             if (MathF.Abs(y) > MathF.Abs(tilt)) tilt = y;
         }
-        var next = NextPanelDistance(_panelDistance, tilt, dt);
-        if (next == _panelDistance) return;
+        var head = HeadPosition();
+        var toPanel = _panelWorld.Translation - head;
+        var distance = toPanel.Length();
+        if (distance < 1e-3f) return;
+        var next = NextPanelDistance(distance, tilt, dt);
+        if (next == distance) return;
         _panelDistance = next;
+        _panelWorld.Translation = head + toPanel / distance * next;
         PlacePanel();
-        _lastStickMove = DateTime.UtcNow;
+        _lastPanelMove = DateTime.UtcNow;
         // 動かしている間はホバーを出さない (止まったあとに、レイが次に動いたところで付け直す)
         if (_panel.Hover != default) { _panel.Hover = default; _panelDirty = true; }
     }
 
     /// <summary>パネルの距離を変えている最中 (か、止めた直後) か。この間は描き直さない。</summary>
-    private bool MovingPanel => DateTime.UtcNow - _lastStickMove < MoveSettle;
+    private bool MovingPanel => DateTime.UtcNow - _lastPanelMove < MoveSettle;
 
     private static readonly uint ControllerStateSize = (uint)Marshal.SizeOf<VRControllerState_t>();
 
@@ -642,6 +652,7 @@ internal sealed partial class VrOverlay : IDisposable
         if (!_connected) return;
         foreach (var panel in _panels) OpenVR.Overlay.HideOverlay(panel);
         _hidePending = false;
+        _panelGrabRay = -1;
         _panelOpen = false;
         UploadButton(panelOpen: false);
     }
@@ -783,7 +794,18 @@ internal sealed partial class VrOverlay : IDisposable
                     _openGroup = g;
                     Reload(resetPage: true);
                 }
-                else ChangeAsync(tile).Forget();
+                else if (_panel.Selected == hit.Index)
+                {
+                    // 選んでおいたタイルをもう一度押した: チェンジ
+                    _panel.Selected = -1;
+                    ChangeAsync(tile).Forget();
+                }
+                else
+                {
+                    // 1 回目は選ぶだけ (うっかり触れただけで着替えないように。PC のダブルクリックと同じ考え)
+                    _panel.Selected = hit.Index;
+                    if (!_busy && _loadingTab is null) SetStatus(""); // 下の一言を「もう一度押すとチェンジ」にする
+                }
                 break;
             default:
                 return;
