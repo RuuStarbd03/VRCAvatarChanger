@@ -90,6 +90,10 @@ internal sealed partial class VrOverlay : IDisposable
     // パネルの距離を変えている間と、止めてからこの間は描き直さない。
     // 動かすとレイの当たる場所がずれてホバーが次々に切り替わり、そのたびに画像を差し替えるとちらつくため
     private static readonly TimeSpan MoveSettle = TimeSpan.FromMilliseconds(250);
+    // パネルは 2 枚重ねで持ち、見えていない方に新しい画像を渡してから入れ替える。
+    // 見えている 1 枚に SetOverlayRaw で渡し直すと、差し替えの途中で一瞬何も映らないことがあり、ホバーのたびにちらついていた。
+    // 新しい方を手前に出してから、この間を置いて古い方を隠す (SteamVR 側で画像が使えるようになるまでの余裕)
+    private static readonly TimeSpan PanelSwapOverlap = TimeSpan.FromMilliseconds(50);
 
     private static readonly ETrackedControllerRole[] Hands = [ETrackedControllerRole.LeftHand, ETrackedControllerRole.RightHand];
 
@@ -107,7 +111,10 @@ internal sealed partial class VrOverlay : IDisposable
     private bool _vrchatRunning;
     private bool _initFailureLogged;
     private ulong _button;
-    private ulong _panelHandle;
+    private readonly ulong[] _panels = new ulong[2]; // 2 枚重ねのパネル。_panels[_front] が今見せている方
+    private int _front;
+    private bool _hidePending;      // 入れ替えたあと、古い方 (_panels[_front ^ 1]) をまだ隠していない
+    private DateTime _swappedAt;
     private (uint Device, string Hand, float[]? Pose)? _placement; // 手首ボタンを最後に貼り付けた条件。変わったら貼り直す
     private Matrix4x4 _buttonOffset;  // その条件での、コントローラーから見た手首ボタンの位置
     private uint _leftHand = OpenVR.k_unTrackedDeviceIndexInvalid;   // 左右のコントローラーの機器番号。
@@ -214,8 +221,13 @@ internal sealed partial class VrOverlay : IDisposable
             // ボタンにもパネルにも SteamVR のレーザー (マウス入力) は付けない。指す操作は自前のレイで行う (VrOverlay.Ray.cs)
             UploadButton(panelOpen: false);
 
-            Check(overlay.CreateOverlay(PanelKey, "AvatarChanger アバター選択", ref _panelHandle), "パネルの作成");
-            overlay.SetOverlayWidthInMeters(_panelHandle, PanelWidthM);
+            for (var i = 0; i < _panels.Length; i++)
+            {
+                Check(overlay.CreateOverlay(i == 0 ? PanelKey : PanelKey + ".b", "AvatarChanger アバター選択", ref _panels[i]), "パネルの作成");
+                overlay.SetOverlayWidthInMeters(_panels[i], PanelWidthM);
+            }
+            _front = 0;
+            _hidePending = false;
             CreateCursor();
 
             RefreshHands();
@@ -249,12 +261,14 @@ internal sealed partial class VrOverlay : IDisposable
         try
         {
             if (_initialized && _button != 0) OpenVR.Overlay.DestroyOverlay(_button);
-            if (_initialized && _panelHandle != 0) OpenVR.Overlay.DestroyOverlay(_panelHandle);
+            foreach (var panel in _panels)
+                if (_initialized && panel != 0) OpenVR.Overlay.DestroyOverlay(panel);
             if (_initialized && _cursor != 0) OpenVR.Overlay.DestroyOverlay(_cursor);
         }
         catch (Exception ex) { Log.Debug("SteamVR のオーバーレイを片付けられませんでした", ex); }
         _button = 0;
-        _panelHandle = 0;
+        Array.Clear(_panels);
+        _hidePending = false;
         ResetRay();
         if (!_initialized) return;
         _initialized = false;
@@ -522,8 +536,8 @@ internal sealed partial class VrOverlay : IDisposable
         _panelAnchor = headWorld.Translation;
         PlacePanel();
 
-        RenderPanel();
-        OpenVR.Overlay.ShowOverlay(_panelHandle);
+        RenderPanel(); // 閉じている間なので、入れ替えは待たずに済む
+        OpenVR.Overlay.ShowOverlay(_panels[_front]);
         _panelOpen = true;
         UploadButton(panelOpen: true);
     }
@@ -534,7 +548,8 @@ internal sealed partial class VrOverlay : IDisposable
         _panelWorld = PanelPose(_panelAnchor, _panelForward, _panelDistance);
         Matrix4x4.Invert(_panelWorld, out _panelInverse);
         var m = ToHmd(_panelWorld);
-        OpenVR.Overlay.SetOverlayTransformAbsolute(_panelHandle, ETrackingUniverseOrigin.TrackingUniverseStanding, ref m);
+        foreach (var panel in _panels) // 入れ替えたときにずれないよう、2 枚とも同じ所に置く
+            OpenVR.Overlay.SetOverlayTransformAbsolute(panel, ETrackingUniverseOrigin.TrackingUniverseStanding, ref m);
     }
 
     /// <summary>頭の位置 anchor から正面 forward (水平・単位ベクトル) へ distance 離し、少し下げてこちらへ向けた姿勢。</summary>
@@ -625,7 +640,8 @@ internal sealed partial class VrOverlay : IDisposable
     private void ClosePanel()
     {
         if (!_connected) return;
-        OpenVR.Overlay.HideOverlay(_panelHandle);
+        foreach (var panel in _panels) OpenVR.Overlay.HideOverlay(panel);
+        _hidePending = false;
         _panelOpen = false;
         UploadButton(panelOpen: false);
     }
@@ -796,6 +812,13 @@ internal sealed partial class VrOverlay : IDisposable
     /// </summary>
     private void RefreshPanel()
     {
+        if (_hidePending)
+        {
+            // 入れ替えの途中。古い方を隠し終えるまでは、次の画像を渡さない (渡す先が見えている方になってしまう)
+            if (DateTime.UtcNow - _swappedAt < PanelSwapOverlap) return;
+            OpenVR.Overlay.HideOverlay(_panels[_front ^ 1]);
+            _hidePending = false;
+        }
         if (MovingPanel) return; // 止まってからまとめて描き直す
         var interval = _panelDirty ? HoverRenderInterval : ThumbnailsChanged() ? ThumbRenderInterval : (TimeSpan?)null;
         if (interval is null || DateTime.UtcNow - _lastRender < interval) return;
@@ -819,8 +842,21 @@ internal sealed partial class VrOverlay : IDisposable
         var rgba = _panel.RenderRgba();
         if (CopyIfChanged(rgba, _uploadedPanel, _uploadedPanelValid))
         {
-            Upload(_panelHandle, rgba, VrPanel.Width, VrPanel.Height, () => _panel.Render());
+            // 見えていない方に渡してから入れ替える (見えている方を差し替えると、途中で一瞬抜けてちらつく)
+            var back = _front ^ 1;
+            Upload(_panels[back], rgba, VrPanel.Width, VrPanel.Height, () => _panel.Render());
             _uploadedPanelValid = true;
+            if (_panelOpen)
+            {
+                // 新しい方を手前に重ねて出す。古い方は少し待ってから隠す (RefreshPanel)。その間も必ずどちらかが映っている
+                var overlay = OpenVR.Overlay;
+                overlay.SetOverlaySortOrder(_panels[back], 1);
+                overlay.SetOverlaySortOrder(_panels[_front], 0);
+                overlay.ShowOverlay(_panels[back]);
+                _hidePending = true;
+                _swappedAt = DateTime.UtcNow;
+            }
+            _front = back; // 閉じているときは入れ替えるだけ (開くときに _front を出す)
         }
         for (var slot = 0; slot < _renderedThumbs.Length; slot++)
             _renderedThumbs[slot] = slot < _panel.PageItemCount ? _panel.PageItem(slot).Thumbnail : null;
