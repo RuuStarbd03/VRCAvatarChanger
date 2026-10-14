@@ -456,6 +456,7 @@ internal sealed partial class VrOverlay : IDisposable
         {
             _grabbing = true;
             _grabHold = world * Inverse(otherPose);
+            Buzz(other);
         }
     }
 

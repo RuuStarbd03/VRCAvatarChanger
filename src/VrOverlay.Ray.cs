@@ -19,6 +19,7 @@ internal sealed partial class VrOverlay
     private const float ButtonCursorWidthM = 0.007f;
     private const float RayButtonSlack = 1.6f;     // ボタンは小さいので、見た目より少し広く当たりを取る
     private const float StickPageThreshold = 0.7f; // パネルを指してスティックをこれ以上倒すと、ページをめくる
+    private const ushort PressPulseMicroSec = 2500;  // 押したときの振動の長さ (SteamVR の 1 回の上限は 3999µs)
 
     private enum RayTarget { None, Button, Panel }
 
@@ -121,17 +122,26 @@ internal sealed partial class VrOverlay
             if (pressed && target == RayTarget.Button)
             {
                 Log.Info("VR: 手首ボタンが押されました");
+                Buzz(d);
                 Press(TogglePanel);
             }
             else if (pressed && target == RayTarget.Panel)
             {
                 var hit = _panel.HitTest(at.X, at.Y);
+                if (hit != default) Buzz(d); // 何も無い所を押したときは震わせない
                 Press(() => Click(hit));
             }
             // グリップを握っているときのスティックはパネルの距離 (MovePanelByStick) なので、めくらない
             else if (flicked && target == RayTarget.Panel && (state.ulButtonPressed & (1UL << (int)EVRButtonId.k_EButton_Grip)) == 0)
                 Click(new VrPanel.Hit(stickY > 0 ? VrPanel.HitKind.Prev : VrPanel.HitKind.Next)); // 上に倒すと前のページ
         }
+    }
+
+    /// <summary>押したことが手に伝わるよう、コントローラーを短く震わせる (OVR Toolkit と同じ)。</summary>
+    private static void Buzz(uint device)
+    {
+        try { OpenVR.System.TriggerHapticPulse(device, 0, PressPulseMicroSec); }
+        catch (Exception ex) { Log.Debug("VR: コントローラーを振動させられませんでした", ex); }
     }
 
     /// <summary>レイの当たっている所をパネルのホバーにする。パネルを動かしている間は変えない (ちらつくため)。</summary>
