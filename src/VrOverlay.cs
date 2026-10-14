@@ -38,12 +38,14 @@ internal interface IVrAvatarSource
 }
 
 /// <summary>
-/// VR (SteamVR) での着替え。PC の Shift+1 の代わりに、手首のボタンからアバター選択パネルを開く。
+/// VR (SteamVR) での着替え。PC の Shift+1 の代わりに、手の甲のボタンからアバター選択パネルを開く。
 ///
 /// ・SteamVR と VRChat の両方が動いているときだけ SteamVR に繋ぐ (こちらから SteamVR を起動することはない)。
-/// ・手首ボタンはコントローラーに貼り付け、手首を見たときだけ現れる (普段は視界の邪魔をしない)。
-///   OVR Toolkit などの腕時計と並べて使えるよう、腕時計の位置から肘側へずらして置く (ずらす量は設定で変えられる)。
-/// ・手首ボタンは反対の手のコントローラーで触れて押す。SteamVR のレーザーの対象にはしない
+/// ・ボタン (コード上は「手首ボタン」と呼ぶ) はコントローラーに貼り付けて手の甲に置き、手の甲を見たときだけ現れる
+///   (普段は視界の邪魔をしない)。OVR Toolkit などの腕時計 (手首) とは重ならない。
+///   反対の手で触れてグリップを握るとつかんで動かせ、離した場所 (付けた手から見た位置と向き) を設定に残す。
+/// ・手首ボタンは反対の手のコントローラーで触れて離すと押したことになる (触れたままグリップを握れば、押さずにつかむ)。
+///   SteamVR のレーザーの対象にはしない
 ///   (レーザーで押せるオーバーレイが見えていると、反対の手が手首の方を向いた瞬間に SteamVR がレーザー操作に切り替わり、
 ///    その間コントローラーの入力が VRChat に届かなくなる。プッシュトゥトークが手首を見るたびに切れていた)。
 /// ・パネルは触れても、レーザーで指してトリガーでも押せる (パネルを開いている間は操作している最中なので)。
@@ -58,22 +60,28 @@ internal sealed class VrOverlay : IDisposable
 {
     private const string ButtonKey = "vrcavatarchanger.wrist";
     private const string PanelKey = "vrcavatarchanger.panel";
-    private const float ButtonWidthM = 0.035f;     // 手首ボタンの見た目の幅。腕時計より控えめに
-    private const float ButtonTouchScale = 1.4f;   // 触れて反応する範囲は見た目より広く (小さいぶん押しにくいので)
+    private const float ButtonWidthM = 0.028f;     // ボタンの見た目の幅。手の甲に収まる控えめな大きさ
     private const float ButtonMaxAlpha = 0.85f;    // 一番濃いときでも少し透かす (向こうが見えて主張しすぎない)
     private const float PanelWidthM = 0.5f;
 
     // ---- 手首ボタンの置き場所 (コントローラー基準、m) ----
     // コントローラーの座標は -Z が指す向き、+Z が手首・肘の側、+Y が上 (親指側)、+X が右。
-    // 腕時計 (手の甲側の手首) のおおよその位置の推測値。コントローラーの種類で原点が違うので、合わなければ設定で詰める。
-    private const float WatchBackM = 0.13f;    // コントローラーの原点から手首まで (+Z)
-    private const float WatchLiftM = 0.04f;    // 腕の中心から手首の甲の表面まで
-    private const float WatchRollDeg = 70;     // 甲の向き: 真上 (0°) から腕の外側へ倒す角度。握ったとき手の甲は外を向く
+    // 手の甲の真ん中のおおよその位置の推測値。コントローラーの種類で原点が違うので、合わなければ設定で詰める。
+    private const float HandBackM = 0.06f;     // コントローラーの原点から手の甲の真ん中まで (+Z)
+    private const float HandLiftM = 0.045f;    // 握った手の中心から甲の表面まで
+    private const float HandRollDeg = 70;      // 甲の向き: 真上 (0°) から腕の外側へ倒す角度。握ったとき手の甲は外を向く
 
     // ---- 触れて押す判定 ----
     private const float PokeTipM = 0.03f;      // 押す側のコントローラーの原点から、押す点までの距離 (-Z = 指す向き)
     private const float PokeDepthM = 0.025f;   // 面からこの距離以内に入ったら「触れた」
     private static readonly TimeSpan PressCooldown = TimeSpan.FromMilliseconds(400);
+    private static readonly TimeSpan TapMax = TimeSpan.FromSeconds(1.5); // これより長く触れていたら、離しても押したことにしない
+    private const float MaxButtonReachM = 0.3f;    // つかんで動かせるのは、付けた手からこの距離まで (見失わないように)
+    // 手首ボタンは小さく、コントローラーの原点がどこにあるか (どこが「先」か) も機種で違うので、パネルよりずっと甘く判定する。
+    // コントローラーの頭の部分を、原点から指す向きに並べた数個の点で表し、どれかがボタンの近くに来たら触れたとする
+    private static readonly float[] ButtonProbeM = [0f, 0.03f, 0.06f, 0.09f];
+    private const float ButtonTouchHalfM = 0.045f;  // ボタンの中心から縦横この範囲 (見た目は 2.8cm 角、反応は 9cm 角)
+    private const float ButtonTouchDepthM = 0.05f;  // 面の前後この距離以内
 
     // ---- パネルの置き場所 (開いた時点の頭の位置から) ----
     private const float DefaultPanelDistanceM = 0.55f;
@@ -112,7 +120,7 @@ internal sealed class VrOverlay : IDisposable
     private bool _initFailureLogged;
     private ulong _button;
     private ulong _panelHandle;
-    private (uint Device, string Hand, double Along, double Height)? _placement; // 手首ボタンを最後に貼り付けた条件。変わったら貼り直す
+    private (uint Device, string Hand, float[]? Pose)? _placement; // 手首ボタンを最後に貼り付けた条件。変わったら貼り直す
     private Matrix4x4 _buttonOffset;  // その条件での、コントローラーから見た手首ボタンの位置
     private uint _leftHand = OpenVR.k_unTrackedDeviceIndexInvalid;   // 左右のコントローラーの機器番号。
     private uint _rightHand = OpenVR.k_unTrackedDeviceIndexInvalid;  // 毎フレーム問い合わせず、接続・持ち替えのときだけ調べ直す
@@ -247,6 +255,7 @@ internal sealed class VrOverlay : IDisposable
         _buttonShown = false;
         _buttonAlpha = 0;
         _placement = null;
+        _grabbing = false;
         _sentAlpha = -1;
         _touching.Clear();
         _stickAxis.Clear();
@@ -368,17 +377,30 @@ internal sealed class VrOverlay : IDisposable
 
     private bool RightHanded => _settings.VrHand == "right";
 
-    /// <summary>コントローラーから見た手首ボタンの位置と向き。</summary>
+    /// <summary>コントローラーから見た手首ボタンの位置と向き。つかんで動かした位置があればそれ、なければ手の甲。</summary>
     private Matrix4x4 ButtonOffset()
+        => PoseFromArray(_settings.VrButtonPose) is { } moved ? moved : HandBackOffset(RightHanded);
+
+    /// <summary>手の甲の真ん中に、甲の向きへ面を向けて置く位置 (既定の位置)。</summary>
+    internal static Matrix4x4 HandBackOffset(bool rightHanded)
     {
-        var side = RightHanded ? -1f : 1f; // 手の甲 (腕の外側) は、左手なら -X、右手なら +X
-        var roll = side * WatchRollDeg * MathF.PI / 180;
+        var side = rightHanded ? -1f : 1f; // 手の甲 (腕の外側) は、左手なら -X、右手なら +X
+        var roll = side * HandRollDeg * MathF.PI / 180;
         // 面の表 (+Z) を甲の向きへ。画像の上 (+Y) は手の側 (-Z) を向け、腕時計と同じ向きで読めるようにする
         var rotation = Matrix4x4.CreateRotationX(-MathF.PI / 2) * Matrix4x4.CreateRotationZ(roll);
         var normal = Vector3.TransformNormal(Vector3.UnitZ, rotation);
-        var along = WatchBackM + (float)_settings.VrButtonAlongCm / 100;
-        var lift = WatchLiftM + (float)_settings.VrButtonHeightCm / 100;
-        return rotation * Matrix4x4.CreateTranslation(new Vector3(0, 0, along) + normal * lift);
+        return rotation * Matrix4x4.CreateTranslation(new Vector3(0, 0, HandBackM) + normal * HandLiftM);
+    }
+
+    /// <summary>設定に残す形 (3x4 の 12 個) と行列を行き来する。壊れた値や遠すぎる位置は null (既定の位置に戻す)。</summary>
+    internal static float[] PoseToArray(Matrix4x4 m)
+        => [m.M11, m.M12, m.M13, m.M21, m.M22, m.M23, m.M31, m.M32, m.M33, m.M41, m.M42, m.M43];
+
+    internal static Matrix4x4? PoseFromArray(float[]? a)
+    {
+        if (a is not { Length: 12 } || a.Any(v => !float.IsFinite(v))) return null;
+        var m = new Matrix4x4(a[0], a[1], a[2], 0, a[3], a[4], a[5], 0, a[6], a[7], a[8], 0, a[9], a[10], a[11], 1);
+        return m.Translation.Length() <= MaxButtonReachM + 0.01f ? m : null;
     }
 
     /// <summary>左右のコントローラーの機器番号を調べ直す。接続時と、機器の接続・持ち替えのときだけ呼ぶ。</summary>
@@ -391,6 +413,13 @@ internal sealed class VrOverlay : IDisposable
 
     private uint HandDevice(ETrackedControllerRole role) => role == ETrackedControllerRole.RightHand ? _rightHand : _leftHand;
 
+    // ---- つかんで動かす ----
+    private bool _grabbing;
+    private Matrix4x4 _grabHold;      // つかんだ手から見たボタンの位置 (つかんでいる間はこの関係のまま手についてくる)
+    private bool _gripWasDown;        // 反対の手のグリップを前のフレームで握っていたか (握った瞬間だけつかむ)
+    private DateTime _touchStart;     // 反対の手が触れ始めた時刻
+    private bool _touchUsed;          // 今の触れている間につかんだ / 見えていなかった (離しても押したことにしない)
+
     private void UpdateButton()
     {
         var hand = RightHanded ? _rightHand : _leftHand;
@@ -398,12 +427,36 @@ internal sealed class VrOverlay : IDisposable
         var hmd = _poses[OpenVR.k_unTrackedDeviceIndex_Hmd];
         if (!_vrchatRunning || !IsValid(hand) || !hmd.bPoseIsValid)
         {
+            _grabbing = false;
             FadeButton(false);
             return;
         }
+        var handPose = ToNumerics(_poses[hand].mDeviceToAbsoluteTracking);
+        var otherValid = IsValid(other);
+        var otherPose = otherValid ? ToNumerics(_poses[other].mDeviceToAbsoluteTracking) : Matrix4x4.Identity;
+        var gripping = otherValid && GripPressed(other);
+        var gripPressedNow = gripping && !_gripWasDown;
+        _gripWasDown = gripping;
 
-        // 付ける手・ずらし量が変わったときだけ、位置を計算し直して貼り直す (普段は SteamVR が手に追従させる)
-        var placement = (hand, _settings.VrHand, _settings.VrButtonAlongCm, _settings.VrButtonHeightCm);
+        if (_grabbing)
+        {
+            // つかんでいる間: 反対の手についてくる。離したら、付けた手から見た位置として残す
+            var relative = ClampReach(_grabHold * otherPose * Inverse(handPose));
+            var m = ToHmd(relative);
+            OpenVR.Overlay.SetOverlayTransformTrackedDeviceRelative(_button, hand, ref m);
+            _buttonOffset = relative;
+            FadeButton(true);
+            if (gripping && otherValid) return;
+            _grabbing = false;
+            _settings.VrButtonPose = PoseToArray(relative);
+            _placement = (hand, _settings.VrHand, _settings.VrButtonPose);
+            _source.SaveSettings();
+            Log.Info("VR: ボタンの位置を動かしました");
+            return;
+        }
+
+        // 付ける手・位置の設定が変わったときだけ、貼り直す (普段は SteamVR が手に追従させる)
+        var placement = (hand, _settings.VrHand, _settings.VrButtonPose);
         if (placement != _placement)
         {
             _buttonOffset = ButtonOffset();
@@ -412,8 +465,8 @@ internal sealed class VrOverlay : IDisposable
             _placement = placement;
         }
 
-        // 手首を顔に向けて、そちらを見ているときだけ出す (腕時計を見る動作)
-        var world = _buttonOffset * ToNumerics(_poses[hand].mDeviceToAbsoluteTracking);
+        // 手の甲を顔に向けて、そちらを見ているときだけ出す (腕時計を見るのと同じ動作)
+        var world = _buttonOffset * handPose;
         var head = ToNumerics(hmd.mDeviceToAbsoluteTracking);
         var center = world.Translation;
         var toEye = head.Translation - center;
@@ -424,9 +477,81 @@ internal sealed class VrOverlay : IDisposable
         FadeButton(visible);
 
         // 触れているかは見えていない間も追っておく。見えた瞬間に「もう触れていた」手を、押したとは数えないため
-        if (IsValid(other) && Matrix4x4.Invert(world, out var inverse)
-            && Poke(_button, inverse, ButtonWidthM * ButtonTouchScale, VrPanel.ButtonSize, VrPanel.ButtonSize, other, out _) && visible)
+        if (!otherValid || !Matrix4x4.Invert(world, out var inverse)) return;
+        var touching = ControllerNearButton(inverse, otherPose, out var nearest);
+        var key = (_button, other);
+        var was = _touching.GetValueOrDefault(key);
+        _touching[key] = touching;
+        if (visible) LogButtonReach(nearest);
+
+        if (touching && !was)
+        {
+            _touchStart = DateTime.UtcNow;
+            _touchUsed = !visible;
+        }
+        if (touching && !visible) _touchUsed = true;
+        // 触れたままグリップを握ったら、押さずにつかむ
+        if (touching && visible && gripPressedNow)
+        {
+            _grabbing = true;
+            _touchUsed = true;
+            _grabHold = world * Inverse(otherPose);
+            return;
+        }
+        // 触れて離したら押したことにする (触れた瞬間ではなく離したときにするのは、つかむ操作と区別するため)
+        if (!touching && was && !_touchUsed && DateTime.UtcNow - _touchStart < TapMax)
+        {
+            Log.Info("VR: 手首ボタンが押されました");
             Press(TogglePanel);
+        }
+    }
+
+    private static Matrix4x4 Inverse(Matrix4x4 m) => Matrix4x4.Invert(m, out var inv) ? inv : Matrix4x4.Identity;
+
+    /// <summary>付けた手から遠くへ持っていかれたら、その向きのまま上限の距離まで戻す。</summary>
+    internal static Matrix4x4 ClampReach(Matrix4x4 relative)
+    {
+        var t = relative.Translation;
+        if (t.Length() > MaxButtonReachM) relative.Translation = Vector3.Normalize(t) * MaxButtonReachM;
+        return relative;
+    }
+
+    private bool GripPressed(uint device)
+    {
+        var state = new VRControllerState_t();
+        return OpenVR.System.GetControllerState(device, ref state, ControllerStateSize)
+               && (state.ulButtonPressed & (1UL << (int)EVRButtonId.k_EButton_Grip)) != 0;
+    }
+
+    /// <summary>
+    /// 反対の手のコントローラーが手首ボタンに触れているか。nearest には、一番近い点がボタンの範囲から
+    /// どれだけ離れているか (m、範囲内なら 0) を返す (うまく押せないときにログで確かめるため)。
+    /// </summary>
+    /// <param name="buttonInverse">ボタンの姿勢の逆行列 (ワールド → ボタンの座標)</param>
+    /// <param name="controller">押す側のコントローラーの姿勢</param>
+    internal static bool ControllerNearButton(Matrix4x4 buttonInverse, Matrix4x4 controller, out float nearest)
+    {
+        nearest = float.MaxValue;
+        foreach (var d in ButtonProbeM)
+        {
+            var local = Vector3.Transform(Vector3.Transform(new Vector3(0, 0, -d), controller), buttonInverse);
+            var outside = new Vector3(
+                MathF.Max(0, MathF.Abs(local.X) - ButtonTouchHalfM),
+                MathF.Max(0, MathF.Abs(local.Y) - ButtonTouchHalfM),
+                MathF.Max(0, MathF.Abs(local.Z) - ButtonTouchDepthM)).Length();
+            nearest = MathF.Min(nearest, outside);
+        }
+        return nearest == 0;
+    }
+
+    private DateTime _lastReachLog;
+
+    /// <summary>手首ボタンが見えている間、反対の手がどこまで近づいたかを 1 秒ごとにログへ (ログの記録がオンのときだけ)。</summary>
+    private void LogButtonReach(float nearest)
+    {
+        if (!Log.Enabled || DateTime.UtcNow - _lastReachLog < TimeSpan.FromSeconds(1)) return;
+        _lastReachLog = DateTime.UtcNow;
+        Log.Debug(nearest == 0 ? "VR: 反対の手が手首ボタンに触れています" : $"VR: 反対の手から手首ボタンまで {nearest * 100:F1} cm");
     }
 
     private void FadeButton(bool visible)
@@ -540,6 +665,7 @@ internal sealed class VrOverlay : IDisposable
     /// </summary>
     private void MovePanelByStick(float dt)
     {
+        if (_grabbing) return; // ボタンをつかんでいるグリップでは、パネルは動かさない
         var system = OpenVR.System;
         var tilt = 0f;
         foreach (var role in Hands)

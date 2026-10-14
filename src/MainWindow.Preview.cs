@@ -883,10 +883,10 @@ public partial class MainWindow
             Expect("行列の変換 (Numerics → SteamVR)", Vector3.Distance(byHmd, Vector3.Transform(p, m)) < 1e-5f);
             Expect("行列の変換 (往復)", Vector3.Distance(Vector3.Transform(p, VrOverlay.ToNumericsForTest(h)), Vector3.Transform(p, m)) < 1e-5f);
 
-            // 手首ボタン: 左手なら甲 (-X) を向き、手首より肘側 (+Z) にあること。右手は左右反転
+            // ボタン: 既定は手の甲。左手なら甲 (-X) を向き、原点より手首側 (+Z) にあること。右手は左右反転
             foreach (var hand in new[] { "left", "right" })
             {
-                var s = new Settings { VrHand = hand, VrButtonAlongCm = 8 };
+                var s = new Settings { VrHand = hand };
                 var offset = VrOverlay.ButtonOffsetForTest(s);
                 var normal = Vector3.TransformNormal(Vector3.UnitZ, offset);
                 var up = Vector3.TransformNormal(Vector3.UnitY, offset);
@@ -895,8 +895,19 @@ public partial class MainWindow
                 Expect($"{hand}: 表は腕の外側を向く", hand == "left" ? normal.X < -0.5f : normal.X > 0.5f);
                 Expect($"{hand}: 表はやや上向き", normal.Y > 0.1f);
                 Expect($"{hand}: 画像の上は手の側 (-Z)", up.Z < -0.9f);
-                Expect($"{hand}: 腕時計 (0.13m) より 8cm 肘側", MathF.Abs(pos.Z - 0.21f) < 0.001f);
+                Expect($"{hand}: 手の甲 (原点から 6cm 手首側)", MathF.Abs(pos.Z - 0.06f) < 0.001f);
             }
+
+            // つかんで動かした位置: 設定に残した形から元に戻せる。遠すぎる位置・壊れた値は手の甲に戻す
+            var movedPose = Matrix4x4.CreateRotationY(0.7f) * Matrix4x4.CreateTranslation(0.05f, 0.08f, 0.12f);
+            var restored = VrOverlay.ButtonOffsetForTest(new Settings { VrButtonPose = VrOverlay.PoseToArray(movedPose) });
+            Expect("動かした位置を設定から戻せる", Vector3.Distance(restored.Translation, movedPose.Translation) < 1e-5f
+                && Vector3.Distance(Vector3.TransformNormal(Vector3.UnitZ, restored), Vector3.TransformNormal(Vector3.UnitZ, movedPose)) < 1e-5f);
+            var farPose = VrOverlay.PoseToArray(Matrix4x4.CreateTranslation(0, 0, 0.8f));
+            Expect("遠すぎる位置は使わない", VrOverlay.PoseFromArray(farPose) is null);
+            Expect("壊れた値は使わない", VrOverlay.PoseFromArray([1, 2, 3]) is null && VrOverlay.PoseFromArray(null) is null);
+            var clamped = VrOverlay.ClampReach(Matrix4x4.CreateTranslation(0, 0.6f, 0));
+            Expect("つかんで遠くへ持っていっても 30cm で止まる", MathF.Abs(clamped.Translation.Length() - 0.3f) < 1e-5f);
 
             // 触れた点 → 画像の座標: 斜めに置いたパネルの右上寄りを触る
             var panelWorld = Matrix4x4.CreateRotationX(-0.26f) * Matrix4x4.CreateRotationY(0.8f) * Matrix4x4.CreateTranslation(0.3f, 1.2f, -0.5f);
@@ -907,6 +918,20 @@ public partial class MainWindow
             Expect("触れた点が画像の右上寄りに対応", inside && Math.Abs(at.X - 480) < 0.5 && Math.Abs(at.Y - 200) < 0.5, $"({at.X:F1}, {at.Y:F1})");
             var far = Vector3.Transform(new Vector3(0, 0, 0.05f), panelWorld); // 5cm 手前
             Expect("離れている点は触れていない", !VrOverlay.TouchPoint(panelWorld, w, VrPanel.Width, VrPanel.Height, far, out _));
+            // 手首ボタン: 反対の手のコントローラーの頭がボタンに来れば、向きがどうでも触れたことにする
+            var buttonWorld = Matrix4x4.CreateRotationY(0.5f) * Matrix4x4.CreateTranslation(0.1f, 1.0f, -0.3f);
+            Matrix4x4.Invert(buttonWorld, out var buttonInverse);
+            var buttonAt = buttonWorld.Translation;
+            foreach (var (label, rot) in new[] { ("正面から", Matrix4x4.Identity), ("斜め下から", Matrix4x4.CreateRotationX(-0.8f)),
+                         ("横から", Matrix4x4.CreateRotationY(1.4f)) })
+            {
+                // コントローラーの原点から 3cm 先 (頭の部分) がボタンの中心に来る置き方
+                var ctrl = rot * Matrix4x4.CreateTranslation(buttonAt - Vector3.TransformNormal(new Vector3(0, 0, -0.03f), rot));
+                Expect($"手首ボタンに触れる ({label})", VrOverlay.ControllerNearButton(buttonInverse, ctrl, out _));
+            }
+            var awayCtrl = Matrix4x4.CreateTranslation(buttonAt + new Vector3(0, 0.25f, 0));
+            Expect("手首ボタンから 25cm 離れていれば触れていない", !VrOverlay.ControllerNearButton(buttonInverse, awayCtrl, out var gap) && gap > 0.1f,
+                $"{gap * 100:F1} cm");
             var outside = Vector3.Transform(new Vector3(w * 0.6f, 0, 0), panelWorld); // 面の外
             Expect("面の外は触れていない", !VrOverlay.TouchPoint(panelWorld, w, VrPanel.Width, VrPanel.Height, outside, out _));
 

@@ -3,14 +3,13 @@ using System.Windows.Controls;
 
 namespace VRCAvatarChanger;
 
-// VR (SteamVR): 手首ボタンからのアバター選択。SteamVR とのやりとりは VrOverlay.cs、見た目は VrPanel.cs。
+// VR (SteamVR): 手の甲のボタンからのアバター選択。SteamVR とのやりとりは VrOverlay.cs、見た目は VrPanel.cs。
 // ここは設定との橋渡しと、VR パネルに並べる一覧の出どころ (IVrAvatarSource)。
 // PC のクイック着替えとは別物で、メイン画面で開いているタブに関係なく、VR パネルで選んだタブの一覧を出す。
 // 絞り込み・並べ替え・グループ化はメイン画面と同じ関数を使う (見え方をそろえる)。
 public partial class MainWindow : IVrAvatarSource
 {
     private VrOverlay? _vr;
-    private bool _showingVrSettings; // 設定画面に値を写している間は、スライダーの変化を保存しない
 
     /// <summary>
     /// VR パネル用に作った項目 (タブ → アバター ID → 項目)。サムネイルは項目が持つので、
@@ -98,29 +97,24 @@ public partial class MainWindow : IVrAvatarSource
 
     void IVrAvatarSource.RequestThumbnail(AvatarItem item) => RequestThumbnail(item);
 
-    void IVrAvatarSource.SaveSettings() => SaveSettings();
+    void IVrAvatarSource.SaveSettings()
+    {
+        SaveSettings();
+        UpdateVrOptions(); // VR の中でボタンを動かしたら、設定画面の「位置をリセット」を押せるように
+    }
 
     /// <summary>設定画面を開いたときに、今の値を表示に写す。</summary>
     private void ShowVrSettings()
     {
-        _showingVrSettings = true;
-        try
-        {
-            VrToggle.IsChecked = _settings.VrOverlay;
-            (_settings.VrHand == "right" ? VrHandRight : VrHandLeft).IsChecked = true;
-            // 片方ずつ入れると、入れた瞬間の ValueChanged でもう片方の古い値を保存してしまうので、写している間は止める
-            VrAlongSlider.Value = _settings.VrButtonAlongCm;
-            VrHeightSlider.Value = _settings.VrButtonHeightCm;
-        }
-        finally { _showingVrSettings = false; }
-        UpdateVrLabels();
+        VrToggle.IsChecked = _settings.VrOverlay;
+        (_settings.VrHand == "right" ? VrHandRight : VrHandLeft).IsChecked = true;
+        UpdateVrOptions();
     }
 
-    private void UpdateVrLabels()
+    private void UpdateVrOptions()
     {
-        VrAlongLabel.Text = $"{VrAlongSlider.Value:+0;-0;0} cm";
-        VrHeightLabel.Text = $"{VrHeightSlider.Value:+0;-0;0} cm";
         VrOptionsPanel.IsEnabled = _settings.VrOverlay;
+        VrResetPositionButton.IsEnabled = _settings.VrButtonPose is not null;
     }
 
     private void VrToggle_Changed(object sender, RoutedEventArgs e)
@@ -130,12 +124,12 @@ public partial class MainWindow : IVrAvatarSource
         if (_settings.VrOverlay == enabled) return;
         _settings.VrOverlay = enabled;
         SaveSettings();
-        UpdateVrLabels();
+        UpdateVrOptions();
         if (enabled && !_preview) _vr?.Start();
         else _vr?.Stop();
         SetStatus(StatusKind.Info, enabled
-            ? "VR の手首ボタン: オン"
-            : "VR の手首ボタン: オフ");
+            ? "VR のボタン: オン"
+            : "VR のボタン: オフ");
     }
 
     private void VrHand_Checked(object sender, RoutedEventArgs e)
@@ -144,16 +138,16 @@ public partial class MainWindow : IVrAvatarSource
         var hand = (sender as RadioButton)?.Tag as string ?? "left";
         if (_settings.VrHand == hand) return; // 設定画面を開いたときの初期化では何もしない
         _settings.VrHand = hand;
+        _settings.VrButtonPose = null; // 動かした位置は前の手から見たものなので、新しい手では手の甲から
         SaveSettings(); // 付け替えは次のフレームで VrOverlay が拾う
+        UpdateVrOptions();
     }
 
-    private void VrPlacement_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    private void VrResetPosition_Click(object sender, RoutedEventArgs e)
     {
-        if (!_ready || _showingVrSettings) return;
-        _settings.VrButtonAlongCm = VrAlongSlider.Value;
-        _settings.VrButtonHeightCm = VrHeightSlider.Value;
-        UpdateVrLabels();
-        // VR の中で見ながら動かせるよう、位置はすぐ反映する (保存だけまとめる)
-        SaveSettingsDebounced();
+        _settings.VrButtonPose = null; // 次のフレームで VrOverlay が手の甲に貼り直す
+        SaveSettings();
+        UpdateVrOptions();
+        SetStatus(StatusKind.Info, "VR のボタンを手の甲に戻しました");
     }
 }

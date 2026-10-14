@@ -5,8 +5,6 @@ public sealed class Settings
 {
     public const int MinGridColumns = 3;
     public const int MaxGridColumns = 10;
-    public const double MinVrAlongCm = -5, MaxVrAlongCm = 20;
-    public const double MinVrHeightCm = -5, MaxVrHeightCm = 5;
 
     public string ViewMode { get; set; } = "list";   // "list" | "grid"
     /// <summary>配色。"system" (Windows のアプリのモードに合わせる) / "light" / "dark"。</summary>
@@ -24,12 +22,13 @@ public sealed class Settings
     public bool KeepBrowserLogin { get; set; } = true;
     /// <summary>VR (SteamVR) の手首ボタンとアバター選択パネル。SteamVR と VRChat が動いているときだけ出る。</summary>
     public bool VrOverlay { get; set; } = true;
-    /// <summary>手首ボタンを付ける手。"left" / "right"。</summary>
+    /// <summary>VR のボタンを付ける手。"left" / "right"。</summary>
     public string VrHand { get; set; } = "left";
-    /// <summary>手首ボタンを腕時計の位置から肘側へずらす量 (cm)。OVR Toolkit などの腕時計と重ならないように。</summary>
-    public double VrButtonAlongCm { get; set; } = 8;
-    /// <summary>手首ボタンの高さの微調整 (cm、腕から浮かせる向きが +)。</summary>
-    public double VrButtonHeightCm { get; set; }
+    /// <summary>
+    /// VR のボタンをつかんで動かした位置 (付けた手のコントローラーから見た位置と向き、3x4 の 12 個)。
+    /// null なら手の甲 (既定の位置)。
+    /// </summary>
+    public float[]? VrButtonPose { get; set; }
     // VR パネルの表示状態。メイン画面とは別に持ち、VR の中で切り替えたものを次に開いたときも使う
     /// <summary>VR パネルのタブ。"own" / "favorites" / "public"。</summary>
     public string VrTab { get; set; } = AvatarTab.Own;
@@ -87,8 +86,7 @@ public sealed class Settings
         if (s.VrTab is not (AvatarTab.Own or AvatarTab.Favorites or AvatarTab.Public)) s.VrTab = AvatarTab.Own;
         if (s.VrSortKey is not ("recent_asc" or "name_asc")) s.VrSortKey = "recent_asc";
         s.VrColumns = Math.Clamp(s.VrColumns, MinGridColumns, MaxGridColumns);
-        s.VrButtonAlongCm = Math.Clamp(s.VrButtonAlongCm, MinVrAlongCm, MaxVrAlongCm);
-        s.VrButtonHeightCm = Math.Clamp(s.VrButtonHeightCm, MinVrHeightCm, MaxVrHeightCm);
+        if (VRCAvatarChanger.VrOverlay.PoseFromArray(s.VrButtonPose) is null) s.VrButtonPose = null; // 壊れた値・遠すぎる位置は手の甲に戻す
         return s;
     }
 
