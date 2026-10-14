@@ -26,6 +26,7 @@ internal sealed class VrPanel
     public const int Width = 640;
     public const int Height = 800;
     public const int ButtonSize = 192;
+    public const int CursorSize = 64;
 
     public const int MinColumns = Settings.MinGridColumns;
     public const int MaxColumns = Settings.MaxGridColumns;
@@ -521,6 +522,33 @@ internal sealed class VrPanel
             DrawCentered(dc, panelOpen ? "閉じる" : "チェンジ", UiBoldFace, 28, TextBrush, new Point(c.X, c.Y + 46));
         }
         return ToBitmap(visual, ButtonSize, ButtonSize);
+    }
+
+    // ---------------- カーソル ----------------
+
+    private static byte[]? _cursorRgba;
+
+    /// <summary>レイが当たった所に出すカーソルの画像 (RGBA)。作るのは最初の 1 回だけ。</summary>
+    public static byte[] CursorRgba()
+    {
+        if (_cursorRgba is null)
+        {
+            _cursorRgba = new byte[CursorSize * CursorSize * 4];
+            CopyRgba(RenderCursor(), _cursorRgba);
+        }
+        return _cursorRgba;
+    }
+
+    /// <summary>白い丸に黒い縁 (明るい所でも暗い所でも見える)。</summary>
+    public static BitmapSource RenderCursor()
+    {
+        var visual = new DrawingVisual();
+        using (var dc = visual.RenderOpen())
+        {
+            var c = new Point(CursorSize / 2.0, CursorSize / 2.0);
+            dc.DrawEllipse(Brushes.White, FrozenPen(Frozen(Color.FromArgb(0xCC, 0, 0, 0)), 8), c, CursorSize / 2.0 - 6, CursorSize / 2.0 - 6);
+        }
+        return ToBitmap(visual, CursorSize, CursorSize);
     }
 
     // ---------------- 小物 ----------------

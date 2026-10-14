@@ -909,31 +909,30 @@ public partial class MainWindow
             var clamped = VrOverlay.ClampReach(Matrix4x4.CreateTranslation(0, 0.6f, 0));
             Expect("つかんで遠くへ持っていっても 30cm で止まる", MathF.Abs(clamped.Translation.Length() - 0.3f) < 1e-5f);
 
-            // 触れた点 → 画像の座標: 斜めに置いたパネルの右上寄りを触る
+            // レイ: 斜めに置いたパネルを、面の正面から指せば当たり、裏から・外れた所・遠すぎる所は当たらない
             var panelWorld = Matrix4x4.CreateRotationX(-0.26f) * Matrix4x4.CreateRotationY(0.8f) * Matrix4x4.CreateTranslation(0.3f, 1.2f, -0.5f);
             var w = VrOverlay.PanelWidthForTest;
             var hM = w * VrPanel.Height / VrPanel.Width;
-            var touch = Vector3.Transform(new Vector3(w * 0.25f, hM * 0.25f, 0.01f), panelWorld); // 中心から右へ 1/4、上へ 1/4、1cm 手前
-            var inside = VrOverlay.TouchPoint(panelWorld, w, VrPanel.Width, VrPanel.Height, touch, out var at);
-            Expect("触れた点が画像の右上寄りに対応", inside && Math.Abs(at.X - 480) < 0.5 && Math.Abs(at.Y - 200) < 0.5, $"({at.X:F1}, {at.Y:F1})");
-            var far = Vector3.Transform(new Vector3(0, 0, 0.05f), panelWorld); // 5cm 手前
-            Expect("離れている点は触れていない", !VrOverlay.TouchPoint(panelWorld, w, VrPanel.Width, VrPanel.Height, far, out _));
-            // 手首ボタン: 反対の手のコントローラーの頭がボタンに来れば、向きがどうでも触れたことにする
-            var buttonWorld = Matrix4x4.CreateRotationY(0.5f) * Matrix4x4.CreateTranslation(0.1f, 1.0f, -0.3f);
-            Matrix4x4.Invert(buttonWorld, out var buttonInverse);
-            var buttonAt = buttonWorld.Translation;
-            foreach (var (label, rot) in new[] { ("正面から", Matrix4x4.Identity), ("斜め下から", Matrix4x4.CreateRotationX(-0.8f)),
-                         ("横から", Matrix4x4.CreateRotationY(1.4f)) })
             {
-                // コントローラーの原点から 3cm 先 (頭の部分) がボタンの中心に来る置き方
-                var ctrl = rot * Matrix4x4.CreateTranslation(buttonAt - Vector3.TransformNormal(new Vector3(0, 0, -0.03f), rot));
-                Expect($"手首ボタンに触れる ({label})", VrOverlay.ControllerNearButton(buttonInverse, ctrl, out _));
+                Matrix4x4.Invert(panelWorld, out var panelInverse);
+                var normalW = Vector3.Normalize(Vector3.TransformNormal(Vector3.UnitZ, panelWorld));
+                var aim = Vector3.Transform(new Vector3(w * 0.25f, hM * 0.25f, 0), panelWorld); // 右上寄り
+                var from = aim + normalW * 0.6f;
+                var hitRay = VrOverlay.RayHit(panelInverse, w, VrPanel.Width, VrPanel.Height, from, Vector3.Normalize(aim - from), 1, out var rayAt, out var rayDist);
+                Expect("レイ: 正面から指すと当たる", hitRay && Math.Abs(rayAt.X - 480) < 0.5 && Math.Abs(rayAt.Y - 200) < 0.5 && MathF.Abs(rayDist - 0.6f) < 1e-3f,
+                    $"({rayAt.X:F1}, {rayAt.Y:F1}) {rayDist:F3}m");
+                var back = aim - normalW * 0.6f;
+                Expect("レイ: 裏からは当たらない", !VrOverlay.RayHit(panelInverse, w, VrPanel.Width, VrPanel.Height, back, Vector3.Normalize(aim - back), 1, out _, out _));
+                Expect("レイ: 面と逆を向けば当たらない", !VrOverlay.RayHit(panelInverse, w, VrPanel.Width, VrPanel.Height, from, -Vector3.Normalize(aim - from), 1, out _, out _));
+                var off = Vector3.Transform(new Vector3(w * 0.7f, 0, 0), panelWorld);
+                Expect("レイ: 面の外は当たらない", !VrOverlay.RayHit(panelInverse, w, VrPanel.Width, VrPanel.Height, from, Vector3.Normalize(off - from), 1, out _, out _));
+                Expect("レイ: 広げた分は端に寄せて当たる", VrOverlay.RayHit(panelInverse, w, VrPanel.Width, VrPanel.Height, from, Vector3.Normalize(off - from), 1.6f, out var edgeAt, out _)
+                    && Math.Abs(edgeAt.X - VrPanel.Width) < 0.5, $"x={edgeAt.X:F1}");
+                var farFrom = aim + normalW * 5f;
+                Expect("レイ: 3m より遠くからは当たらない", !VrOverlay.RayHit(panelInverse, w, VrPanel.Width, VrPanel.Height, farFrom, Vector3.Normalize(aim - farFrom), 1, out _, out _));
             }
-            var awayCtrl = Matrix4x4.CreateTranslation(buttonAt + new Vector3(0, 0.25f, 0));
-            Expect("手首ボタンから 25cm 離れていれば触れていない", !VrOverlay.ControllerNearButton(buttonInverse, awayCtrl, out var gap) && gap > 0.1f,
-                $"{gap * 100:F1} cm");
-            var outside = Vector3.Transform(new Vector3(w * 0.6f, 0, 0), panelWorld); // 面の外
-            Expect("面の外は触れていない", !VrOverlay.TouchPoint(panelWorld, w, VrPanel.Width, VrPanel.Height, outside, out _));
+            Save(VrPanel.RenderCursor(), "cursor.png");
+
 
             // SteamVR に渡す並び (RGBA) になっているか: 「グループ化: オン」のボタンの色 (今のアクセント色) の画素を見る
             var accent = App.AccentColor(dark: true);

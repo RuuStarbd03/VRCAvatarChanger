@@ -43,12 +43,10 @@ internal interface IVrAvatarSource
 /// ・SteamVR と VRChat の両方が動いているときだけ SteamVR に繋ぐ (こちらから SteamVR を起動することはない)。
 /// ・ボタン (コード上は「手首ボタン」と呼ぶ) はコントローラーに貼り付けて手の甲に置き、手の甲を見たときだけ現れる
 ///   (普段は視界の邪魔をしない)。OVR Toolkit などの腕時計 (手首) とは重ならない。
-///   反対の手で触れてグリップを握るとつかんで動かせ、離した場所 (付けた手から見た位置と向き) を設定に残す。
-/// ・手首ボタンは反対の手のコントローラーで触れて離すと押したことになる (触れたままグリップを握れば、押さずにつかむ)。
-///   SteamVR のレーザーの対象にはしない
-///   (レーザーで押せるオーバーレイが見えていると、反対の手が手首の方を向いた瞬間に SteamVR がレーザー操作に切り替わり、
-///    その間コントローラーの入力が VRChat に届かなくなる。プッシュトゥトークが手首を見るたびに切れていた)。
-/// ・パネルは触れても、レーザーで指してトリガーでも押せる (パネルを開いている間は操作している最中なので)。
+///   反対の手で指してグリップを握るとつかんで動かせ、離した場所 (付けた手から見た位置と向き) を設定に残す。
+/// ・ボタンもパネルも、指して (レイ) トリガーで押す。
+///   レイは SteamVR のレーザー (マウス入力) を使わず自前で計算する (VrOverlay.Ray.cs)。SteamVR のレーザーを使うと、
+///   指した瞬間に SteamVR がコントローラーの入力を奪い、VRChat に届かなくなる (プッシュトゥトークが切れていた)。
 /// ・パネルは開いた時点の顔の正面に置き、その場に固定する (手を動かしても追いかけてこない)。
 /// ・PC のクイック着替えとは別物。タブ・並び順・グループ化・絞り込みは VR パネルの中で切り替え、
 ///   PC の画面を触らずに済むようにする (選んだタブ・並び順・グループ化は設定に残す)。
@@ -56,7 +54,7 @@ internal interface IVrAvatarSource
 /// 見た目と当たり判定は VrPanel が受け持つ。ここは SteamVR とのやりとりと、手・頭の位置の計算だけ。
 /// SteamVR の API は UI スレッドのタイマーからだけ呼ぶ (スレッドをまたがない)。
 /// </summary>
-internal sealed class VrOverlay : IDisposable
+internal sealed partial class VrOverlay : IDisposable
 {
     private const string ButtonKey = "vrcavatarchanger.wrist";
     private const string PanelKey = "vrcavatarchanger.panel";
@@ -71,17 +69,8 @@ internal sealed class VrOverlay : IDisposable
     private const float HandLiftM = 0.045f;    // 握った手の中心から甲の表面まで
     private const float HandRollDeg = 70;      // 甲の向き: 真上 (0°) から腕の外側へ倒す角度。握ったとき手の甲は外を向く
 
-    // ---- 触れて押す判定 ----
-    private const float PokeTipM = 0.03f;      // 押す側のコントローラーの原点から、押す点までの距離 (-Z = 指す向き)
-    private const float PokeDepthM = 0.025f;   // 面からこの距離以内に入ったら「触れた」
     private static readonly TimeSpan PressCooldown = TimeSpan.FromMilliseconds(400);
-    private static readonly TimeSpan TapMax = TimeSpan.FromSeconds(1.5); // これより長く触れていたら、離しても押したことにしない
     private const float MaxButtonReachM = 0.3f;    // つかんで動かせるのは、付けた手からこの距離まで (見失わないように)
-    // 手首ボタンは小さく、コントローラーの原点がどこにあるか (どこが「先」か) も機種で違うので、パネルよりずっと甘く判定する。
-    // コントローラーの頭の部分を、原点から指す向きに並べた数個の点で表し、どれかがボタンの近くに来たら触れたとする
-    private static readonly float[] ButtonProbeM = [0f, 0.03f, 0.06f, 0.09f];
-    private const float ButtonTouchHalfM = 0.045f;  // ボタンの中心から縦横この範囲 (見た目は 2.8cm 角、反応は 9cm 角)
-    private const float ButtonTouchDepthM = 0.05f;  // 面の前後この距離以内
 
     // ---- パネルの置き場所 (開いた時点の頭の位置から) ----
     private const float DefaultPanelDistanceM = 0.55f;
@@ -96,10 +85,10 @@ internal sealed class VrOverlay : IDisposable
     private static readonly uint EventSize = (uint)Marshal.SizeOf<VREvent_t>();
 
     // パネルの描き直しは 1 回で 2MB を SteamVR に渡すので、続けて起きる変化はまとめる
-    private static readonly TimeSpan HoverRenderInterval = TimeSpan.FromMilliseconds(33);  // レーザーを動かしたとき (30 回/秒まで)
+    private static readonly TimeSpan HoverRenderInterval = TimeSpan.FromMilliseconds(33);  // レイを動かしたとき (30 回/秒まで)
     private static readonly TimeSpan ThumbRenderInterval = TimeSpan.FromMilliseconds(150); // サムネイルが 1 枚ずつ届くとき
     // パネルの距離を変えている間と、止めてからこの間は描き直さない。
-    // 動かすとレーザーの当たる場所がずれてホバーが次々に切り替わり、そのたびに画像を差し替えるとちらつくため
+    // 動かすとレイの当たる場所がずれてホバーが次々に切り替わり、そのたびに画像を差し替えるとちらつくため
     private static readonly TimeSpan MoveSettle = TimeSpan.FromMilliseconds(250);
 
     private static readonly ETrackedControllerRole[] Hands = [ETrackedControllerRole.LeftHand, ETrackedControllerRole.RightHand];
@@ -111,7 +100,6 @@ internal sealed class VrOverlay : IDisposable
     private readonly DispatcherTimer _frame = new(DispatcherPriority.Normal) { Interval = TimeSpan.FromMilliseconds(16) };
     private readonly VrPanel _panel = new();
     private readonly TrackedDevicePose_t[] _poses = new TrackedDevicePose_t[OpenVR.k_unMaxTrackedDeviceCount];
-    private readonly Dictionary<(ulong Overlay, uint Device), bool> _touching = [];
 
     private bool _initialized; // OpenVR.Init が通った (Shutdown が要る)
     private bool _connected;   // オーバーレイまで作り終えた
@@ -129,7 +117,7 @@ internal sealed class VrOverlay : IDisposable
     private bool _buttonShown;
     private bool _panelOpen;
     private Matrix4x4 _panelWorld;
-    private Matrix4x4 _panelInverse;       // 触れた点をパネルの座標に直すための逆行列 (置き直したときだけ計算する)
+    private Matrix4x4 _panelInverse;       // レイをパネルの座標に直すための逆行列 (置き直したときだけ計算する)
     private Vector3 _panelAnchor;          // パネルを開いたときの頭の位置 (距離はここから測る)
     private Vector3 _panelForward;         // そのときの正面 (水平)
     private float _panelDistance = DefaultPanelDistanceM; // 変えた距離は、アプリを閉じるまで次に開いたときも使う
@@ -223,13 +211,12 @@ internal sealed class VrOverlay : IDisposable
             var overlay = OpenVR.Overlay;
             Check(overlay.CreateOverlay(ButtonKey, "AvatarChanger", ref _button), "手首ボタンの作成");
             overlay.SetOverlayWidthInMeters(_button, ButtonWidthM);
-            // 手首ボタンにはレーザーを付けない (SetupMouse しない)。見えるたびに VRChat への入力を奪わないため
+            // ボタンにもパネルにも SteamVR のレーザー (マウス入力) は付けない。指す操作は自前のレイで行う (VrOverlay.Ray.cs)
             UploadButton(panelOpen: false);
 
             Check(overlay.CreateOverlay(PanelKey, "AvatarChanger アバター選択", ref _panelHandle), "パネルの作成");
             overlay.SetOverlayWidthInMeters(_panelHandle, PanelWidthM);
-            SetupMouse(_panelHandle, VrPanel.Width, VrPanel.Height);
-            overlay.SetOverlayFlag(_panelHandle, VROverlayFlags.SendVRDiscreteScrollEvents, true);
+            CreateCursor();
 
             RefreshHands();
             _connected = true;
@@ -257,17 +244,18 @@ internal sealed class VrOverlay : IDisposable
         _placement = null;
         _grabbing = false;
         _sentAlpha = -1;
-        _touching.Clear();
         _stickAxis.Clear();
         _uploadedPanelValid = false; // オーバーレイを作り直すので、前に渡した画像はもう無い
         try
         {
             if (_initialized && _button != 0) OpenVR.Overlay.DestroyOverlay(_button);
             if (_initialized && _panelHandle != 0) OpenVR.Overlay.DestroyOverlay(_panelHandle);
+            if (_initialized && _cursor != 0) OpenVR.Overlay.DestroyOverlay(_cursor);
         }
         catch (Exception ex) { Log.Debug("SteamVR のオーバーレイを片付けられませんでした", ex); }
         _button = 0;
         _panelHandle = 0;
+        ResetRay();
         if (!_initialized) return;
         _initialized = false;
         try { OpenVR.Shutdown(); } catch (Exception ex) { Log.Debug("SteamVR から切断できませんでした", ex); }
@@ -277,16 +265,6 @@ internal sealed class VrOverlay : IDisposable
     private static void Check(EVROverlayError err, string what)
     {
         if (err != EVROverlayError.None) throw new InvalidOperationException($"{what}失敗 ({err})");
-    }
-
-    /// <summary>SteamVR のレーザーで指して押せるようにする (ダッシュボードを開いていなくても)。</summary>
-    private static void SetupMouse(ulong handle, int width, int height)
-    {
-        var overlay = OpenVR.Overlay;
-        overlay.SetOverlayInputMethod(handle, VROverlayInputMethod.Mouse);
-        var scale = new HmdVector2_t { v0 = width, v1 = height };
-        overlay.SetOverlayMouseScale(handle, ref scale);
-        overlay.SetOverlayFlag(handle, VROverlayFlags.MakeOverlaysInteractiveIfVisible, true);
     }
 
     /// <summary>
@@ -326,7 +304,6 @@ internal sealed class VrOverlay : IDisposable
         try
         {
             var system = OpenVR.System;
-            var overlay = OpenVR.Overlay;
             var ev = new VREvent_t();
             while (system.PollNextEvent(ref ev, EventSize))
             {
@@ -336,6 +313,7 @@ internal sealed class VrOverlay : IDisposable
                 {
                     RefreshHands();
                     _stickAxis.Clear();
+                    _tipOffset.Clear();
                 }
                 if ((EVREventType)ev.eventType != EVREventType.VREvent_Quit) continue;
                 // SteamVR が終了しようとしている。すぐに手を離さないと SteamVR 側で待たされる
@@ -343,19 +321,14 @@ internal sealed class VrOverlay : IDisposable
                 Disconnect("SteamVR が終了するため");
                 return;
             }
-            while (overlay.PollNextOverlayEvent(_panelHandle, ref ev, EventSize))
-                HandlePanelEvent(ev);
 
             system.GetDeviceToAbsoluteTrackingPose(ETrackingUniverseOrigin.TrackingUniverseStanding, 0, _poses);
             var dt = (float)Math.Min(_frameClock.Elapsed.TotalSeconds, 0.1); // 止まっていた後に一気に動かないよう上限
             _frameClock.Restart();
             UpdateButton();
-            if (_panelOpen)
-            {
-                MovePanelByStick(dt);
-                PokePanel();
-                RefreshPanel();
-            }
+            if (_panelOpen) MovePanelByStick(dt);
+            UpdateRay();
+            if (_panelOpen) RefreshPanel();
         }
         catch (Exception ex)
         {
@@ -364,7 +337,7 @@ internal sealed class VrOverlay : IDisposable
         }
     }
 
-    /// <summary>連打・触れたままの揺れで二重に反応しないよう、間を空けて 1 回だけ実行する。</summary>
+    /// <summary>連打で二重に反応しないよう、間を空けて 1 回だけ実行する。</summary>
     private void Press(Action action)
     {
         var now = DateTime.UtcNow;
@@ -417,14 +390,13 @@ internal sealed class VrOverlay : IDisposable
     private bool _grabbing;
     private Matrix4x4 _grabHold;      // つかんだ手から見たボタンの位置 (つかんでいる間はこの関係のまま手についてくる)
     private bool _gripWasDown;        // 反対の手のグリップを前のフレームで握っていたか (握った瞬間だけつかむ)
-    private DateTime _touchStart;     // 反対の手が触れ始めた時刻
-    private bool _touchUsed;          // 今の触れている間につかんだ / 見えていなかった (離しても押したことにしない)
 
     private void UpdateButton()
     {
         var hand = RightHanded ? _rightHand : _leftHand;
         var other = RightHanded ? _leftHand : _rightHand;
         var hmd = _poses[OpenVR.k_unTrackedDeviceIndex_Hmd];
+        _buttonVisible = false;
         if (!_vrchatRunning || !IsValid(hand) || !hmd.bPoseIsValid)
         {
             _grabbing = false;
@@ -445,6 +417,7 @@ internal sealed class VrOverlay : IDisposable
             var m = ToHmd(relative);
             OpenVR.Overlay.SetOverlayTransformTrackedDeviceRelative(_button, hand, ref m);
             _buttonOffset = relative;
+            _buttonWorld = relative * handPose;
             FadeButton(true);
             if (gripping && otherValid) return;
             _grabbing = false;
@@ -475,34 +448,14 @@ internal sealed class VrOverlay : IDisposable
         var looking = Vector3.Dot(Vector3.Normalize(Vector3.TransformNormal(-Vector3.UnitZ, head)), -toEye / distance);
         var visible = distance < 0.9f && facing > 0.4f && looking > 0.7f;
         FadeButton(visible);
+        _buttonWorld = world;
+        _buttonVisible = visible;
 
-        // 触れているかは見えていない間も追っておく。見えた瞬間に「もう触れていた」手を、押したとは数えないため
-        if (!otherValid || !Matrix4x4.Invert(world, out var inverse)) return;
-        var touching = ControllerNearButton(inverse, otherPose, out var nearest);
-        var key = (_button, other);
-        var was = _touching.GetValueOrDefault(key);
-        _touching[key] = touching;
-        if (visible) LogButtonReach(nearest);
-
-        if (touching && !was)
-        {
-            _touchStart = DateTime.UtcNow;
-            _touchUsed = !visible;
-        }
-        if (touching && !visible) _touchUsed = true;
-        // 触れたままグリップを握ったら、押さずにつかむ
-        if (touching && visible && gripPressedNow)
+        // 反対の手で指したままグリップを握ったら、つかむ (押すのはトリガー: UpdateRay)
+        if (visible && gripPressedNow && RayOnButtonBy(other))
         {
             _grabbing = true;
-            _touchUsed = true;
             _grabHold = world * Inverse(otherPose);
-            return;
-        }
-        // 触れて離したら押したことにする (触れた瞬間ではなく離したときにするのは、つかむ操作と区別するため)
-        if (!touching && was && !_touchUsed && DateTime.UtcNow - _touchStart < TapMax)
-        {
-            Log.Info("VR: 手首ボタンが押されました");
-            Press(TogglePanel);
         }
     }
 
@@ -521,37 +474,6 @@ internal sealed class VrOverlay : IDisposable
         var state = new VRControllerState_t();
         return OpenVR.System.GetControllerState(device, ref state, ControllerStateSize)
                && (state.ulButtonPressed & (1UL << (int)EVRButtonId.k_EButton_Grip)) != 0;
-    }
-
-    /// <summary>
-    /// 反対の手のコントローラーが手首ボタンに触れているか。nearest には、一番近い点がボタンの範囲から
-    /// どれだけ離れているか (m、範囲内なら 0) を返す (うまく押せないときにログで確かめるため)。
-    /// </summary>
-    /// <param name="buttonInverse">ボタンの姿勢の逆行列 (ワールド → ボタンの座標)</param>
-    /// <param name="controller">押す側のコントローラーの姿勢</param>
-    internal static bool ControllerNearButton(Matrix4x4 buttonInverse, Matrix4x4 controller, out float nearest)
-    {
-        nearest = float.MaxValue;
-        foreach (var d in ButtonProbeM)
-        {
-            var local = Vector3.Transform(Vector3.Transform(new Vector3(0, 0, -d), controller), buttonInverse);
-            var outside = new Vector3(
-                MathF.Max(0, MathF.Abs(local.X) - ButtonTouchHalfM),
-                MathF.Max(0, MathF.Abs(local.Y) - ButtonTouchHalfM),
-                MathF.Max(0, MathF.Abs(local.Z) - ButtonTouchDepthM)).Length();
-            nearest = MathF.Min(nearest, outside);
-        }
-        return nearest == 0;
-    }
-
-    private DateTime _lastReachLog;
-
-    /// <summary>手首ボタンが見えている間、反対の手がどこまで近づいたかを 1 秒ごとにログへ (ログの記録がオンのときだけ)。</summary>
-    private void LogButtonReach(float nearest)
-    {
-        if (!Log.Enabled || DateTime.UtcNow - _lastReachLog < TimeSpan.FromSeconds(1)) return;
-        _lastReachLog = DateTime.UtcNow;
-        Log.Debug(nearest == 0 ? "VR: 反対の手が手首ボタンに触れています" : $"VR: 反対の手から手首ボタンまで {nearest * 100:F1} cm");
     }
 
     private void FadeButton(bool visible)
@@ -575,41 +497,6 @@ internal sealed class VrOverlay : IDisposable
 
     private bool IsValid(uint device)
         => device != OpenVR.k_unTrackedDeviceIndexInvalid && device < _poses.Length && _poses[device].bPoseIsValid;
-
-    /// <summary>
-    /// コントローラーの先で面に触れた瞬間か。触れた場所は画像の座標 (px、左上が原点) で返す。
-    /// 触れたままの間は 1 回しか反応しない。
-    /// </summary>
-    /// <param name="overlayInverse">面の姿勢の逆行列 (ワールド → 面の座標)</param>
-    private bool Poke(ulong overlay, Matrix4x4 overlayInverse, float widthM, int texWidth, int texHeight, uint device, out System.Windows.Point at)
-    {
-        var controller = ToNumerics(_poses[device].mDeviceToAbsoluteTracking);
-        var tip = Vector3.Transform(new Vector3(0, 0, -PokeTipM), controller);
-        var inside = TouchLocal(overlayInverse, widthM, texWidth, texHeight, tip, out at);
-        var key = (overlay, device);
-        var was = _touching.GetValueOrDefault(key);
-        _touching[key] = inside;
-        return inside && !was;
-    }
-
-    /// <summary>点 (ワールド座標) が面に触れているか。触れていれば、その場所を画像の座標 (px、左上が原点) で返す。</summary>
-    internal static bool TouchPoint(Matrix4x4 overlayWorld, float widthM, int texWidth, int texHeight, Vector3 point, out System.Windows.Point at)
-    {
-        at = default;
-        return Matrix4x4.Invert(overlayWorld, out var inverse) && TouchLocal(inverse, widthM, texWidth, texHeight, point, out at);
-    }
-
-    /// <summary><see cref="TouchPoint"/> の、逆行列を計算済みの版 (毎フレーム呼ぶ側は置き直したときだけ計算する)。</summary>
-    private static bool TouchLocal(Matrix4x4 overlayInverse, float widthM, int texWidth, int texHeight, Vector3 point, out System.Windows.Point at)
-    {
-        at = default;
-        // 面の座標: 中心が原点、+X が右、+Y が上、+Z が表側
-        var local = Vector3.Transform(point, overlayInverse);
-        var heightM = widthM * texHeight / texWidth;
-        if (MathF.Abs(local.Z) >= PokeDepthM || MathF.Abs(local.X) > widthM / 2 || MathF.Abs(local.Y) > heightM / 2) return false;
-        at = new System.Windows.Point((local.X / widthM + 0.5) * texWidth, (0.5 - local.Y / heightM) * texHeight);
-        return true;
-    }
 
     // ---------------- パネル ----------------
 
@@ -683,7 +570,7 @@ internal sealed class VrOverlay : IDisposable
         _panelDistance = next;
         PlacePanel();
         _lastStickMove = DateTime.UtcNow;
-        // 動かしている間はホバーを出さない (止まったあとに、レーザーが次に動いたところで付け直す)
+        // 動かしている間はホバーを出さない (止まったあとに、レイが次に動いたところで付け直す)
         if (_panel.Hover != default) { _panel.Hover = default; _panelDirty = true; }
     }
 
@@ -811,43 +698,6 @@ internal sealed class VrOverlay : IDisposable
     private void RequestPageThumbnails()
     {
         for (var slot = 0; slot < _panel.PageItemCount; slot++) _source.RequestThumbnail(_panel.PageItem(slot));
-    }
-
-    private void HandlePanelEvent(VREvent_t ev)
-    {
-        switch ((EVREventType)ev.eventType)
-        {
-            case EVREventType.VREvent_MouseMove:
-                if (MovingPanel) break; // 動かしている間は、レーザーの当たる場所がずれるだけなのでホバーを変えない
-                // SteamVR のマウス座標は下が原点なので、画像の座標 (上が原点) に直す
-                var hover = _panel.HitTest(ev.data.mouse.x, VrPanel.Height - ev.data.mouse.y);
-                if (hover != _panel.Hover) { _panel.Hover = hover; _panelDirty = true; }
-                break;
-            case EVREventType.VREvent_FocusLeave:
-                if (_panel.Hover != default) { _panel.Hover = default; _panelDirty = true; }
-                break;
-            case EVREventType.VREvent_MouseButtonUp when ev.data.mouse.button == (uint)EVRMouseButton.Left:
-                var hit = _panel.HitTest(ev.data.mouse.x, VrPanel.Height - ev.data.mouse.y);
-                Press(() => Click(hit));
-                break;
-            case EVREventType.VREvent_ScrollDiscrete:
-                // スティックを上に倒す (ydelta > 0) と前のページ
-                if (ev.data.scroll.ydelta != 0) Click(new VrPanel.Hit(ev.data.scroll.ydelta > 0 ? VrPanel.HitKind.Prev : VrPanel.HitKind.Next));
-                break;
-        }
-    }
-
-    private void PokePanel()
-    {
-        foreach (var role in Hands)
-        {
-            var device = HandDevice(role);
-            if (IsValid(device) && Poke(_panelHandle, _panelInverse, PanelWidthM, VrPanel.Width, VrPanel.Height, device, out var at))
-            {
-                var hit = _panel.HitTest(at.X, at.Y);
-                Press(() => Click(hit));
-            }
-        }
     }
 
     private void Click(VrPanel.Hit hit)
