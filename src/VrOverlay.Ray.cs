@@ -99,6 +99,7 @@ internal sealed partial class VrOverlay
     /// ・トリガーで押す (タイルの窓では、動かさずに離したら押す / 引いたまま上下に動かすとドラッグでスクロール)
     /// ・パネルを指したままスティックを上下に倒すとスクロール
     /// ・パネルを指してグリップを握るとつかむ
+    /// ・パネルを開いている間に、パネルの外 (何も指していない所) でトリガーを引くと閉じる
     /// </summary>
     private void UpdateRay(float dt)
     {
@@ -207,6 +208,11 @@ internal sealed partial class VrOverlay
                     if (hit != default) Buzz(d); // 何も無い所を押したときは震わせない
                     Press(() => Click(hit));
                 }
+            }
+            else if (pressed && ray.Target == RayTarget.None && _panelOpen && !GrabbingPanel)
+            {
+                // パネルの外を押した: 閉じる (つかんで動かしている間は閉じない)
+                Press(ClosePanel);
             }
             else if (gripped && ray.Target == RayTarget.Panel && !GrabbingPanel)
             {

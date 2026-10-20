@@ -824,7 +824,7 @@ internal sealed partial class VrOverlay : IDisposable
         SetStatus(ok ? $"アバターチェンジ完了: {item.Name}" : $"アバターチェンジ失敗: {item.Name}", error: !ok);
         // 「今着ている」の印を付け直す (グループのタイルにも)。スクロール位置はそのまま
         if (ok) Reload(resetScroll: false);
-        // 着替えても閉じない。見比べながら続けて着替えられるよう、閉じるのは利用者の操作 (閉じるボタン / 手首ボタン) だけ
+        // 着替えても閉じない。見比べながら続けて着替えられるよう、閉じるのは利用者の操作 (閉じるボタン / 手首ボタン / パネルの外を押す) だけ
     }
 
     /// <summary>
