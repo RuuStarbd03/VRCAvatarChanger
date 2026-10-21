@@ -266,6 +266,8 @@ internal sealed partial class VrOverlay : IDisposable
         _buttonAlpha = 0;
         _placement = null;
         _grabbing = false;
+        _panelAppear.Reset();
+        _panelClosing = false;
         _sentAlpha = -1;
         _stickAxis.Clear();
         _uploadedPanelValid = false; // オーバーレイを作り直すので、前に渡した画像はもう無い
@@ -361,6 +363,7 @@ internal sealed partial class VrOverlay : IDisposable
             }
             UpdateRay(dt);
             if (_panelOpen) RefreshPanel();
+            AnimatePanelOverlay();
         }
         catch (Exception ex)
         {
@@ -523,6 +526,8 @@ internal sealed partial class VrOverlay : IDisposable
         if (_buttonAlpha != _sentAlpha)
         {
             overlay.SetOverlayAlpha(_button, _buttonAlpha * ButtonMaxAlpha);
+            // 現れるときは小さめから広がる (透明度と一緒に変えるだけなので、描き直しは要らない)
+            overlay.SetOverlayWidthInMeters(_button, ButtonWidthM * (Animations ? 0.8f + 0.2f * _buttonAlpha : 1f));
             _sentAlpha = _buttonAlpha;
         }
         if (!_buttonShown) { overlay.ShowOverlay(_button); _buttonShown = true; }
@@ -555,9 +560,59 @@ internal sealed partial class VrOverlay : IDisposable
         PlacePanel();
 
         RenderPanel(); // 閉じている間なので、入れ替えは待たずに済む
+        // 閉じる動きの途中で開き直したときは、見せない方の 1 枚がまだ出ていることがあるので隠す
+        OpenVR.Overlay.HideOverlay(_panels[_front ^ 1]);
+        _hidePending = false;
+        StartPanelAppear(closing: false);
         OpenVR.Overlay.ShowOverlay(_panels[_front]);
         _panelOpen = true;
         UploadButton(panelOpen: true);
+    }
+
+    // ---- 開く / 閉じるときの動き (パネル全体の透明度と大きさを変えるだけなので、描き直しは要らない) ----
+    private const double PanelOpenMs = 180;
+    private const double PanelCloseMs = 120;
+    private readonly Stopwatch _panelAppear = new();
+    private bool _panelClosing;
+
+    private static bool Animations => System.Windows.SystemParameters.ClientAreaAnimation;
+
+    private void StartPanelAppear(bool closing)
+    {
+        _panelClosing = closing;
+        if (!Animations)
+        {
+            _panelAppear.Reset();
+            SetPanelAppearance(1);
+            return;
+        }
+        _panelAppear.Restart();
+        SetPanelAppearance(closing ? 1 : 0);
+    }
+
+    /// <summary>開くときは透けた状態から少し大きくなりながら現れ、閉じるときは少し縮みながら消える。</summary>
+    private void AnimatePanelOverlay()
+    {
+        if (!_panelAppear.IsRunning) return;
+        var t = Math.Clamp(_panelAppear.Elapsed.TotalMilliseconds / (_panelClosing ? PanelCloseMs : PanelOpenMs), 0, 1);
+        var shown = _panelClosing ? 1 - t * t : 1 - (1 - t) * (1 - t);
+        SetPanelAppearance((float)shown);
+        if (t < 1) return;
+        _panelAppear.Reset();
+        if (!_panelClosing) return;
+        foreach (var panel in _panels) OpenVR.Overlay.HideOverlay(panel);
+        _panelClosing = false;
+        SetPanelAppearance(1); // 次に開くときに備えて戻しておく (開くときはまた 0 から)
+    }
+
+    private void SetPanelAppearance(float shown)
+    {
+        var overlay = OpenVR.Overlay;
+        foreach (var panel in _panels)
+        {
+            overlay.SetOverlayAlpha(panel, shown);
+            overlay.SetOverlayWidthInMeters(panel, PanelWidthM * (0.94f + 0.06f * shown));
+        }
     }
 
     /// <summary>_panelWorld の所にパネルを置く (開いたとき・動かしたとき)。</summary>
@@ -620,7 +675,10 @@ internal sealed partial class VrOverlay : IDisposable
     private void ClosePanel()
     {
         if (!_connected) return;
-        foreach (var panel in _panels) OpenVR.Overlay.HideOverlay(panel);
+        // すぐには隠さず、縮みながら消える (AnimatePanelOverlay が最後に隠す)。動きを出さない設定ならすぐ隠す
+        StartPanelAppear(closing: true);
+        if (!_panelAppear.IsRunning)
+            foreach (var panel in _panels) OpenVR.Overlay.HideOverlay(panel);
         _hidePending = false;
         _panelGrabRay = -1;
         _scrollVelocity = 0;
@@ -713,6 +771,8 @@ internal sealed partial class VrOverlay : IDisposable
 
     private void Click(VrPanel.Hit hit)
     {
+        _panel.NotifyPressed(hit);
+        _panelDirty = true;
         switch (hit.Kind)
         {
             case VrPanel.HitKind.Close:
@@ -841,6 +901,9 @@ internal sealed partial class VrOverlay : IDisposable
             _hidePending = false;
         }
         if (MovingPanel) return; // 止まってからまとめて描き直す
+        // 押したとき・ホバーなどの動きは、毎フレーム描き直しても抜けない渡し方 (GPU) のときだけ付ける
+        _panel.AnimationsEnabled = _gpu is not null;
+        if (_panel.IsAnimating) _panelDirty = true;
         var interval = _panelDirty ? (_gpu is not null ? GpuRenderInterval : RawRenderInterval)
             : ThumbnailsChanged() ? ThumbRenderInterval : (TimeSpan?)null;
         if (interval is null || DateTime.UtcNow - _lastRender < interval) return;

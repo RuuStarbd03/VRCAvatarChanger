@@ -17,10 +17,12 @@ namespace VRCAvatarChanger;
 /// 文字入力はしにくいので検索は置かず、タイルは縦にスクロールして見せる (ScrollY。動かし方は VrOverlay が決める)。
 /// 列数 (3〜10) もパネルの中で変えられる。
 ///
+/// 操作したときの小さな動き (ホバー・押したとき・選んだとき・印の移動) は VrPanel.Motion.cs。
+///
 /// ホバー・スクロール・サムネイルの到着のたびに描き直すので、描画先の画像と SteamVR に渡す配列 (2MB) は使い回す
 /// (毎回作ると大きなオブジェクトとして積み上がり、GC の負担になる)。
 /// </summary>
-internal sealed class VrPanel
+internal sealed partial class VrPanel
 {
     // 画像の大きさ (px)。SteamVR に渡す生データの量を抑えつつ、0.5m 幅で文字が読める程度
     public const int Width = 640;
@@ -143,7 +145,6 @@ internal sealed class VrPanel
     public readonly record struct Hit(HitKind Kind, int Index = -1);
 
     // ---- 表示する状態 (切り替えの判断は VrOverlay が行い、ここは描くだけ) ----
-    public string Tab { get; set; } = AvatarTab.Own;
     public string SortKey { get; set; } = "recent_asc";
     /// <summary>並び順のリストを開いているか。</summary>
     public bool SortMenuOpen { get; set; }
@@ -152,19 +153,13 @@ internal sealed class VrPanel
     public string? Filter
     {
         get => _filter;
-        set { _filter = value; _chipLayout = null; }
+        set { BeginChipSlide(value); _filter = value; _chipLayout = null; }
     }
     private string? _filter;
     /// <summary>開いているグループの名前 (null = 開いていない)。</summary>
     public string? OpenGroupName { get; set; }
     public string Status { get; set; } = "";
     public bool StatusIsError { get; set; }
-    public Hit Hover { get; set; }
-    /// <summary>
-    /// 1 回押して選んだタイル (一覧全体での番号、-1 = なし)。同じタイルをもう一度押すとチェンジする
-    /// (PC のダブルクリックと同じく、うっかり触れただけで着替えないように)。
-    /// </summary>
-    public int Selected { get; set; } = -1;
 
     private List<AvatarItem> _items = [];
     private List<string> _chips = [];
@@ -432,50 +427,77 @@ internal sealed class VrPanel
 
             // タブ
             dc.DrawRoundedRectangle(TileBrush, null, TabsRect, 14, 14);
+            var selectedTab = Array.IndexOf(Tabs, Tab);
+            for (var i = 0; i < Tabs.Length; i++)
+            {
+                var hover = HoverAmount(new Hit(HitKind.Tab, i));
+                if (i != selectedTab && hover > 0)
+                    dc.DrawRoundedRectangle(HoverFill(hover, TileBrush), null, Inset(TabRect(i), 4), 10, 10);
+            }
+            // 選んでいるタブの印 (切り替えたときは前のタブから滑ってくる)
+            var indicator = selectedTab >= 0 ? Inset(TabIndicatorRect(selectedTab), 4) : Rect.Empty;
+            if (selectedTab >= 0) dc.DrawRoundedRectangle(AccentBrush, null, indicator, 10, 10);
             for (var i = 0; i < Tabs.Length; i++)
             {
                 var r = TabRect(i);
-                var selected = Tab == Tabs[i];
-                if (selected || (Hover.Kind == HitKind.Tab && Hover.Index == i))
-                    dc.DrawRoundedRectangle(selected ? AccentBrush : TileHoverBrush, null, new Rect(r.X + 4, r.Y + 4, r.Width - 8, r.Height - 8), 10, 10);
-                DrawCentered(dc, TabLabels[i], UiBoldFace, 19, selected ? OnAccentBrush : TextBrush, Center(r));
+                var pushed = PushPress(dc, new Hit(HitKind.Tab, i), r);
+                DrawCentered(dc, TabLabels[i], UiBoldFace, 19, indicator.Contains(Center(r)) ? OnAccentBrush : TextBrush, Center(r));
+                PopPress(dc, pushed);
             }
-            dc.DrawEllipse(Hover.Kind == HitKind.Close ? TileHoverBrush : TileBrush, null, CloseCenter, CloseRadius, CloseRadius);
+            var closeRect = new Rect(CloseCenter.X - CloseRadius, CloseCenter.Y - CloseRadius, CloseRadius * 2, CloseRadius * 2);
+            var closePushed = PushPress(dc, new Hit(HitKind.Close), closeRect);
+            dc.DrawEllipse(HoverFill(new Hit(HitKind.Close), TileBrush), null, CloseCenter, CloseRadius, CloseRadius);
             DrawCentered(dc, GlyphClose, IconFace, 20, TextBrush, CloseCenter);
+            PopPress(dc, closePushed);
 
             // 並び順とグループ化
             // 並び順: [種類 ▾] [↑↓]
             var sortKind = SortKindOf(SortKey);
             var sortLabel = SortKinds.FirstOrDefault(k => k.Kind == sortKind).Label ?? "";
-            dc.DrawRoundedRectangle(SortMenuOpen || Hover.Kind == HitKind.SortMenu ? TileHoverBrush : TileBrush, null, SortMenuRect, SortMenuRect.Height / 2, SortMenuRect.Height / 2);
+            var sortPushed = PushPress(dc, new Hit(HitKind.SortMenu), SortMenuRect);
+            dc.DrawRoundedRectangle(SortMenuOpen ? TileHoverBrush : HoverFill(new Hit(HitKind.SortMenu), TileBrush), null, SortMenuRect, SortMenuRect.Height / 2, SortMenuRect.Height / 2);
             DrawText(dc, sortLabel, UiBoldFace, 18, TextBrush, new Point(SortMenuRect.X + 18, SortMenuRect.Y + 10), SortMenuRect.Width - 18 - 40);
             DrawCentered(dc, SortMenuOpen ? GlyphChevronUp : GlyphChevronDown, IconFace, 14, MutedBrush, new Point(SortMenuRect.Right - 22, SortMenuRect.Y + SortMenuRect.Height / 2));
-            DrawNav(dc, SortDirRect, SortKey.EndsWith("_desc", StringComparison.Ordinal) ? GlyphArrowDown : GlyphArrowUp, true, Hover.Kind == HitKind.SortDirection);
+            PopPress(dc, sortPushed);
+            DrawNav(dc, SortDirRect, SortKey.EndsWith("_desc", StringComparison.Ordinal) ? GlyphArrowDown : GlyphArrowUp, true, new Hit(HitKind.SortDirection));
             // 列数: [−] n 列 [+]
-            DrawNav(dc, ColumnsLessRect, GlyphMinus, Columns > MinColumns, Hover.Kind == HitKind.ColumnsLess);
-            DrawNav(dc, ColumnsMoreRect, GlyphPlus, Columns < MaxColumns, Hover.Kind == HitKind.ColumnsMore);
+            DrawNav(dc, ColumnsLessRect, GlyphMinus, Columns > MinColumns, new Hit(HitKind.ColumnsLess));
+            DrawNav(dc, ColumnsMoreRect, GlyphPlus, Columns < MaxColumns, new Hit(HitKind.ColumnsMore));
             DrawCentered(dc, $"{Columns} 列", UiBoldFace, 16, TextBrush,
                 Center(new Rect(ColumnsLessRect.Right, ColumnsLessRect.Y, ColumnsMoreRect.X - ColumnsLessRect.Right, ColumnsLessRect.Height)));
-            DrawPill(dc, GroupToggleRect, GroupView ? "グループ化: オン" : "グループ化: オフ", GroupView, Hover.Kind == HitKind.GroupToggle);
+            DrawPill(dc, GroupToggleRect, GroupView ? "グループ化: オン" : "グループ化: オフ", GroupView, new Hit(HitKind.GroupToggle));
 
             // 絞り込み / 開いているグループ
             if (OpenGroupName is not null)
             {
-                DrawNav(dc, BackRect, "", true, Hover.Kind == HitKind.Back);
+                var backPushed = PushPress(dc, new Hit(HitKind.Back), BackRect);
+                DrawNav(dc, BackRect, "", true, new Hit(HitKind.Back), pressable: false);
                 DrawCentered(dc, GlyphLeft, IconFace, 18, TextBrush, new Point(BackRect.X + 26, BackRect.Y + BackRect.Height / 2));
                 DrawText(dc, "戻る", UiBoldFace, 17, TextBrush, new Point(BackRect.X + 46, BackRect.Y + 9), 60);
+                PopPress(dc, backPushed);
                 DrawText(dc, $"{OpenGroupName} ({_items.Count} 体)", UiBoldFace, 20, TextBrush,
                     new Point(BackRect.Right + 14, ChipTop + 7), Width - Pad - BackRect.Right - 14);
             }
             else
             {
-                foreach (var chip in LayoutChips())
+                var chips = LayoutChips();
+                foreach (var chip in chips)
                 {
-                    var hover = Hover == chip.Hit;
+                    if (chip.Selected) continue; // 選んでいるチップの色は、下の印で付ける
+                    var pushed = PushPress(dc, chip.Hit, chip.Rect);
+                    dc.DrawRoundedRectangle(HoverFill(chip.Hit, TileBrush), null, chip.Rect, ChipHeight / 2, ChipHeight / 2);
+                    PopPress(dc, pushed);
+                }
+                // 選んでいるチップの印 (選び直したときは前のチップから滑ってくる)
+                var chipMark = chips.FirstOrDefault(c => c.Selected) is { Hit.Kind: HitKind.Chip } on ? ChipIndicatorRect(on.Rect) : Rect.Empty;
+                if (!chipMark.IsEmpty) dc.DrawRoundedRectangle(AccentBrush, null, chipMark, ChipHeight / 2, ChipHeight / 2);
+                foreach (var chip in chips)
+                {
                     var arrow = chip.Hit.Kind is HitKind.ChipPrev or HitKind.ChipNext;
-                    dc.DrawRoundedRectangle(chip.Selected ? AccentBrush : hover ? TileHoverBrush : TileBrush, null, chip.Rect, ChipHeight / 2, ChipHeight / 2);
-                    DrawCentered(dc, chip.Label, arrow ? IconFace : UiBoldFace, 16, chip.Selected ? OnAccentBrush : TextBrush,
+                    var pushed = PushPress(dc, chip.Hit, chip.Rect);
+                    DrawCentered(dc, chip.Label, arrow ? IconFace : UiBoldFace, 16, !chipMark.IsEmpty && chipMark.Contains(Center(chip.Rect)) ? OnAccentBrush : TextBrush,
                         Center(chip.Rect), arrow ? 0 : chip.Rect.Width - 16);
+                    PopPress(dc, pushed);
                 }
             }
 
@@ -487,7 +509,13 @@ internal sealed class VrPanel
             dc.PushClip(new RectangleGeometry(new Rect(0, GridTop, Width, ViewportHeight)));
             var start = VisibleStart;
             for (var i = start; i < start + VisibleCount; i++)
-                DrawTile(dc, _grid, TileRect(i), _items[i], Hover.Kind == HitKind.Tile && Hover.Index == i, Selected == i);
+            {
+                var r = TileRect(i);
+                var pushed = PushPress(dc, new Hit(HitKind.Tile, i), r);
+                DrawTile(dc, _grid, r, _items[i], HoverAmount(new Hit(HitKind.Tile, i)), Selected == i);
+                if (Selected == i) DrawSelectGlow(dc, r, Math.Clamp(14 * _grid.Scale, 6, 14));
+                PopPress(dc, pushed);
+            }
             dc.Pop();
             if (MaxScroll > 0)
             {
@@ -519,8 +547,8 @@ internal sealed class VrPanel
         {
             var r = SortOptionRect(i);
             var current = SortKinds[i].Kind == currentKind;
-            if (Hover.Kind == HitKind.SortOption && Hover.Index == i)
-                dc.DrawRoundedRectangle(TileHoverBrush, null, r, 10, 10);
+            var hover = HoverAmount(new Hit(HitKind.SortOption, i));
+            if (hover > 0) dc.DrawRoundedRectangle(HoverFill(hover, MenuBrush), null, r, 10, 10);
             if (current)
             {
                 dc.DrawRoundedRectangle(AccentBrush, null, new Rect(r.X + 6, r.Y + 14, 4, r.Height - 28), 2, 2);
@@ -530,13 +558,13 @@ internal sealed class VrPanel
         }
     }
 
-    private static void DrawTile(DrawingContext dc, GridLayout g, Rect r, AvatarItem item, bool hover, bool selected)
+    private static void DrawTile(DrawingContext dc, GridLayout g, Rect r, AvatarItem item, double hover, bool selected)
     {
         var s = g.Scale;
         var radius = Math.Clamp(14 * s, 6, 14);
         var inset = Math.Clamp(8 * s, 3, 8);
         dc.PushClip(new RectangleGeometry(r, radius, radius));
-        dc.DrawRectangle(hover || selected ? TileHoverBrush : TileBrush, null, r);
+        dc.DrawRectangle(selected ? TileHoverBrush : HoverFill(hover, TileBrush), null, r);
         var thumbRect = new Rect(r.X, r.Y, r.Width, g.ThumbHeight);
         dc.DrawRectangle(ThumbBackBrush, null, thumbRect);
         if (item.Thumbnail is { } image) // グループは代表のサムネイル
@@ -601,16 +629,20 @@ internal sealed class VrPanel
         dc.DrawText(ft, new Point(at.X + pad, at.Y + (height - ft.Height) / 2));
     }
 
-    private static void DrawPill(DrawingContext dc, Rect r, string label, bool selected, bool hover)
+    private void DrawPill(DrawingContext dc, Rect r, string label, bool selected, Hit hit)
     {
-        dc.DrawRoundedRectangle(selected ? AccentBrush : hover ? TileHoverBrush : TileBrush, null, r, r.Height / 2, r.Height / 2);
+        var pushed = PushPress(dc, hit, r);
+        dc.DrawRoundedRectangle(selected ? AccentBrush : HoverFill(hit, TileBrush), null, r, r.Height / 2, r.Height / 2);
         DrawCentered(dc, label, UiBoldFace, 18, selected ? OnAccentBrush : TextBrush, Center(r));
+        PopPress(dc, pushed);
     }
 
-    private static void DrawNav(DrawingContext dc, Rect r, string glyph, bool enabled, bool hover)
+    private void DrawNav(DrawingContext dc, Rect r, string glyph, bool enabled, Hit hit, bool pressable = true)
     {
-        dc.DrawRoundedRectangle(hover && enabled ? TileHoverBrush : TileBrush, null, r, 12, 12);
+        var pushed = pressable && PushPress(dc, hit, r);
+        dc.DrawRoundedRectangle(enabled ? HoverFill(hit, TileBrush) : TileBrush, null, r, 12, 12);
         if (glyph.Length > 0) DrawCentered(dc, glyph, IconFace, 22, enabled ? TextBrush : MutedBrush, Center(r));
+        PopPress(dc, pushed);
     }
 
     /// <summary>アクセント色が変わっていたら、それを使うブラシとペン、作り置きの手首ボタンを作り直す。描く前に呼ぶ。</summary>
@@ -691,6 +723,8 @@ internal sealed class VrPanel
     // ---------------- 小物 ----------------
 
     private static Point Center(Rect r) => new(r.X + r.Width / 2, r.Y + r.Height / 2);
+
+    private static Rect Inset(Rect r, double by) => new(r.X + by, r.Y + by, Math.Max(0, r.Width - by * 2), Math.Max(0, r.Height - by * 2));
 
     private static FormattedText Text(string s, Typeface face, double size, Brush brush, double maxWidth, int maxLines = 1)
     {

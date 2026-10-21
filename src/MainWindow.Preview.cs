@@ -1025,7 +1025,8 @@ public partial class MainWindow
                 Expect("GPU: パネルの画像をテクスチャに書ける", gpu?.UpdateForTest(panel.RenderRgba(), VrPanel.Width, VrPanel.Height) == true);
             }
 
-            // 同じ画像なら SteamVR に渡し直さない (ちらつき対策)
+            // 同じ画像なら SteamVR に渡し直さない (ちらつき対策)。直前の操作の動きが残っていると毎回違う画像になるので、止めて比べる
+            panel.AnimationsEnabled = false;
             var lastSent = new byte[VrPanel.Width * VrPanel.Height * 4];
             var frame = panel.RenderRgba();
             Expect("初回は渡す", VrOverlay.CopyIfChanged(frame, lastSent, lastValid: false));
@@ -1034,6 +1035,23 @@ public partial class MainWindow
             Expect("ホバーが変われば渡す", VrOverlay.CopyIfChanged(panel.RenderRgba(), lastSent, lastValid: true));
             panel.Hover = default;
             Expect("繋ぎ直したあとは同じ画像でも渡す", VrOverlay.CopyIfChanged(panel.RenderRgba(), lastSent, lastValid: false));
+            panel.AnimationsEnabled = true;
+
+            // 動き: 押した・選んだ直後だけ動きの途中になり、すぐ終わる。動きを止める設定では動かない
+            panel.AnimationsEnabled = true;
+            panel.NotifyPressed(new VrPanel.Hit(VrPanel.HitKind.GroupToggle));
+            var animatingNow = panel.IsAnimating;
+            Save(panel.Render(), "panel-pressing.png");
+            await Task.Delay(400);
+            Expect("押した直後だけ動き、0.4 秒で止まる", animatingNow && !panel.IsAnimating);
+            panel.Selected = panel.VisibleStart;
+            var glowing = panel.IsAnimating;
+            Save(panel.Render(), "panel-select-glow.png");
+            panel.AnimationsEnabled = false;
+            Expect("動きを止める設定では動かない", glowing && !panel.IsAnimating);
+            panel.AnimationsEnabled = true;
+            panel.Selected = -1;
+            await Task.Delay(400);
 
             // 描き直し 1 回ぶんの負荷 (ホバーやサムネイルの到着のたびに走る)
             vr.RenderPanelBytesForTest();
