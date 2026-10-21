@@ -177,7 +177,6 @@
         </DataTemplate>
 
         <!-- グリッド(ボックス)表示のタイル -->
-        <local:AspectHeightConverter x:Key="Aspect43" Ratio="0.75"/>
         <ItemsPanelTemplate x:Key="ListPanel">
             <VirtualizingStackPanel/>
         </ItemsPanelTemplate>
@@ -285,35 +284,31 @@
                     <Border CornerRadius="{StaticResource ControlRadius}" Background="{DynamicResource BorderStrongBrush}" Margin="10,-6,10,0"
                             VerticalAlignment="Top" Height="24"
                             Visibility="{Binding IsGroup, Converter={StaticResource BoolToVis}}"/>
-                    <Border x:Name="thumb" CornerRadius="{StaticResource ControlRadius}" Background="{DynamicResource ThumbBackBrush}"
-                            Height="{Binding ActualWidth, RelativeSource={RelativeSource Self}, Converter={StaticResource Aspect43}}">
-                        <Border.Clip>
-                            <MultiBinding Converter="{StaticResource Aspect43}" ConverterParameter="clip">
-                                <Binding Path="ActualWidth" RelativeSource="{RelativeSource Self}"/>
-                                <Binding Path="ActualHeight" RelativeSource="{RelativeSource Self}"/>
-                            </MultiBinding>
-                        </Border.Clip>
-                        <Grid>
-                            <Image Source="{Binding Thumbnail}" Stretch="UniformToFill" Style="{StaticResource DimIfUnavailable}"/>
-                            <!-- 使えなくなったアバター: 左上に印と文字。サムネイルは薄くする (補助) -->
-                            <Border Style="{StaticResource UnavailablePill}" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="6,6,0,0"
-                                    ToolTip="{Binding UnavailableText}"
-                                    Visibility="{Binding IsUnavailable, Converter={StaticResource BoolToVis}}">
-                                <StackPanel Orientation="Horizontal">
-                                    <TextBlock Text="&#xE733;" Style="{StaticResource Icon}" FontSize="11" Foreground="{DynamicResource DangerBrush}" Margin="0,0,5,0"/>
-                                    <TextBlock Text="使用不可" FontSize="11" FontWeight="SemiBold" Foreground="{DynamicResource DangerBrush}"/>
-                                </StackPanel>
-                            </Border>
-                            <!-- グループ: 枚数バッジ -->
-                            <Border HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="0,0,6,6" CornerRadius="4" Padding="7,2"
-                                    Background="#CC141416" Visibility="{Binding IsGroup, Converter={StaticResource BoolToVis}}">
-                                <StackPanel Orientation="Horizontal">
-                                    <TextBlock Text="&#xE8B7;" FontFamily="{StaticResource IconFont}" FontSize="11" Foreground="#FFECECEF" VerticalAlignment="Center" Margin="0,0,5,0"/>
-                                    <TextBlock Text="{Binding Count}" FontSize="12" FontWeight="SemiBold" Foreground="#FFECECEF"/>
-                                </StackPanel>
-                            </Border>
-                        </Grid>
-                    </Border>
+                    <!-- 4:3 の枠 (高さは幅から 1 回の計測で決まる: AspectBox.cs) -->
+                    <local:AspectBox Ratio="0.75" Radius="6">
+                        <Border x:Name="thumb" CornerRadius="{StaticResource ControlRadius}" Background="{DynamicResource ThumbBackBrush}">
+                            <Grid>
+                                <Image Source="{Binding Thumbnail}" Stretch="UniformToFill" Style="{StaticResource DimIfUnavailable}"/>
+                                <!-- 使えなくなったアバター: 左上に印と文字。サムネイルは薄くする (補助) -->
+                                <Border Style="{StaticResource UnavailablePill}" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="6,6,0,0"
+                                        ToolTip="{Binding UnavailableText}"
+                                        Visibility="{Binding IsUnavailable, Converter={StaticResource BoolToVis}}">
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Text="&#xE733;" Style="{StaticResource Icon}" FontSize="11" Foreground="{DynamicResource DangerBrush}" Margin="0,0,5,0"/>
+                                        <TextBlock Text="使用不可" FontSize="11" FontWeight="SemiBold" Foreground="{DynamicResource DangerBrush}"/>
+                                    </StackPanel>
+                                </Border>
+                                <!-- グループ: 枚数バッジ -->
+                                <Border HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="0,0,6,6" CornerRadius="4" Padding="7,2"
+                                        Background="#CC141416" Visibility="{Binding IsGroup, Converter={StaticResource BoolToVis}}">
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Text="&#xE8B7;" FontFamily="{StaticResource IconFont}" FontSize="11" Foreground="#FFECECEF" VerticalAlignment="Center" Margin="0,0,5,0"/>
+                                        <TextBlock Text="{Binding Count}" FontSize="12" FontWeight="SemiBold" Foreground="#FFECECEF"/>
+                                    </StackPanel>
+                                </Border>
+                            </Grid>
+                        </Border>
+                    </local:AspectBox>
                 </Grid>
                 <TextBlock Text="{Binding Name}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" Margin="2,8,2,0"/>
                 <TextBlock Text="{Binding SubText}" Style="{StaticResource CaptionText}" TextTrimming="CharacterEllipsis" Margin="2,2,2,0"/>

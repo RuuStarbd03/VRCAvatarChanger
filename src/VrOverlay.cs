@@ -106,8 +106,14 @@ internal sealed partial class VrOverlay : IDisposable
     private readonly Settings _settings;
     private readonly IVrAvatarSource _source;
 
-    private readonly DispatcherTimer _watch = new() { Interval = TimeSpan.FromSeconds(3) };
-    private readonly DispatcherTimer _frame = new(DispatcherPriority.Normal) { Interval = TimeSpan.FromMilliseconds(16) };
+    private static readonly TimeSpan WatchInterval = TimeSpan.FromSeconds(3);           // 繋ぐまでは早めに気づく
+    private static readonly TimeSpan WatchConnectedInterval = TimeSpan.FromSeconds(10); // 繋がっている間
+    private readonly DispatcherTimer _watch = new() { Interval = WatchInterval };
+    // 毎フレームの処理。ボタンもパネルも出ていない間 (VRChat で遊んでいるだけのとき) は、手の甲を見たかどうかが
+    // わかればよいので回数を減らす (ボタンが出始めるのが数十 ms 遅れるだけ)
+    private static readonly TimeSpan FrameInterval = TimeSpan.FromMilliseconds(16);
+    private static readonly TimeSpan IdleFrameInterval = TimeSpan.FromMilliseconds(50);
+    private readonly DispatcherTimer _frame = new(DispatcherPriority.Normal) { Interval = FrameInterval };
     private readonly VrPanel _panel = new();
     private readonly TrackedDevicePose_t[] _poses = new TrackedDevicePose_t[OpenVR.k_unMaxTrackedDeviceCount];
 
@@ -196,12 +202,15 @@ internal sealed partial class VrOverlay : IDisposable
         _checking = true;
         try
         {
-            // プロセスの列挙は全プロセスを見るので UI スレッドの外で
-            var (steamVr, vrchat) = await Task.Run(() => (Shell.IsRunning("vrserver"), Shell.IsRunning("VRChat")));
+            // プロセスの列挙は全プロセスを見るので UI スレッドの外で (2 つの名前を 1 回の列挙で調べる)
+            var running = await Task.Run(() => Shell.AreRunning("vrserver", "VRChat"));
             if (!_watch.IsEnabled) return; // 確認している間に止められた
+            var (steamVr, vrchat) = (running[0], running[1]);
             _vrchatRunning = vrchat;
             if (steamVr && vrchat && !_connected) Connect();
             else if (_connected && !(steamVr && vrchat)) Disconnect(steamVr ? "VRChat が終了したため" : "SteamVR が終了したため");
+            // 繋がっている間は終了に気づければよいので間を空ける (SteamVR の終了は通知でもすぐわかる)
+            _watch.Interval = _connected ? WatchConnectedInterval : WatchInterval;
         }
         catch (Exception ex) { Log.Debug("SteamVR / VRChat の起動を確認できませんでした (次の周期で再確認します)", ex); }
         finally { _checking = false; }
@@ -364,6 +373,9 @@ internal sealed partial class VrOverlay : IDisposable
             UpdateRay(dt);
             if (_panelOpen) RefreshPanel();
             AnimatePanelOverlay();
+            var busy = _panelOpen || _buttonShown || _grabbing || _panelAppear.IsRunning;
+            var interval = busy ? FrameInterval : IdleFrameInterval;
+            if (_frame.Interval != interval) _frame.Interval = interval;
         }
         catch (Exception ex)
         {

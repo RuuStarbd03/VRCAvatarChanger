@@ -682,6 +682,13 @@ public partial class MainWindow
                 GridColumns = cols;
                 AvatarList.UpdateLayout();
             });
+            var gridSource = AvatarList.ItemsSource;
+            Measure("ItemsSource 入れ直し + レイアウト (ボックス表示)", () =>
+            {
+                AvatarList.ItemsSource = null;
+                AvatarList.ItemsSource = gridSource;
+                AvatarList.UpdateLayout();
+            });
             ViewList.IsChecked = true;
             AvatarList.UpdateLayout();
 
@@ -711,6 +718,11 @@ public partial class MainWindow
                 AvatarListCache.DropMemory();
                 AvatarListCache.Load(AvatarListCache.Own, "usr_perf");
             }, 10);
+
+            // VRChat / SteamVR の起動の見張り (常駐中ずっと数秒おきに走る)
+            Measure("起動中のプロセスを調べる (2 つの名前)", () => Shell.AreRunning("vrserver", "VRChat"), 50);
+            var probe = Shell.AreRunning("explorer", "no-such-process-vrcac");
+            report.AppendLine($"  explorer={probe[0]} (true のはず) / 無い名前={probe[1]} (false のはず)");
         }
         catch (Exception ex) { report.AppendLine("EXCEPTION: " + ex); }
         if (!string.IsNullOrEmpty(reportPath)) File.WriteAllText(reportPath, report.ToString());

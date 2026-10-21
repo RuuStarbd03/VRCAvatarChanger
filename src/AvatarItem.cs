@@ -181,24 +181,3 @@ public sealed class AvatarItem : INotifyPropertyChanged
     private void OnPropertyChanged([CallerMemberName] string? name = null)
         => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
 }
-
-/// <summary>幅から 4:3 の高さを作る。ConverterParameter="clip" の場合は角丸クリップ用の RectangleGeometry を返す。</summary>
-public sealed class AspectHeightConverter : IValueConverter, IMultiValueConverter
-{
-    public double Ratio { get; set; } = 0.75;
-
-    public object Convert(object value, Type targetType, object parameter, System.Globalization.CultureInfo culture)
-        => value is double w && !double.IsNaN(w) ? Math.Max(0, w * Ratio) : 0d;
-
-    public object[] ConvertBack(object value, Type[] targetTypes, object parameter, System.Globalization.CultureInfo culture) => throw new NotSupportedException();
-    public object ConvertBack(object value, Type targetType, object parameter, System.Globalization.CultureInfo culture) => throw new NotSupportedException();
-
-    public object Convert(object[] values, Type targetType, object parameter, System.Globalization.CultureInfo culture)
-    {
-        var w = values.Length > 0 && values[0] is double a && !double.IsNaN(a) ? a : 0;
-        var h = values.Length > 1 && values[1] is double b && !double.IsNaN(b) ? b : 0;
-        var geo = new RectangleGeometry(new Rect(0, 0, w, h), 6, 6);
-        geo.Freeze();
-        return geo;
-    }
-}
