@@ -39,7 +39,7 @@ public sealed class Settings
     /// <summary>VR パネルの列数 (3〜10)。段の数は列数から決まる。</summary>
     public int VrColumns { get; set; } = 3;
     /// <summary>クイック着替えのオーバーレイを開くキー。空 = 割り当てなし。</summary>
-    public string QuickHotkey { get; set; } = "Shift+D1";
+    public string QuickHotkey { get; set; } = "Ctrl+Shift+D1";
     /// <summary>直前に着ていたアバターに戻すキー。空 = 割り当てなし。</summary>
     public string PreviousHotkey { get; set; } = "";
     /// <summary>今のアバターと同じグループの次のアバターに切り替えるキー。空 = 割り当てなし。</summary>

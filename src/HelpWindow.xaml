@@ -188,7 +188,7 @@
 
                     <TextBlock Text="ゲーム中にすばやくチェンジする (ホットキー)" Style="{StaticResource H2}"/>
                     <TextBlock Style="{StaticResource Body}"
-                               Text="VRChat プレイ中に Shift+1 を押すと、画面右側にアバター選択画面が表示されます。アバターをクリックすると即座に切り替わって選択画面が閉じ、VRChat にフォーカスが戻ります（※VRChat のウィンドウがアクティブなときのみ反応します）。"/>
+                               Text="VRChat プレイ中に Ctrl+Shift+1 を押すと、画面右側にアバター選択画面が表示されます。アバターをクリックすると即座に切り替わって選択画面が閉じ、VRChat にフォーカスが戻ります（※VRChat のウィンドウがアクティブなときのみ反応します）。"/>
                     <TextBlock Style="{StaticResource Body}"
                                Text="設定 →「ホットキーの割り当て」から、このキーの変更や、以下の機能のショートカット割り当てが可能です。"/>
                     <TextBlock Style="{StaticResource Body}"

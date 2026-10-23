@@ -4,7 +4,7 @@ using System.Windows.Input;
 
 namespace VRCAvatarChanger;
 
-// VRChat のプレイ中に効くホットキー (既定: Shift+1 でクイック着替えのオーバーレイ)。
+// VRChat のプレイ中に効くホットキー (既定: Ctrl+Shift+1 でクイック着替えのオーバーレイ)。
 // キーボードフックは「割り当てたキーの組み合わせが押されたか」の判定だけに使い、それ以外のキーは素通しする。
 // 入力内容の記録・送信は一切しない。反応するのは VRChat (またはこのオーバーレイ) が手前のときだけ。
 // 何のキーに何を割り当てるかは MainWindow.Hotkeys.cs にある。

@@ -38,7 +38,7 @@ internal interface IVrAvatarSource
 }
 
 /// <summary>
-/// VR (SteamVR) での着替え。PC の Shift+1 の代わりに、手の甲のボタンからアバター選択パネルを開く。
+/// VR (SteamVR) での着替え。PC の Ctrl+Shift+1 の代わりに、手の甲のボタンからアバター選択パネルを開く。
 ///
 /// ・SteamVR と VRChat の両方が動いているときだけ SteamVR に繋ぐ (こちらから SteamVR を起動することはない)。
 /// ・ボタン (コード上は「手首ボタン」と呼ぶ) はコントローラーに貼り付けて手の甲に置き、手の甲を見たときだけ現れる
