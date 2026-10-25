@@ -151,6 +151,7 @@ internal sealed partial class VrOverlay : IDisposable
     private readonly byte[] _uploadedPanel = new byte[VrPanel.Width * VrPanel.Height * 4]; // 最後に SteamVR へ渡したパネルの画像
     private bool _uploadedPanelValid;       // _uploadedPanel が今のオーバーレイに渡したものか (繋ぎ直したら無効)
     private bool _busy;
+    private AvatarItem? _pendingChange; // チェンジ中に押された次のアバター (今のが終わったら着替える)
     private int _fileFlip;
     // パネルの中身の状態 (タブ・並び順・グループ化は設定に持つ。絞り込みと開いているグループはその場限り)
     private string? _filter;
@@ -886,17 +887,39 @@ internal sealed partial class VrOverlay : IDisposable
 
     private async Task ChangeAsync(AvatarItem item)
     {
-        if (_busy) return;
+        if (_busy)
+        {
+            // チェンジ中に次を押した: 捨てずに覚えておき、今のが終わったら着替える (続けて押したときは最後に押したもの)
+            _pendingChange = item;
+            SetStatus($"アバターチェンジ中… 次: {item.Name}");
+            return;
+        }
         _busy = true;
-        SetStatus($"アバターチェンジ中… ({item.Name})");
-        bool ok;
-        try { ok = await _source.ChangeAsync(item); }
-        finally { _busy = false; }
-        if (!_connected || !_panelOpen) return;
-        SetStatus(ok ? $"アバターチェンジ完了: {item.Name}" : $"アバターチェンジ失敗: {item.Name}", error: !ok);
-        // 「今着ている」の印を付け直す (グループのタイルにも)。スクロール位置はそのまま
-        if (ok) Reload(resetScroll: false);
-        // 着替えても閉じない。見比べながら続けて着替えられるよう、閉じるのは利用者の操作 (閉じるボタン / 手首ボタン / パネルの外を押す) だけ
+        try
+        {
+            while (true)
+            {
+                SetStatus($"アバターチェンジ中… ({item.Name})");
+                var ok = await _source.ChangeAsync(item);
+                if (_pendingChange is { } next)
+                {
+                    _pendingChange = null;
+                    item = next;
+                    continue;
+                }
+                if (!_connected || !_panelOpen) return;
+                SetStatus(ok ? $"アバターチェンジ完了: {item.Name}" : $"アバターチェンジ失敗: {item.Name}", error: !ok);
+                // 「今着ている」の印を付け直す (グループのタイルにも)。スクロール位置はそのまま
+                if (ok) Reload(resetScroll: false);
+                // 着替えても閉じない。見比べながら続けて着替えられるよう、閉じるのは利用者の操作 (閉じるボタン / 手首ボタン / パネルの外を押す) だけ
+                return;
+            }
+        }
+        finally
+        {
+            _busy = false;
+            _pendingChange = null;
+        }
     }
 
     /// <summary>

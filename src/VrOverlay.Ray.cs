@@ -169,7 +169,7 @@ internal sealed partial class VrOverlay
                 {
                     Buzz(d);
                     var hit = ray.PressHit;
-                    Press(() => Click(hit));
+                    Click(hit); // パネルの中は待ち時間をかけない (すばやい 2 回押しでチェンジできるように。押した瞬間を 1 回だけ見ているので二重には反応しない)
                 }
                 continue;
             }
@@ -206,7 +206,7 @@ internal sealed partial class VrOverlay
                 else
                 {
                     if (hit != default) Buzz(d); // 何も無い所を押したときは震わせない
-                    Press(() => Click(hit));
+                    Click(hit); // パネルの中は待ち時間をかけない (すばやい 2 回押しでチェンジできるように。押した瞬間を 1 回だけ見ているので二重には反応しない)
                 }
             }
             else if (pressed && ray.Target == RayTarget.None && _panelOpen && !GrabbingPanel)
