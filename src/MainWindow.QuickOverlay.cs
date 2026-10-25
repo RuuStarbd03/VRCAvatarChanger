@@ -166,7 +166,12 @@ internal static class Win32
 
     private const int VkShift = 0x10, VkControl = 0x11, VkMenu = 0x12, VkLWin = 0x5B, VkRWin = 0x5C;
 
-    /// <summary>今押されている修飾キー。フックはキー 1 つ分しか届かないので、修飾キーはここで見る。</summary>
+    /// <summary>
+    /// 今押されている修飾キー。フックはキー 1 つ分しか届かないので、修飾キーはここで見る。
+    /// GetKeyState は「このスレッドが最後に入力を処理した時点」の状態で、VRChat が手前の間は 1 つ前の入力のまま遅れる
+    /// (Ctrl+Shift+1 が 1 回目に一致せず、2 回目でようやく反応していた)。キーボードの今の状態を返す GetAsyncKeyState で見る
+    /// (フックに届いたキーより前に押された修飾キーは、もう反映されている)。
+    /// </summary>
     public static ModifierKeys CurrentModifiers()
     {
         var modifiers = ModifierKeys.None;
@@ -176,7 +181,7 @@ internal static class Win32
         if (IsDown(VkLWin) || IsDown(VkRWin)) modifiers |= ModifierKeys.Windows;
         return modifiers;
 
-        static bool IsDown(int vk) => (GetKeyState(vk) & 0x8000) != 0;
+        static bool IsDown(int vk) => (GetAsyncKeyState(vk) & 0x8000) != 0;
     }
 
     public delegate nint LowLevelKeyboardProc(int nCode, nint wParam, nint lParam);
@@ -186,7 +191,7 @@ internal static class Win32
     [DllImport("user32.dll")] public static extern bool UnhookWindowsHookEx(nint hhk);
     [DllImport("user32.dll")] public static extern nint CallNextHookEx(nint hhk, int nCode, nint wParam, nint lParam);
     [DllImport("kernel32.dll", CharSet = CharSet.Unicode)] public static extern nint GetModuleHandleW(string? name);
-    [DllImport("user32.dll")] public static extern short GetKeyState(int vk);
+    [DllImport("user32.dll")] private static extern short GetAsyncKeyState(int vk);
     [DllImport("user32.dll")] public static extern nint GetForegroundWindow();
     [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(nint hWnd, out uint pid);
     [DllImport("user32.dll")] public static extern bool SetForegroundWindow(nint hWnd);
