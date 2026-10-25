@@ -40,7 +40,9 @@ public sealed class OscListener : IDisposable
         Stop();
         var udp = new UdpClient(AddressFamily.InterNetwork);
         udp.Client.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true);
-        udp.Client.Bind(new IPEndPoint(IPAddress.Any, port));
+        // 127.0.0.1 だけで待ち受ける。全アドレス (Any) だと、ファイアウォールで許可されていれば
+        // 同じ LAN / Wi-Fi の誰でも偽の /avatar/change を送り込めてしまう (表示や「直前のアバター」を書き換えられる)
+        udp.Client.Bind(new IPEndPoint(IPAddress.Loopback, port));
         _udp = udp;
         Port = port;
         _cts = new CancellationTokenSource();
@@ -63,6 +65,7 @@ public sealed class OscListener : IDisposable
             while (!ct.IsCancellationRequested)
             {
                 var result = await udp.ReceiveAsync(ct);
+                if (!IPAddress.IsLoopback(result.RemoteEndPoint.Address)) continue; // 念のため: この PC 以外からは受け取らない
                 Interlocked.Exchange(ref _lastReceiveTicks, DateTime.UtcNow.Ticks);
                 try { HandlePacket(result.Buffer); } catch (Exception ex) { Log.Debug($"OSC: 解釈できないパケット ({result.Buffer.Length} bytes)", ex); }
             }
@@ -96,7 +99,7 @@ public sealed class OscListener : IDisposable
         var typeTag = ReadOscString(data, ref p);
         if (typeTag.Length < 2 || typeTag[1] != 's') return;
         var avatarId = ReadOscString(data, ref p);
-        if (avatarId.StartsWith("avtr_", StringComparison.Ordinal)) AvatarChanged?.Invoke(avatarId);
+        if (VRChatApi.IsValidAvatarId(avatarId)) AvatarChanged?.Invoke(avatarId); // 形の正しい ID だけ (表示・履歴・API に使うため)
     }
 
     /// <summary>/avatar/change を VRChat (127.0.0.1:9000) に送る。宛先はローカルのみ。失敗したら false。</summary>

@@ -13,6 +13,8 @@
         <Border Background="{DynamicResource PanelBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,0,0,1" Padding="16,12">
             <StackPanel>
                 <TextBlock Text="VRChat にログイン" FontWeight="SemiBold"/>
+                <!-- 今表示しているサイト。アドレスバーが無いので、偽のログイン画面に誘導されても気づけるように出す -->
+                <TextBlock x:Name="HostText" Style="{StaticResource CaptionText}" Margin="0,6,0,0" TextTrimming="CharacterEllipsis"/>
                 <TextBlock x:Name="StatusText" Style="{StaticResource CaptionText}" Foreground="{DynamicResource FaintTextBrush}" Margin="0,8,0,0" TextWrapping="Wrap"/>
             </StackPanel>
         </Border>

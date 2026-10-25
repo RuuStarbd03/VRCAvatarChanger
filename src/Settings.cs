@@ -85,6 +85,12 @@ public sealed class Settings
         if (s.VrHand is not ("left" or "right")) s.VrHand = "left";
         if (s.VrTab is not (AvatarTab.Own or AvatarTab.Favorites or AvatarTab.Public)) s.VrTab = AvatarTab.Own;
         if (!VrPanel.IsValidSortKey(s.VrSortKey)) s.VrSortKey = "recent_asc";
+        if (!VrPanel.IsValidSortKey(s.SortKey)) s.SortKey = "created_desc";       // 並びの種類はメイン画面・クイックも同じ 6 種類
+        if (!VrPanel.IsValidSortKey(s.QuickSortKey)) s.QuickSortKey = "recent_asc";
+        // 手で書き換えられた / 壊れたファイルの null で、起動後に落ちないようにする
+        s.RecentAvatars = s.RecentAvatars?.Where(VRChatApi.IsValidAvatarId).ToList() ?? [];
+        s.AvatarHotkeys = s.AvatarHotkeys?.Where(h => h is not null).ToList() ?? [];
+        s.StripeExcluded = s.StripeExcluded?.Where(id => id is not null).ToList() ?? [];
         s.VrColumns = Math.Clamp(s.VrColumns, MinGridColumns, MaxGridColumns);
         if (VRCAvatarChanger.VrOverlay.PoseFromArray(s.VrButtonPose) is null) s.VrButtonPose = null; // 壊れた値・遠すぎる位置は手の甲に戻す
         return s;

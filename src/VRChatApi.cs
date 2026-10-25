@@ -96,6 +96,8 @@ public sealed class VRChatApi : IDisposable
         _http = new HttpClient(new HttpClientHandler { CookieContainer = _cookies, UseCookies = true })
         {
             Timeout = TimeSpan.FromSeconds(30),
+            // 応答を丸ごと読む上限 (既定は 2GB)。一覧は 100 件ずつ取るので数 MB に収まる。画像は別に 10MB で切っている
+            MaxResponseContentBufferSize = 32L * 1024 * 1024,
         };
         _http.DefaultRequestHeaders.TryAddWithoutValidation("User-Agent", UserAgent);
         _http.DefaultRequestHeaders.Accept.ParseAdd("application/json");

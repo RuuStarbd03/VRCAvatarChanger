@@ -1030,6 +1030,19 @@ public partial class MainWindow
                 $"{btn[inner]:X2} {btn[inner + 1]:X2} {btn[inner + 2]:X2} {btn[inner + 3]:X2}");
             Expect("手首ボタンの画像は作り直さない", ReferenceEquals(btn, VrPanel.ButtonRgba(panelOpen: false)));
 
+            // セキュリティ: 展開してよい画像の大きさ / 更新のダウンロード元 / openvr_api.dll の読み込み元
+            Expect("画像: 普通のサムネイルは展開する", IsReasonableImageSize(1200, 900) && IsReasonableImageSize(256, 256));
+            Expect("画像: 縦横が巨大なものは展開しない", !IsReasonableImageSize(50000, 50000) && !IsReasonableImageSize(16, 100000) && !IsReasonableImageSize(0, 10));
+            Expect("更新: このリポジトリの Releases からは取る",
+                Updater.IsReleaseAssetUrl($"https://github.com/{Updater.GitHubRepo}/releases/download/v1.2.0/VRCAvatarChanger-v1.2.0-win-x64.zip"));
+            Expect("更新: 別のリポジトリ・別のホスト・http からは取らない",
+                !Updater.IsReleaseAssetUrl("https://github.com/someone/VRCAvatarChanger/releases/download/v9.9.9/x.zip")
+                && !Updater.IsReleaseAssetUrl($"https://evil.example/{Updater.GitHubRepo}/releases/download/v9.9.9/x.zip")
+                && !Updater.IsReleaseAssetUrl($"http://github.com/{Updater.GitHubRepo}/releases/download/v9.9.9/x.zip")
+                && !Updater.IsReleaseAssetUrl("file:///C:/x.zip"));
+            var openVr = NativeLibraries.FindOpenVr();
+            Expect("openvr_api.dll を決まった場所から見つける", openVr is not null && File.Exists(openVr), openVr ?? "(なし)");
+
             // GPU (Direct3D 11) でパネルの画像を渡す準備: デバイスとテクスチャを作って中身を書けるか (SteamVR に渡す所だけは試せない)
             using (var gpu = VrGpu.Create(-1))
             {

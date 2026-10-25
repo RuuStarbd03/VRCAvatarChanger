@@ -350,6 +350,15 @@ public partial class MainWindow
     {
         try
         {
+            // 先に縦横の大きさだけ読み、極端な画像は展開しない。
+            // ファイルは小さくても「縦横がとても大きい」画像 (展開爆弾) は、展開すると何 GB ものメモリを使い、アプリが落ちる
+            var frame = BitmapDecoder.Create(stream, BitmapCreateOptions.DelayCreation, BitmapCacheOption.None).Frames[0];
+            if (!IsReasonableImageSize(frame.PixelWidth, frame.PixelHeight))
+            {
+                Log.Warn($"画像が大きすぎるため表示しません ({frame.PixelWidth}x{frame.PixelHeight})");
+                return null;
+            }
+            stream.Position = 0;
             var image = new BitmapImage();
             image.BeginInit();
             image.CacheOption = BitmapCacheOption.OnLoad; // ここで読み切るので、あとでストリームを閉じてよい
@@ -361,4 +370,11 @@ public partial class MainWindow
         }
         catch (Exception ex) { Log.Warn("画像を展開できませんでした (壊れていれば捨てて取り直します)", ex); return null; }
     }
+
+    /// <summary>
+    /// サムネイルとして展開してよい大きさか。VRChat のサムネイルは 1200x900 程度。
+    /// 画素数 (幅に合わせて縮めても、縦長だと高さぶん大きくなる) と縦横比の両方に上限を設ける。
+    /// </summary>
+    internal static bool IsReasonableImageSize(int w, int h)
+        => w > 0 && h > 0 && (long)w * h <= 16L * 1024 * 1024 && Math.Max(w, h) <= 8 * Math.Min(w, h);
 }

@@ -70,6 +70,9 @@ public partial class BrowserLoginWindow : Window
             // 権限要求(カメラ・位置情報など)は全て拒否
             core.PermissionRequested += (_, e) => e.State = CoreWebView2PermissionState.Deny;
 
+            // 今どのサイトを表示しているかを出す (アドレスバーが無いので、ここで見分けられるように)
+            core.SourceChanged += (_, _) =>
+                HostText.Text = Uri.TryCreate(core.Source, UriKind.Absolute, out var u) ? $"表示中のサイト: {u.Host}" : "";
             core.NavigationCompleted += async (_, _) => await CheckCookiesAsync();
             core.Navigate(LoginUrl);
             _poll.Start();

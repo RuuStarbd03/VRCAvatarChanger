@@ -321,8 +321,11 @@ internal sealed partial class VrOverlay : IDisposable
         if (err == EVROverlayError.None) return;
         var bmp = fallback();
 
-        // 同じパスだと読み直されないことがあるので、2 つの名前を交互に使う
-        var path = Path.Combine(Path.GetTempPath(), $"VRCAvatarChanger-vr-{handle}-{_fileFlip ^= 1}.png");
+        // 同じパスだと読み直されないことがあるので、2 つの名前を交互に使う。
+        // 置き場所はアプリのデータフォルダーの中 (誰でも決まった名前で先回りできる %TEMP% 直下には置かない)
+        var dir = AppPaths.In("vr");
+        Directory.CreateDirectory(dir);
+        var path = Path.Combine(dir, $"panel-{handle}-{_fileFlip ^= 1}.png");
         using (var stream = File.Create(path))
         {
             var encoder = new PngBitmapEncoder();

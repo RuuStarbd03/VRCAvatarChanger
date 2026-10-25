@@ -14,7 +14,7 @@ public sealed record UpdateInfo(Version Version, string? ZipUrl, string? ShaUrl,
 /// </summary>
 public static class Updater
 {
-    // ★ 配布リポジトリ(例: "kotag/VRCAvatarChanger")。空のままなら更新確認は行わない。
+    // ★ 配布リポジトリ(例: "owner/VRCAvatarChanger")。空のままなら更新確認は行わない。
     //   リリースには publish.ps1 が作る VRCAvatarChanger-vX.Y.Z-win-x64.zip と SHA256SUMS.txt を添付すること。
     public const string GitHubRepo = "RuuStarbd03/VRCAvatarChanger";
 
@@ -79,6 +79,7 @@ public static class Updater
             {
                 var name = asset.GetProperty("name").GetString() ?? "";
                 var url = asset.GetProperty("browser_download_url").GetString() ?? "";
+                if (!IsReleaseAssetUrl(url)) continue; // このリポジトリの GitHub Releases 以外からは取らない
                 if (name.Equals(expectedZip, StringComparison.OrdinalIgnoreCase)) zipUrl = url;
                 else if (name.Equals("SHA256SUMS.txt", StringComparison.OrdinalIgnoreCase)) shaUrl = url;
             }
@@ -89,6 +90,20 @@ public static class Updater
         }
         catch (Exception ex) { Log.Warn("更新の確認に失敗 (次回また確認します)", ex); return null; }
     }
+
+    // ダウンロードの上限。今の配布物は 60MB ほど。これを超えるものは配布物ではないとみなして中止する (ディスクを埋められない / 展開爆弾を避ける)
+    private const long MaxZipBytes = 300L * 1024 * 1024;
+    private const long MaxExeBytes = 400L * 1024 * 1024;
+
+    /// <summary>このリポジトリの GitHub Releases の添付ファイルの URL か (https・github.com・リポジトリのパスに固定)。</summary>
+    internal static bool IsReleaseAssetUrl(string url)
+        => Uri.TryCreate(url, UriKind.Absolute, out var u) && u.Scheme == Uri.UriSchemeHttps
+           && u.Host.Equals("github.com", StringComparison.OrdinalIgnoreCase)
+           && u.AbsolutePath.StartsWith($"/{Repo}/releases/download/", StringComparison.OrdinalIgnoreCase)
+#if DEBUG
+           || Environment.GetEnvironmentVariable("VRCAC_UPDATE_API") is { Length: > 0 } // テスト用の向き先を使うときは制限しない
+#endif
+        ;
 
     /// <summary>
     /// zip をダウンロードして検証し、実行中の exe を差し替えて新しいバージョンを起動する。
@@ -110,8 +125,19 @@ public static class Updater
             using (var res = await http.GetAsync(info.ZipUrl, HttpCompletionOption.ResponseHeadersRead))
             {
                 res.EnsureSuccessStatusCode();
+                if (res.Content.Headers.ContentLength > MaxZipBytes) throw new InvalidOperationException("更新ファイルが大きすぎるため中止");
                 await using var fs = File.Create(zipPath);
-                await res.Content.CopyToAsync(fs);
+                await using var body = await res.Content.ReadAsStreamAsync();
+                // Content-Length が無い / 偽っている場合に備え、読みながら数える
+                var buffer = new byte[81920];
+                long total = 0;
+                int read;
+                while ((read = await body.ReadAsync(buffer)) > 0)
+                {
+                    total += read;
+                    if (total > MaxZipBytes) throw new InvalidOperationException("更新ファイルが大きすぎるため中止");
+                    await fs.WriteAsync(buffer.AsMemory(0, read));
+                }
             }
 
             // SHA256SUMS.txt と照合する (HTTPS に加えた整合性チェック。上で無いときは中止している)
@@ -142,6 +168,7 @@ public static class Updater
         {
             var entry = zip.Entries.FirstOrDefault(e => e.Name.Equals("VRCAvatarChanger.exe", StringComparison.OrdinalIgnoreCase))
                 ?? throw new InvalidOperationException("更新ファイルの中に VRCAvatarChanger.exe が見つかりません。");
+            if (entry.Length > MaxExeBytes) throw new InvalidOperationException("更新ファイルの中身が大きすぎるため中止");
             entry.ExtractToFile(newExe, overwrite: true);
         }
         File.Delete(zipPath);

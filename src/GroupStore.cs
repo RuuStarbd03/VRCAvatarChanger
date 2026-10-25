@@ -24,7 +24,16 @@ public sealed class GroupStore
         var store = new GroupStore();
         var list = JsonFile.Load<List<AvatarGroup>>(PathOf(), JsonFile.Indented);
         if (list is not null)
-            store._groups.AddRange(list.Where(g => !string.IsNullOrWhiteSpace(g.Name)));
+        {
+            // 手で書き換えられた / 壊れたファイルの null で、起動できなくならないようにする
+            var valid = list.Where(g => g is not null && !string.IsNullOrWhiteSpace(g.Name)).ToList();
+            foreach (var g in valid)
+            {
+                g.Id ??= Guid.NewGuid().ToString("N");
+                g.AvatarIds = g.AvatarIds?.Where(VRChatApi.IsValidAvatarId).ToList() ?? [];
+            }
+            store._groups.AddRange(valid);
+        }
         return store;
     }
 

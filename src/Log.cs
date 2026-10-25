@@ -66,7 +66,10 @@ public static class Log
     {
         if (!always && !Enabled) return;
         var sb = new StringBuilder();
-        sb.Append(DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.fff")).Append(" [").Append(level).Append("] ").Append(what);
+        // 本文には VRChat から来た名前なども入る。改行が入っていると偽の行を作れてしまうので、1 行に収める
+        // (例外の全文は複数行のままでよい: こちらが作るものなので)
+        sb.Append(DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.fff")).Append(" [").Append(level).Append("] ")
+          .Append(what.Replace('\r', ' ').Replace('\n', ' '));
         if (ex is not null)
         {
             // 予期しないものは追えるように全文、想定内の失敗は種類とメッセージだけ

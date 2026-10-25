@@ -18,7 +18,7 @@ function Get-EmbeddedContact($src) {
     return [System.Text.Encoding]::UTF8.GetString([byte[]]$bytes)
 }
 $contact = Get-EmbeddedContact $api
-if (-not $contact -or $contact -match 'example\.com' -or $contact -eq 'https://github.com/kotag/VRCAvatarChanger') {
+if (-not $contact -or $contact -match 'example\.com' -or $contact -eq 'https://github.com/owner/VRCAvatarChanger') {
     Write-Host "[publish] src\VRChatApi.cs の連絡先が未設定/ダミーのままです。配布者の連絡先(メールアドレスや実在する配布ページ URL)に変えてから配布してください。" -ForegroundColor Red
     exit 1
 }

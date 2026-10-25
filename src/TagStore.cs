@@ -15,7 +15,7 @@ public sealed class TagStore
         var store = new TagStore();
         var map = JsonFile.Load<Dictionary<string, List<string>>>(PathOf(), JsonFile.Indented);
         if (map is not null)
-            foreach (var (id, tags) in map.Where(kv => VRChatApi.IsValidAvatarId(kv.Key)))
+            foreach (var (id, tags) in map.Where(kv => VRChatApi.IsValidAvatarId(kv.Key) && kv.Value is not null))
                 store._tags[id] = Normalize(tags);
         return store;
     }
@@ -23,7 +23,7 @@ public sealed class TagStore
     public void Save() => JsonFile.Save(PathOf(), _tags.Where(kv => kv.Value.Count > 0).ToDictionary(kv => kv.Key, kv => kv.Value), JsonFile.Indented);
 
     private static List<string> Normalize(IEnumerable<string> tags)
-        => tags.Select(t => t.Trim()).Where(t => t.Length > 0)
+        => tags.Where(t => t is not null).Select(t => t.Trim()).Where(t => t.Length > 0)
             .Distinct(StringComparer.CurrentCultureIgnoreCase).ToList();
 
     /// <summary>使われているすべてのタグ(名前順)。</summary>

@@ -67,7 +67,7 @@ public static class AvatarListCache
             if (!Memory.TryGetValue(kind, out cached))
             {
                 cached = JsonFile.Load<CachedAvatarList>(PathOf(kind), JsonOptions);
-                if (cached is not null) cached.Avatars = cached.Avatars.Where(a => VRChatApi.IsValidAvatarId(a.Id)).ToList();
+                if (cached is not null) cached.Avatars = (cached.Avatars ?? []).Where(a => a is not null && VRChatApi.IsValidAvatarId(a.Id)).ToList();
                 Memory[kind] = cached;
             }
         }

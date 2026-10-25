@@ -53,7 +53,12 @@ public sealed class PublicAvatarStore
         var store = new PublicAvatarStore();
         var list = JsonFile.Load<List<PublicAvatarEntry>>(PathOf(), JsonOptions);
         if (list is not null)
-            store._entries.AddRange(list.Where(e => VRChatApi.IsValidAvatarId(e.Avatar.Id)));
+        {
+            // 手で書き換えられた / 壊れたファイルの null で、起動できなくならないようにする
+            var valid = list.Where(e => e?.Avatar is not null && VRChatApi.IsValidAvatarId(e.Avatar.Id)).ToList();
+            foreach (var e in valid) e.Tags = e.Tags?.Where(t => t is not null).ToList() ?? [];
+            store._entries.AddRange(valid);
+        }
         return store;
     }
 
